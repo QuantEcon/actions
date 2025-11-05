@@ -13,7 +13,7 @@ This repository contains **reusable GitHub Actions composite actions** for build
 
 ## Current Status
 
-**✅ COMPLETED (November 5, 2024):**
+**✅ COMPLETED (November 5, 2025):**
 - All 5 composite actions created with complete `action.yml` files
 - Individual README.md for each action (detailed documentation)
 - Main repository documentation:
@@ -26,12 +26,18 @@ This repository contains **reusable GitHub Actions composite actions** for build
   - SETUP.md (GitHub repository initialization)
   - LICENSE (MIT)
   - .gitignore
+- Git repository initialized
+- GitHub repository created at `quantecon/actions`
 
-**⏳ PENDING:**
-- Initialize git repository
-- Create GitHub repository at `quantecon/actions`
-- Create v1.0.0 release
-- Phase 1-3 testing (see TESTING.md)
+**🧪 CURRENT PHASE: TESTING**
+- **Status:** Testing phase - NO releases until testing is complete
+- **Next:** Execute 3-phase testing strategy (see TESTING.md)
+- Phase 1: Test in fork with sample workflow
+- Phase 2: Test in lecture-python-programming.myst (simplest repo)
+- Phase 3: Validate in all 4 lecture repositories
+
+**⏳ PENDING (Post-Testing):**
+- Create v1.0.0 release (after successful testing)
 - Migration of lecture repositories
 - Performance validation
 
@@ -234,14 +240,33 @@ quantecon/actions/
 
 ## Next Steps (Priority Order)
 
-1. **Initialize Git Repository** (SETUP.md has commands)
-2. **Create GitHub Repository** at `quantecon/actions`
-3. **Push and Tag v1.0.0**
-4. **Phase 1 Testing** - Test in fork (TESTING.md Phase 1)
-5. **Phase 2 Testing** - Test in lecture-python-programming.myst (simplest)
-6. **Phase 3 Testing** - Validate in all repositories
-7. **Migration** - Follow MIGRATION-GUIDE.md for each repo
-8. **Monitor** - Track cache hit rates and performance
+**TESTING PHASE (Current):**
+
+1. **Phase 1 Testing** - Test in fork with sample workflow (TESTING.md Phase 1)
+   - Create test fork or branch
+   - Test each action individually
+   - Verify caching works correctly
+   - Validate outputs and error handling
+
+2. **Phase 2 Testing** - Test in lecture-python-programming.myst (simplest repo)
+   - Create test branch in lecture repo
+   - Convert one workflow to use new actions
+   - Run full build cycle
+   - Verify deployment works
+
+3. **Phase 3 Testing** - Validate in all repositories
+   - Test in lecture-python.myst (GPU, ML libs)
+   - Test in lecture-python-intro (Netlify)
+   - Test in lecture-python-advanced.myst
+   - Monitor cache performance and build times
+
+**POST-TESTING (After successful validation):**
+
+4. **Create v1.0.0 Release** - Only after all testing passes
+5. **Migration** - Follow MIGRATION-GUIDE.md for each repo
+6. **Monitor** - Track cache hit rates and performance in production
+
+**⚠️ IMPORTANT: Do NOT create git tags or GitHub releases until testing is complete**
 
 ## Common Commands
 
@@ -291,7 +316,8 @@ LaTeX cache hit: true
 
 ## Contact & Support
 
-- **Issues:** https://github.com/quantecon/actions/issues (once created)
+- **Issues:** https://github.com/quantecon/actions/issues
+- **Repository:** https://github.com/quantecon/actions
 - **Maintainers:** QuantEcon team
-- **Created:** November 5, 2024
-- **Status:** Pre-release (v1.0.0 pending)
+- **Created:** November 5, 2025
+- **Status:** Testing phase (v1.0.0 pending successful testing)
