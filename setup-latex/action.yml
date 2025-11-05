@@ -1,0 +1,62 @@
+name: 'Setup LaTeX'
+description: 'Installs LaTeX packages required for Jupyter Book PDF builds with workflow-based caching'
+author: 'QuantEcon'
+
+inputs:
+  cache-version:
+    description: 'Cache version for manual invalidation'
+    required: false
+    default: 'v1'
+  workflow-file:
+    description: 'Path to workflow file for cache key generation'
+    required: false
+    default: '.github/workflows/ci.yml'
+  packages:
+    description: 'Space-separated list of LaTeX packages to install'
+    required: false
+    default: 'texlive-latex-extra texlive-fonts-extra texlive-xetex latexmk xindy texlive-luatex dvipng ghostscript'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Cache LaTeX packages
+      uses: actions/cache@v4
+      id: latex-cache
+      with:
+        path: |
+          /usr/share/texlive
+          /usr/share/texmf
+          /var/lib/texmf
+        key: latex-${{ runner.os }}-${{ hashFiles(inputs.workflow-file) }}-${{ inputs.cache-version }}
+        restore-keys: |
+          latex-${{ runner.os }}-${{ hashFiles(inputs.workflow-file) }}-
+          latex-${{ runner.os }}-
+
+    - name: Install LaTeX packages
+      if: steps.latex-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        echo "Installing LaTeX packages: ${{ inputs.packages }}"
+        sudo apt-get update
+        sudo apt-get install -y ${{ inputs.packages }}
+        
+    - name: Display LaTeX Info
+      shell: bash
+      run: |
+        echo "::group::LaTeX version"
+        latex --version || echo "LaTeX not in PATH"
+        pdflatex --version || echo "pdfLaTeX not in PATH"
+        xelatex --version || echo "XeLaTeX not in PATH"
+        echo "::endgroup::"
+        echo "::group::Cache status"
+        echo "LaTeX cache hit: ${{ steps.latex-cache.outputs.cache-hit }}"
+        if [ "${{ steps.latex-cache.outputs.cache-hit }}" == "true" ]; then
+          echo "✅ Restored from cache (saved ~2-3 minutes)"
+        else
+          echo "❌ Cache miss - installed fresh (took 2-3 minutes)"
+        fi
+        echo "::endgroup::"
+
+branding:
+  icon: 'file-text'
+  color: 'green'

@@ -1,0 +1,99 @@
+name: 'Build Lectures'
+description: 'Builds QuantEcon lectures using Jupyter Book with execution caching'
+author: 'QuantEcon'
+
+inputs:
+  builder:
+    description: 'Jupyter Book builder to use (html, pdflatex, custom --custom-builder=jupyter)'
+    required: false
+    default: 'html'
+  source-dir:
+    description: 'Source directory containing lectures'
+    required: false
+    default: 'lectures'
+  output-dir:
+    description: 'Output directory for build artifacts'
+    required: false
+    default: './'
+  extra-args:
+    description: 'Extra arguments to pass to jupyter-book build'
+    required: false
+    default: '-W --keep-going'
+  cache-notebook-execution:
+    description: 'Enable notebook execution caching'
+    required: false
+    default: 'true'
+
+outputs:
+  build-path:
+    description: 'Path to the build output directory'
+    value: ${{ steps.build.outputs.build-path }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Cache Jupyter execution
+      if: inputs.cache-notebook-execution == 'true'
+      uses: actions/cache@v4
+      id: jupyter-cache
+      with:
+        path: |
+          _build/.jupyter_cache
+        key: jupyter-cache-${{ runner.os }}-${{ hashFiles('lectures/**/*.md') }}-${{ github.sha }}
+        restore-keys: |
+          jupyter-cache-${{ runner.os }}-${{ hashFiles('lectures/**/*.md') }}-
+          jupyter-cache-${{ runner.os }}-
+
+    - name: Build lectures
+      id: build
+      shell: bash -l {0}
+      run: |
+        echo "Building with builder: ${{ inputs.builder }}"
+        
+        # Set build command based on builder type
+        if [ "${{ inputs.builder }}" = "html" ]; then
+          BUILD_CMD="jb build ${{ inputs.source-dir }} --path-output ${{ inputs.output-dir }} ${{ inputs.extra-args }}"
+        elif [ "${{ inputs.builder }}" = "pdflatex" ]; then
+          BUILD_CMD="jb build ${{ inputs.source-dir }} --builder pdflatex --path-output ${{ inputs.output-dir }} -n ${{ inputs.extra-args }}"
+        elif [ "${{ inputs.builder }}" = "jupyter" ]; then
+          BUILD_CMD="jb build ${{ inputs.source-dir }} --path-output ${{ inputs.output-dir }} --builder=custom --custom-builder=jupyter -n ${{ inputs.extra-args }}"
+        else
+          # Custom builder
+          BUILD_CMD="jb build ${{ inputs.source-dir }} --builder ${{ inputs.builder }} --path-output ${{ inputs.output-dir }} ${{ inputs.extra-args }}"
+        fi
+        
+        echo "::group::Build Command"
+        echo "$BUILD_CMD"
+        echo "::endgroup::"
+        
+        # Execute build
+        eval $BUILD_CMD
+        
+        # Set output
+        if [ "${{ inputs.builder }}" = "html" ]; then
+          echo "build-path=${{ inputs.output-dir }}/_build/html" >> $GITHUB_OUTPUT
+        elif [ "${{ inputs.builder }}" = "pdflatex" ]; then
+          echo "build-path=${{ inputs.output-dir }}/_build/latex" >> $GITHUB_OUTPUT
+        elif [ "${{ inputs.builder }}" = "jupyter" ]; then
+          echo "build-path=${{ inputs.output-dir }}/_build/jupyter" >> $GITHUB_OUTPUT
+        else
+          echo "build-path=${{ inputs.output-dir }}/_build" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Display Build Info
+      shell: bash
+      run: |
+        echo "::group::Build Summary"
+        echo "Builder: ${{ inputs.builder }}"
+        echo "Source: ${{ inputs.source-dir }}"
+        echo "Output: ${{ steps.build.outputs.build-path }}"
+        echo "Jupyter cache hit: ${{ steps.jupyter-cache.outputs.cache-hit }}"
+        echo "::endgroup::"
+        
+        echo "::group::Build Artifacts"
+        ls -lh ${{ steps.build.outputs.build-path }} || echo "Build directory not found"
+        echo "::endgroup::"
+
+branding:
+  icon: 'book-open'
+  color: 'purple'

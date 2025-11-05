@@ -1,0 +1,121 @@
+name: 'Deploy to Netlify'
+description: 'Deploys lecture builds to Netlify for preview or production'
+author: 'QuantEcon'
+
+inputs:
+  netlify-auth-token:
+    description: 'Netlify authentication token (use secrets.NETLIFY_AUTH_TOKEN)'
+    required: true
+  netlify-site-id:
+    description: 'Netlify site ID (use secrets.NETLIFY_SITE_ID)'
+    required: true
+  build-dir:
+    description: 'Directory containing built site'
+    required: true
+  production:
+    description: 'Deploy to production (true) or preview (false)'
+    required: false
+    default: 'false'
+  alias:
+    description: 'Deploy alias for preview deployments'
+    required: false
+    default: ''
+  message:
+    description: 'Deployment message'
+    required: false
+    default: 'Deployed via GitHub Actions'
+
+outputs:
+  deploy-url:
+    description: 'URL of the deployed site'
+    value: ${{ steps.deploy.outputs.deploy-url }}
+  logs-url:
+    description: 'URL to deployment logs'
+    value: ${{ steps.deploy.outputs.logs-url }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Netlify CLI
+      shell: bash
+      run: |
+        npm install -g netlify-cli@latest
+        
+    - name: Deploy to Netlify
+      id: deploy
+      shell: bash
+      run: |
+        if [ "${{ inputs.production }}" = "true" ]; then
+          echo "🚀 Deploying to production..."
+          DEPLOY_OUTPUT=$(netlify deploy \
+            --dir="${{ inputs.build-dir }}" \
+            --site="${{ inputs.netlify-site-id }}" \
+            --auth="${{ inputs.netlify-auth-token }}" \
+            --prod \
+            --message="${{ inputs.message }}")
+        else
+          echo "🔍 Deploying preview..."
+          if [ -n "${{ inputs.alias }}" ]; then
+            DEPLOY_OUTPUT=$(netlify deploy \
+              --dir="${{ inputs.build-dir }}" \
+              --site="${{ inputs.netlify-site-id }}" \
+              --auth="${{ inputs.netlify-auth-token }}" \
+              --alias="${{ inputs.alias }}" \
+              --message="${{ inputs.message }}")
+          else
+            DEPLOY_OUTPUT=$(netlify deploy \
+              --dir="${{ inputs.build-dir }}" \
+              --site="${{ inputs.netlify-site-id }}" \
+              --auth="${{ inputs.netlify-auth-token }}" \
+              --message="${{ inputs.message }}")
+          fi
+        fi
+        
+        echo "::group::Deployment Output"
+        echo "$DEPLOY_OUTPUT"
+        echo "::endgroup::"
+        
+        # Extract URLs from output
+        DEPLOY_URL=$(echo "$DEPLOY_OUTPUT" | grep -o 'https://[^ ]*' | head -1)
+        LOGS_URL=$(echo "$DEPLOY_OUTPUT" | grep -o 'https://app.netlify.com/[^ ]*' | head -1)
+        
+        echo "deploy-url=$DEPLOY_URL" >> $GITHUB_OUTPUT
+        echo "logs-url=$LOGS_URL" >> $GITHUB_OUTPUT
+        
+        echo "✅ Deployment successful!"
+        echo "📍 URL: $DEPLOY_URL"
+        echo "📊 Logs: $LOGS_URL"
+
+    - name: Comment on PR (Preview Only)
+      if: inputs.production != 'true' && github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const deployUrl = '${{ steps.deploy.outputs.deploy-url }}';
+          const logsUrl = '${{ steps.deploy.outputs.logs-url }}';
+          
+          const comment = `## 🔍 Preview Deployment
+          
+          ✅ **Deployed successfully!**
+          
+          🔗 **Preview URL:** ${deployUrl}
+          📊 **Logs:** ${logsUrl}
+          
+          ---
+          
+          **Build Info:**
+          - Commit: \`${context.sha.substring(0, 7)}\`
+          - Branch: \`${context.ref}\`
+          - Workflow: [${context.workflow}](${context.payload.repository.html_url}/actions/runs/${context.runId})
+          `;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
+
+branding:
+  icon: 'upload-cloud'
+  color: 'orange'
