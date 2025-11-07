@@ -31,15 +31,29 @@ This repository contains **reusable GitHub Actions composite actions** for build
 
 **🧪 CURRENT PHASE: TESTING**
 - **Status:** Testing phase - NO releases until testing is complete
+- **Test Repository:** `QuantEcon/test-lecture-python-intro` (clone for testing)
 - **Next:** Execute 3-phase testing strategy (see TESTING.md)
-- Phase 1: Test in fork with sample workflow
-- Phase 2: Test in lecture-python-programming.myst (simplest repo)
-- Phase 3: Validate in all 4 lecture repositories
+- Phase 1: Test in test-lecture-python-intro repository
+- Phase 2: Convert workflows to use composite actions
+- Phase 3: Validate full build and deployment cycle
 
 **⏳ PENDING (Post-Testing):**
 - Create v1.0.0 release (after successful testing)
 - Migration of lecture repositories
 - Performance validation
+
+## Test Repository
+
+**Test Repository:** `QuantEcon/test-lecture-python-intro`
+- **URL:** https://github.com/QuantEcon/test-lecture-python-intro
+- **Purpose:** Clone of lecture-python-intro for testing composite actions
+- **Setup:**
+  - `gh-pages` branch created for GitHub Pages deployment
+  - CNAME removed (no custom domain - will use github.io)
+  - Notebook syncing disabled (commented out in publish.yml)
+  - Netlify secrets need configuration: `NETLIFY_AUTH_TOKEN`, `NETLIFY_SITE_ID`
+- **Status:** Ready for workflow conversion and testing
+- **Note:** Does NOT require `QUANTECON_SERVICES_PAT` for basic testing
 
 ## Repository Structure
 
@@ -242,23 +256,25 @@ quantecon/actions/
 
 **TESTING PHASE (Current):**
 
-1. **Phase 1 Testing** - Test in fork with sample workflow (TESTING.md Phase 1)
-   - Create test fork or branch
-   - Test each action individually
+1. **Phase 1 Testing** - Test in test-lecture-python-intro
+   - Set up Netlify site and configure secrets
+   - Enable GitHub Pages on repository
+   - Test current workflows work as-is
+   - Verify baseline functionality
+
+2. **Phase 2 Testing** - Convert workflows to use composite actions
+   - Update publish.yml to use new actions
+   - Update ci.yml to use new actions
+   - Test builds with composite actions
    - Verify caching works correctly
    - Validate outputs and error handling
 
-2. **Phase 2 Testing** - Test in lecture-python-programming.myst (simplest repo)
-   - Create test branch in lecture repo
-   - Convert one workflow to use new actions
-   - Run full build cycle
-   - Verify deployment works
-
-3. **Phase 3 Testing** - Validate in all repositories
-   - Test in lecture-python.myst (GPU, ML libs)
-   - Test in lecture-python-intro (Netlify)
-   - Test in lecture-python-advanced.myst
+3. **Phase 3 Testing** - Full validation
+   - Run full build cycle (HTML, PDF, Jupyter)
+   - Test GitHub Pages deployment
+   - Test Netlify deployment (preview and production)
    - Monitor cache performance and build times
+   - Validate against production lecture-python-intro
 
 **POST-TESTING (After successful validation):**
 
