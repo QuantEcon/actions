@@ -1,27 +1,26 @@
 # Setup Complete Lecture Environment
 
-This composite action sets up both the Conda environment and LaTeX packages required for QuantEcon lectures with optimized caching for maximum performance.
+This composite action sets up both the Conda environment and LaTeX packages required for QuantEcon lectures with optimized Conda caching.
 
 ## What it does
 
 1. **Caches Conda environment** - Restores from cache based on `environment.yml` hash
-2. **Caches apt packages** - Caches downloaded `.deb` files for LaTeX to avoid re-downloading (~1GB)
-3. **Installs Conda** - Only if cache miss
-4. **Installs LaTeX** - Always installs but uses cached `.deb` files if available
-5. **Optional ML libraries** - Installs JAX/PyTorch if requested
+2. **Installs Conda** - Sets up and activates environment (uses cache if available)
+3. **Installs LaTeX** - Installs system packages via apt-get
+4. **Optional ML libraries** - Installs JAX/PyTorch if requested
 
 ## Key Benefits
 
 - **~5-6 minutes saved** with Conda cache hit
-- **~1-2 minutes saved** with LaTeX apt cache hit (download time)
-- **Combined ~6-8 minutes saved** vs fresh install (~12 min)
-- **Separate caching** allows Conda changes without re-downloading LaTeX and vice versa
+- **Simpler workflow** - One action instead of two separate actions
+- **Unified environment setup** - Conda and LaTeX configured together
+- **Independent caching** - Conda cache based on `environment.yml` only
 
-## Why not cache installed LaTeX?
+## Why no LaTeX caching?
 
-System packages installed in `/usr/share/texlive` and `/usr/share/texmf` cannot be cached due to permission restrictions in GitHub Actions. Attempting to restore these paths results in "Operation not permitted" errors.
+System packages installed in `/usr/share/texlive` and `/usr/share/texmf` cannot be cached due to permission restrictions in GitHub Actions. The apt package cache in `/var/cache/apt/archives` also requires root permissions and cannot be reliably cached.
 
-Instead, we cache the **downloaded `.deb` packages** in `/var/cache/apt/archives`, which significantly speeds up the `apt-get install` step by avoiding the ~1-2 minute download time.
+LaTeX installation via `apt-get install` takes ~2-3 minutes but is unavoidable. The time is acceptable given that Conda caching saves 5-6 minutes.
 
 ## Usage
 
@@ -54,19 +53,18 @@ Instead, we cache the **downloaded `.deb` packages** in `/var/cache/apt/archives
 - **Path**: `/home/runner/miniconda3/envs/{name}`, `/home/runner/conda_pkgs_dir`
 - **Invalidation**: Changes to `environment.yml` or manual `cache-version` bump
 
-### LaTeX apt Cache
-- **Key**: `apt-latex-{os}-{hash(latex-requirements.txt)}-{version}`
-- **Path**: `/var/cache/apt/archives`
-- **Invalidation**: Changes to `latex-requirements.txt` or manual `cache-version` bump
+### LaTeX
+- **No caching** - System packages installed fresh each run (~2-3 minutes)
+- **Why**: Permission restrictions prevent caching apt archives or installed files
 
 ## Performance
 
 | Scenario | Time | Details |
 |----------|------|---------|
-| First run (all cache miss) | ~12 min | Full Conda + LaTeX install |
-| Conda cache hit only | ~7 min | Restore Conda (~30s) + LaTeX download+install (~6 min) |
-| Both caches hit | ~4-5 min | Restore Conda (~30s) + LaTeX install (~3 min, no download) |
-| LaTeX apt cache hit only | ~10 min | Full Conda install + LaTeX install (no download) |
+| First run (cache miss) | ~12 min | Full Conda install + LaTeX install |
+| Conda cache hit | ~7-8 min | Restore Conda (~30s) + LaTeX install (~2-3 min) |
+
+**Time savings**: ~5-6 minutes with Conda cache hit vs ~12 min fresh install
 
 ## Migration from separate actions
 
@@ -83,4 +81,4 @@ If you're currently using `setup-lecture-env` and `setup-latex` separately, you 
 - uses: quantecon/actions/setup-lecture-env-full@main
 ```
 
-This provides better caching and simpler workflow configuration.
+This provides simpler workflow configuration and unified environment setup.

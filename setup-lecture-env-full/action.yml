@@ -48,18 +48,6 @@ runs:
           conda-${{ runner.os }}-${{ hashFiles(inputs.environment-file) }}-
           conda-${{ runner.os }}-
     
-    # Cache apt packages for LaTeX (downloads only, not installed files)
-    - name: Cache apt packages
-      uses: actions/cache@v4
-      id: apt-cache
-      with:
-        path: |
-          /var/cache/apt/archives
-        key: apt-latex-${{ runner.os }}-${{ hashFiles(inputs.latex-requirements-file) }}-${{ inputs.cache-version }}
-        restore-keys: |
-          apt-latex-${{ runner.os }}-${{ hashFiles(inputs.latex-requirements-file) }}-
-          apt-latex-${{ runner.os }}-
-
     # Always setup miniconda to activate the environment (even when restoring from cache)
     - name: Setup Anaconda
       uses: conda-incubator/setup-miniconda@v3
@@ -79,13 +67,7 @@ runs:
           echo "Reading packages from ${{ inputs.latex-requirements-file }}"
           PACKAGES=$(grep -v '^#' "${{ inputs.latex-requirements-file }}" | grep -v '^[[:space:]]*$' | tr '\n' ' ')
           echo "Installing LaTeX packages: $PACKAGES"
-          
-          # Update apt cache only if not cached
-          if [ "${{ steps.apt-cache.outputs.cache-hit }}" != "true" ]; then
-            sudo apt-get update
-          fi
-          
-          # Install packages (fast if debs are cached in /var/cache/apt/archives)
+          sudo apt-get update
           sudo apt-get install -y $PACKAGES
         else
           echo "Error: No latex-requirements.txt found at ${{ inputs.latex-requirements-file }}"
@@ -126,12 +108,8 @@ runs:
           echo "❌ Conda environment installed fresh"
         fi
         echo ""
-        echo "LaTeX apt cache hit: ${{ steps.apt-cache.outputs.cache-hit }}"
-        if [ "${{ steps.apt-cache.outputs.cache-hit }}" == "true" ]; then
-          echo "✅ LaTeX .deb packages restored from cache (saved ~1-2 minutes download)"
-        else
-          echo "❌ LaTeX packages downloaded fresh"
-        fi
+        echo "LaTeX: Always installed fresh (~2-3 minutes)"
+        echo "Note: System package caching not supported due to permission restrictions"
         echo "::endgroup::"
         echo "::group::Conda packages"
         conda list
