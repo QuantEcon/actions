@@ -11,6 +11,10 @@ inputs:
     description: 'Path to environment.yml'
     required: false
     default: 'environment.yml'
+  environment-name:
+    description: 'Conda environment name (must match name in environment.yml)'
+    required: false
+    default: 'quantecon'
   cache-version:
     description: 'Cache version for manual invalidation (bump to force cache rebuild)'
     required: false
@@ -35,14 +39,14 @@ runs:
         miniconda-version: 'latest'
         python-version: ${{ inputs.python-version }}
         environment-file: ${{ inputs.environment-file }}
-        activate-environment: quantecon
+        activate-environment: ${{ inputs.environment-name }}
 
     - name: Cache Conda Environment
       uses: actions/cache@v4
       id: conda-cache
       with:
         path: |
-          /usr/share/miniconda/envs/quantecon
+          /usr/share/miniconda/envs/${{ inputs.environment-name }}
           ~/.conda/pkgs
         key: conda-${{ runner.os }}-${{ hashFiles(inputs.environment-file) }}-${{ inputs.cache-version }}
         restore-keys: |
