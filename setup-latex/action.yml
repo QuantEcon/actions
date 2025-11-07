@@ -1,5 +1,5 @@
 name: 'Setup LaTeX'
-description: 'Installs LaTeX packages required for Jupyter Book PDF builds with global caching shared across all workflows'
+description: 'Installs LaTeX packages required for Jupyter Book PDF builds'
 author: 'QuantEcon'
 
 inputs:
@@ -19,21 +19,11 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Cache LaTeX packages
-      uses: actions/cache@v4
-      id: latex-cache
-      with:
-        path: |
-          /usr/share/texlive
-          /usr/share/texmf
-          /var/lib/texmf
-        key: latex-${{ runner.os }}-${{ hashFiles(inputs.latex-requirements-file) }}-${{ inputs.cache-version }}
-        restore-keys: |
-          latex-${{ runner.os }}-${{ hashFiles(inputs.latex-requirements-file) }}-
-          latex-${{ runner.os }}-
-
+    # NOTE: LaTeX caching removed - system package installations at /usr/share/* 
+    # cannot be reliably cached due to permission restrictions in GitHub Actions.
+    # The ~2-3 minute installation time is unavoidable but acceptable.
+    
     - name: Install LaTeX packages
-      if: steps.latex-cache.outputs.cache-hit != 'true'
       shell: bash
       run: |
         # Read packages from latex-requirements.txt (if it exists)
@@ -62,14 +52,7 @@ runs:
         pdflatex --version || echo "pdfLaTeX not in PATH"
         xelatex --version || echo "XeLaTeX not in PATH"
         echo "::endgroup::"
-        echo "::group::Cache status"
-        echo "LaTeX cache hit: ${{ steps.latex-cache.outputs.cache-hit }}"
-        if [ "${{ steps.latex-cache.outputs.cache-hit }}" == "true" ]; then
-          echo "✅ Restored from cache (saved ~2-3 minutes)"
-        else
-          echo "❌ Cache miss - installed fresh (took 2-3 minutes)"
-        fi
-        echo "::endgroup::"
+        echo "::notice::LaTeX packages installed (system packages cannot be cached)"
 
 branding:
   icon: 'file-text'
