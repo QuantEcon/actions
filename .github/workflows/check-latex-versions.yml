@@ -1,0 +1,20 @@
+name: Check LaTeX Versions
+# Utility workflow to check current LaTeX package versions on ubuntu-latest
+# Run manually to update latex-requirements.txt with current versions
+
+on:
+  workflow_dispatch:  # Manual trigger only
+
+jobs:
+  check-versions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check LaTeX Package Versions
+        run: ./scripts/check-latex-versions.sh
+        
+      - name: Instructions
+        run: |
+          echo "::notice::Copy the versions above to update latex-requirements.txt in lecture repos"
+          echo "::notice::Format: package-name=version (e.g., texlive-latex-recommended=2023.20240207-1)"
