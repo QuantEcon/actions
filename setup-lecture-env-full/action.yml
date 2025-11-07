@@ -1,0 +1,149 @@
+name: 'Setup Complete Lecture Environment'
+description: 'Sets up Conda environment and LaTeX packages with unified caching for maximum performance'
+author: 'QuantEcon'
+
+inputs:
+  python-version:
+    description: 'Python version to use'
+    required: false
+    default: '3.13'
+  environment-file:
+    description: 'Path to environment.yml'
+    required: false
+    default: 'environment.yml'
+  latex-requirements-file:
+    description: 'Path to latex-requirements.txt file listing packages to install'
+    required: false
+    default: 'latex-requirements.txt'
+  environment-name:
+    description: 'Conda environment name (must match name in environment.yml)'
+    required: false
+    default: 'quantecon'
+  cache-version:
+    description: 'Cache version for manual invalidation (bump to force cache rebuild)'
+    required: false
+    default: 'v1'
+  install-ml-libs:
+    description: 'Whether to install JAX/PyTorch with CUDA support'
+    required: false
+    default: 'false'
+  ml-libs-version:
+    description: 'Version tag for ML libraries cache key (update when changing JAX/PyTorch versions)'
+    required: false
+    default: 'jax062-torch-nightly-cuda12'
+
+runs:
+  using: "composite"
+  steps:
+    # Cache Conda environment
+    - name: Cache Conda Environment
+      uses: actions/cache@v4
+      id: conda-cache
+      with:
+        path: |
+          /home/runner/miniconda3/envs/${{ inputs.environment-name }}
+          /home/runner/conda_pkgs_dir
+        key: conda-${{ runner.os }}-${{ hashFiles(inputs.environment-file) }}-${{ inputs.cache-version }}
+        restore-keys: |
+          conda-${{ runner.os }}-${{ hashFiles(inputs.environment-file) }}-
+          conda-${{ runner.os }}-
+    
+    # Cache apt packages for LaTeX (downloads only, not installed files)
+    - name: Cache apt packages
+      uses: actions/cache@v4
+      id: apt-cache
+      with:
+        path: |
+          /var/cache/apt/archives
+        key: apt-latex-${{ runner.os }}-${{ hashFiles(inputs.latex-requirements-file) }}-${{ inputs.cache-version }}
+        restore-keys: |
+          apt-latex-${{ runner.os }}-${{ hashFiles(inputs.latex-requirements-file) }}-
+          apt-latex-${{ runner.os }}-
+
+    - name: Setup Anaconda
+      if: steps.conda-cache.outputs.cache-hit != 'true'
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+        auto-update-conda: true
+        auto-activate-base: true
+        miniconda-version: 'latest'
+        python-version: ${{ inputs.python-version }}
+        environment-file: ${{ inputs.environment-file }}
+        activate-environment: ${{ inputs.environment-name }}
+        use-only-tar-bz2: true
+
+    - name: Install LaTeX packages
+      shell: bash
+      run: |
+        if [ -f "${{ inputs.latex-requirements-file }}" ]; then
+          echo "Reading packages from ${{ inputs.latex-requirements-file }}"
+          PACKAGES=$(grep -v '^#' "${{ inputs.latex-requirements-file }}" | grep -v '^[[:space:]]*$' | tr '\n' ' ')
+          echo "Installing LaTeX packages: $PACKAGES"
+          
+          # Update apt cache only if not cached
+          if [ "${{ steps.apt-cache.outputs.cache-hit }}" != "true" ]; then
+            sudo apt-get update
+          fi
+          
+          # Install packages (fast if debs are cached in /var/cache/apt/archives)
+          sudo apt-get install -y $PACKAGES
+        else
+          echo "Error: No latex-requirements.txt found at ${{ inputs.latex-requirements-file }}"
+          exit 1
+        fi
+
+    - name: Cache pip packages
+      uses: actions/cache@v4
+      if: inputs.install-ml-libs == 'true'
+      id: pip-cache
+      with:
+        path: ~/.cache/pip
+        key: pip-${{ runner.os }}-${{ inputs.ml-libs-version }}-${{ hashFiles(inputs.environment-file) }}-${{ inputs.cache-version }}
+        restore-keys: |
+          pip-${{ runner.os }}-${{ inputs.ml-libs-version }}-
+          pip-${{ runner.os }}-
+
+    - name: Install JAX, PyTorch, NumPyro, Pyro
+      if: inputs.install-ml-libs == 'true'
+      shell: bash -l {0}
+      run: |
+        echo "Installing ML libraries with CUDA support..."
+        pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu128
+        pip install pyro-ppl
+        pip install --upgrade "jax[cuda12-local]==0.6.2"
+        pip install numpyro
+        echo "Testing JAX installation..."
+        python scripts/test-jax-install.py || echo "JAX test script not found or failed (non-fatal)"
+        
+    - name: Display Environment Info
+      shell: bash -l {0}
+      run: |
+        echo "::group::Cache status"
+        echo "Conda cache hit: ${{ steps.conda-cache.outputs.cache-hit }}"
+        if [ "${{ steps.conda-cache.outputs.cache-hit }}" == "true" ]; then
+          echo "✅ Conda environment restored from cache (saved ~5-6 minutes)"
+        else
+          echo "❌ Conda environment installed fresh"
+        fi
+        echo ""
+        echo "LaTeX apt cache hit: ${{ steps.apt-cache.outputs.cache-hit }}"
+        if [ "${{ steps.apt-cache.outputs.cache-hit }}" == "true" ]; then
+          echo "✅ LaTeX .deb packages restored from cache (saved ~1-2 minutes download)"
+        else
+          echo "❌ LaTeX packages downloaded fresh"
+        fi
+        echo "::endgroup::"
+        echo "::group::Conda packages"
+        conda list
+        echo "::endgroup::"
+        echo "::group::Pip packages"
+        pip list
+        echo "::endgroup::"
+        echo "::group::LaTeX version"
+        latex --version 2>/dev/null || echo "LaTeX not in PATH"
+        pdflatex --version 2>/dev/null || echo "pdfLaTeX not in PATH"
+        echo "::endgroup::"
+
+branding:
+  icon: 'package'
+  color: 'blue'
