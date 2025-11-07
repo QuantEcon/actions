@@ -8,15 +8,15 @@ This repository provides a set of composite actions that standardize and optimiz
 
 ## Available Actions
 
-### 🐍 [`setup-lecture-env`](./setup-lecture-env)
-Sets up Conda environment with Python, pip packages, and optional ML libraries (JAX, PyTorch).
+### � [`setup-lecture-env-full`](./setup-lecture-env-full) **[Recommended]**
+**Unified environment setup** with Conda and LaTeX packages with optimized caching.
 
-**Time Savings:** 3-5 minutes per run (via conda/pip caching)
+**Time Savings:** 6-8 minutes per run (via Conda and apt caching)
 
-### 📝 [`setup-latex`](./setup-latex)
-Installs LaTeX packages via apt-get with intelligent caching.
-
-**Time Savings:** 2-3 minutes per run (after first install)
+**Features:**
+- Single action replaces both `setup-lecture-env` and `setup-latex`
+- Separate Conda and LaTeX apt caches for optimal performance
+- Simpler workflow configuration
 
 ### 📚 [`build-lectures`](./build-lectures)
 Builds Jupyter Book lectures (HTML, PDF, notebooks) with unified error handling.
@@ -28,6 +28,14 @@ Deploys preview builds to Netlify for pull requests.
 
 ### 🚀 [`publish-gh-pages`](./publish-gh-pages)
 Publishes production builds to GitHub Pages with release asset creation.
+
+---
+
+### Deprecated Actions
+
+The following actions have been replaced by `setup-lecture-env-full`:
+- ~~`setup-lecture-env`~~ - Use `setup-lecture-env-full` instead
+- ~~`setup-latex`~~ - Use `setup-lecture-env-full` instead
 
 ## Quick Start
 
@@ -43,18 +51,21 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       
-      - uses: quantecon/actions/setup-lecture-env@v1
+      # Unified environment setup (replaces setup-lecture-env + setup-latex)
+      - uses: quantecon/actions/setup-lecture-env-full@main
         with:
+          python-version: '3.13'
+          environment-file: 'environment.yml'
+          latex-requirements-file: 'latex-requirements.txt'
+          environment-name: 'quantecon'
           install-ml-libs: 'false'
       
-      - uses: quantecon/actions/setup-latex@v1
-      
-      - uses: quantecon/actions/build-lectures@v1
+      - uses: quantecon/actions/build-lectures@main
         with:
-          build-html: 'true'
-          build-pdf: 'true'
+          builder: 'html'
+          source-dir: 'lectures'
       
-      - uses: quantecon/actions/deploy-netlify@v1
+      - uses: quantecon/actions/deploy-netlify@main
         with:
           netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
@@ -65,12 +76,17 @@ jobs:
 
 | Optimization | Time Saved | Applies To |
 |--------------|-----------|------------|
-| Conda environment caching | 3-5 minutes | All workflows |
+| Conda environment caching | 5-6 minutes | All workflows |
 | pip package caching | 2-4 minutes | Workflows with ML libs |
-| LaTeX caching | 2-3 minutes | Workflows building PDFs |
-| **Total per workflow run** | **~8-12 minutes** | First run after cache miss |
+| LaTeX apt caching | 1-2 minutes | Workflows building PDFs |
+| **Total per workflow run** | **~6-8 minutes** | With both caches hit |
 
-After caching: **Setup completes in ~30-60 seconds** instead of 8-12 minutes!
+After caching: **Setup completes in ~4-5 minutes** instead of 12 minutes fresh!
+
+**Cache Strategy:**
+- **Conda cache**: Restores complete environment (~30 seconds)
+- **LaTeX apt cache**: Skips package downloads, only installs (~3 minutes)
+- Both caches invalidate independently based on `environment.yml` and `latex-requirements.txt`
 
 ## Usage by Repository
 
