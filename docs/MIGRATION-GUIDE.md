@@ -7,12 +7,13 @@ This guide provides step-by-step instructions for migrating a QuantEcon lecture 
 **Goal:** Replace repetitive workflow setup code with reusable, cached composite actions.
 
 **Benefits:**
-- ⚡ 8-12 minute setup time reduction (via caching)
+- ⚡ 5-6 minute setup time reduction (via Conda caching)
 - 🔧 Centralized maintenance (update once, benefit everywhere)
 - 📊 Consistent build environments across all repos
 - 🐛 Easier troubleshooting and updates
+- 🎯 Unified environment setup (single action for Conda + LaTeX)
 
-**Time Required:** ~2-3 hours per repository (including testing)
+**Time Required:** ~1-2 hours per repository (including testing)
 
 ---
 
@@ -21,13 +22,42 @@ This guide provides step-by-step instructions for migrating a QuantEcon lecture 
 Before starting migration:
 
 - [ ] Read [TESTING.md](./TESTING.md) for testing strategy
+- [ ] Read [NEXT-STEPS.md](./NEXT-STEPS.md) for current status and future plans
 - [ ] Ensure `quantecon/actions` repository is published
 - [ ] Have a test branch ready in target repository
 - [ ] Know which features your repo uses (ML libs, LaTeX, etc.)
 
 ---
 
-## Step-by-Step Migration
+## Quick Migration: Unified Action Approach
+
+**Use this for new migrations (recommended as of 2025-11-07):**
+
+### Before (Old Approach)
+```yaml
+- uses: quantecon/actions/setup-lecture-env@main
+  with:
+    python-version: '3.13'
+    environment-file: 'environment.yml'
+    
+- uses: quantecon/actions/setup-latex@main
+```
+
+### After (Unified Action)
+```yaml
+- uses: quantecon/actions/setup-lecture-env-full@main
+  with:
+    python-version: '3.13'
+    environment-file: 'environment.yml'
+    latex-requirements-file: 'latex-requirements.txt'
+    environment-name: 'quantecon'
+```
+
+**Benefits:** Simpler configuration, single cache, unified setup.
+
+---
+
+## Detailed Step-by-Step Migration
 
 ### Step 1: Identify Your Repository Type
 

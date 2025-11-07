@@ -1,5 +1,18 @@
 # Testing Strategy for QuantEcon Actions
 
+## Current Status (2025-11-07)
+
+**Testing in progress** for the unified `setup-lecture-env-full` action. See [NEXT-STEPS.md](./NEXT-STEPS.md) for:
+- Current validation status
+- Known issues and fixes
+- Pending tests
+
+**Active test repository:** `test-lecture-python-intro`
+- PR #4 (ci-migration): Testing unified action in CI workflow
+- cache.yml on main: Building global caches
+
+---
+
 ## Overview
 
 Since QuantEcon lecture repositories manage **live production websites**, we need a careful testing strategy to validate changes to these composite actions without disrupting the live sites.

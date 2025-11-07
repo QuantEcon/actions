@@ -6,17 +6,20 @@ Reusable composite GitHub Actions for building QuantEcon lecture repositories.
 
 This repository provides a set of composite actions that standardize and optimize the build process for QuantEcon lecture websites. These actions include intelligent caching strategies that significantly reduce build times.
 
+**Status:** Active development - see [NEXT-STEPS.md](./NEXT-STEPS.md) for current status and roadmap.
+
 ## Available Actions
 
-### � [`setup-lecture-env-full`](./setup-lecture-env-full) **[Recommended]**
+### 🚀 [`setup-lecture-env-full`](./setup-lecture-env-full) **[Recommended]**
 **Unified environment setup** with Conda and LaTeX packages with optimized caching.
 
-**Time Savings:** 6-8 minutes per run (via Conda and apt caching)
+**Time Savings:** ~5-6 minutes per run (via Conda caching)
 
 **Features:**
 - Single action replaces both `setup-lecture-env` and `setup-latex`
-- Separate Conda and LaTeX apt caches for optimal performance
-- Simpler workflow configuration
+- Conda environment caching for fast restores
+- Simplified workflow configuration
+- Automatic environment activation
 
 ### 📚 [`build-lectures`](./build-lectures)
 Builds Jupyter Book lectures (HTML, PDF, notebooks) with unified error handling.
@@ -76,17 +79,17 @@ jobs:
 
 | Optimization | Time Saved | Applies To |
 |--------------|-----------|------------|
-| Conda environment caching | 5-6 minutes | All workflows |
-| pip package caching | 2-4 minutes | Workflows with ML libs |
-| LaTeX apt caching | 1-2 minutes | Workflows building PDFs |
-| **Total per workflow run** | **~6-8 minutes** | With both caches hit |
+| Conda environment caching | ~5-6 minutes | All workflows |
+| pip package caching | 2-4 minutes | Workflows with ML libs (optional) |
+| LaTeX installation | ~2-3 minutes | Workflows building PDFs (unavoidable) |
+| **Total per workflow run** | **~5-6 minutes** | With Conda cache hit |
 
-After caching: **Setup completes in ~4-5 minutes** instead of 12 minutes fresh!
+After caching: **Setup completes in ~7-8 minutes** (cached) instead of ~12 minutes (fresh)!
 
-**Cache Strategy:**
-- **Conda cache**: Restores complete environment (~30 seconds)
-- **LaTeX apt cache**: Skips package downloads, only installs (~3 minutes)
-- Both caches invalidate independently based on `environment.yml` and `latex-requirements.txt`
+**Current Architecture:**
+- ✅ Conda cache: Restores complete environment (~30 seconds)
+- ⚠️ LaTeX: Always installs fresh (~2-3 minutes) - system package limitations
+- 📋 See [NEXT-STEPS.md](./NEXT-STEPS.md) for future Docker-based architecture plan
 
 ## Usage by Repository
 
@@ -105,7 +108,17 @@ We use semantic versioning with Git tags:
 
 ## Migration Guide
 
-See [MIGRATION-GUIDE.md](./MIGRATION-GUIDE.md) for step-by-step instructions on migrating a lecture repository to use these actions.
+## Documentation
+
+- **[NEXT-STEPS.md](./NEXT-STEPS.md)** - Current status, testing progress, and future Docker architecture plan
+- **[TESTING.md](./TESTING.md)** - Testing strategy and validation approach
+- **[docs/MIGRATION-GUIDE.md](./docs/MIGRATION-GUIDE.md)** - Step-by-step migration instructions
+- **[docs/QUICK-REFERENCE.md](./docs/QUICK-REFERENCE.md)** - Quick reference for all actions
+- **[docs/SETUP.md](./docs/SETUP.md)** - Initial setup and configuration
+
+## Getting Started
+
+See [docs/MIGRATION-GUIDE.md](./docs/MIGRATION-GUIDE.md) for step-by-step instructions on migrating a lecture repository to use these actions.
 
 ## Testing
 

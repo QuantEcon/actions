@@ -60,7 +60,7 @@ We've migrated to a unified `setup-lecture-env-full` composite action that combi
 
 ### Documentation
 11. ⏸️ Update main README with final performance numbers
-12. ⏸️ Create migration guide for other QuantEcon repos
+12. ⏸️ Create migration guide for other QuantEcon repos (see docs/MIGRATION-GUIDE.md)
 13. ⏸️ Document cache key strategies and invalidation
 
 ---
