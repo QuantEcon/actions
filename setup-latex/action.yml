@@ -1,5 +1,5 @@
 name: 'Setup LaTeX'
-description: 'Installs LaTeX packages required for Jupyter Book PDF builds with workflow-based caching'
+description: 'Installs LaTeX packages required for Jupyter Book PDF builds with global caching shared across all workflows'
 author: 'QuantEcon'
 
 inputs:
@@ -7,10 +7,6 @@ inputs:
     description: 'Cache version for manual invalidation'
     required: false
     default: 'v1'
-  workflow-file:
-    description: 'Path to workflow file for cache key generation'
-    required: false
-    default: '.github/workflows/ci.yml'
   packages:
     description: 'Space-separated list of LaTeX packages to install'
     required: false
@@ -27,9 +23,8 @@ runs:
           /usr/share/texlive
           /usr/share/texmf
           /var/lib/texmf
-        key: latex-${{ runner.os }}-${{ hashFiles(inputs.workflow-file) }}-${{ inputs.cache-version }}
+        key: latex-${{ runner.os }}-${{ inputs.cache-version }}
         restore-keys: |
-          latex-${{ runner.os }}-${{ hashFiles(inputs.workflow-file) }}-
           latex-${{ runner.os }}-
 
     - name: Install LaTeX packages
