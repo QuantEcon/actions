@@ -40,14 +40,15 @@ runs:
         python-version: ${{ inputs.python-version }}
         environment-file: ${{ inputs.environment-file }}
         activate-environment: ${{ inputs.environment-name }}
+        use-only-tar-bz2: true  # Required for proper caching
 
     - name: Cache Conda Environment
       uses: actions/cache@v4
       id: conda-cache
       with:
         path: |
-          /usr/share/miniconda/envs/${{ inputs.environment-name }}
-          ~/.conda/pkgs
+          /home/runner/miniconda3/envs/${{ inputs.environment-name }}
+          /home/runner/conda_pkgs_dir
         key: conda-${{ runner.os }}-${{ hashFiles(inputs.environment-file) }}-${{ inputs.cache-version }}
         restore-keys: |
           conda-${{ runner.os }}-${{ hashFiles(inputs.environment-file) }}-
@@ -87,7 +88,17 @@ runs:
         echo "::endgroup::"
         echo "::group::Cache status"
         echo "Conda cache hit: ${{ steps.conda-cache.outputs.cache-hit }}"
+        if [ "${{ steps.conda-cache.outputs.cache-hit }}" == "true" ]; then
+          echo "✅ Conda environment restored from cache"
+        else
+          echo "❌ Conda environment installed fresh (cache miss)"
+        fi
         echo "Pip cache hit: ${{ steps.pip-cache.outputs.cache-hit }}"
+        if [ "${{ steps.pip-cache.outputs.cache-hit }}" == "true" ]; then
+          echo "✅ Pip packages restored from cache"
+        elif [ "${{ inputs.install-ml-libs }}" == "true" ]; then
+          echo "❌ Pip packages installed fresh (cache miss)"
+        fi
         echo "::endgroup::"
 
 branding:
