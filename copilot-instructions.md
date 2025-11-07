@@ -215,19 +215,28 @@ quantecon/actions/
 
 ## Caching Strategy
 
+**Global Caching Philosophy:** All workflows share caches for maximum efficiency.
+
 ### Conda Cache
 - **Key:** `conda-{OS}-{hash(environment.yml)}-{cache-version}`
+- **Shared:** ✅ Across all workflows (cache.yml, ci.yml, publish.yml)
 - **Invalidates:** When environment.yml changes or manual version bump
 - **Size:** ~1-2GB (includes pip packages for ML libs)
+- **Scope:** Same environment.yml = same cache, regardless of workflow
 
 ### LaTeX Cache
-- **Key:** `latex-{OS}-{hash(workflow-file)}-{cache-version}`
-- **Invalidates:** When workflow file changes (rare) or manual bump
+- **Key:** `latex-{OS}-{cache-version}`
+- **Shared:** ✅ **Globally across ALL workflows** (changed from workflow-specific)
+- **Invalidates:** Manual version bump only
 - **Size:** ~500MB-1GB
+- **Benefit:** LaTeX packages installed once, used everywhere
 
 ### Jupyter Execution Cache
 - **Key:** `jupyter-cache-{OS}-{hash(lectures/**/*.md)}-{sha}`
+- **Shared:** ✅ Via restore-keys fallback
 - **Invalidates:** When lecture content changes
+- **Restore-keys:** Allows partial cache hits for unchanged lectures
+- **Benefit:** Only rebuild changed lectures, reuse cached executions
 - **Size:** Varies by content
 
 ## Important Design Decisions
