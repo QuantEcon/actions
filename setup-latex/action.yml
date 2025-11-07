@@ -7,10 +7,14 @@ inputs:
     description: 'Cache version for manual invalidation'
     required: false
     default: 'v1'
-  packages:
-    description: 'Space-separated list of LaTeX packages to install'
+  latex-requirements-file:
+    description: 'Path to latex-requirements.txt file listing packages to install'
     required: false
-    default: 'texlive-latex-extra texlive-fonts-extra texlive-xetex latexmk xindy texlive-luatex dvipng ghostscript'
+    default: 'latex-requirements.txt'
+  packages:
+    description: 'DEPRECATED: Use latex-requirements-file instead. Space-separated list of LaTeX packages (used as fallback)'
+    required: false
+    default: ''
 
 runs:
   using: "composite"
@@ -23,17 +27,32 @@ runs:
           /usr/share/texlive
           /usr/share/texmf
           /var/lib/texmf
-        key: latex-${{ runner.os }}-${{ inputs.cache-version }}
+        key: latex-${{ runner.os }}-${{ hashFiles(inputs.latex-requirements-file) }}-${{ inputs.cache-version }}
         restore-keys: |
+          latex-${{ runner.os }}-${{ hashFiles(inputs.latex-requirements-file) }}-
           latex-${{ runner.os }}-
 
     - name: Install LaTeX packages
       if: steps.latex-cache.outputs.cache-hit != 'true'
       shell: bash
       run: |
-        echo "Installing LaTeX packages: ${{ inputs.packages }}"
-        sudo apt-get update
-        sudo apt-get install -y ${{ inputs.packages }}
+        # Read packages from latex-requirements.txt (if it exists)
+        if [ -f "${{ inputs.latex-requirements-file }}" ]; then
+          echo "Reading packages from ${{ inputs.latex-requirements-file }}"
+          # Remove comments and empty lines, join with spaces
+          PACKAGES=$(grep -v '^#' "${{ inputs.latex-requirements-file }}" | grep -v '^[[:space:]]*$' | tr '\n' ' ')
+          echo "Installing LaTeX packages: $PACKAGES"
+          sudo apt-get update
+          sudo apt-get install -y $PACKAGES
+        elif [ -n "${{ inputs.packages }}" ]; then
+          echo "Using deprecated packages input (migrate to latex-requirements.txt)"
+          echo "Installing LaTeX packages: ${{ inputs.packages }}"
+          sudo apt-get update
+          sudo apt-get install -y ${{ inputs.packages }}
+        else
+          echo "Error: No packages specified. Provide either latex-requirements-file or packages input."
+          exit 1
+        fi
         
     - name: Display LaTeX Info
       shell: bash
