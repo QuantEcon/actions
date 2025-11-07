@@ -14,9 +14,10 @@ Sets up a complete Conda environment for building QuantEcon lectures, including 
 
 | Input | Description | Required | Default |
 |-------|-------------|----------|---------|
-| `python-version` | Python version to install | No | `3.13` |
+| `python-version` | Python version | No | `3.13` |
 | `environment-file` | Path to environment.yml | No | `environment.yml` |
-| `cache-version` | Cache version (bump to invalidate) | No | `v1` |
+| `environment-name` | Conda environment name | No | `quantecon` |
+| `cache-version` | Manual cache invalidation | No | `v1` |
 | `install-ml-libs` | Install JAX/PyTorch with CUDA | No | `false` |
 | `ml-libs-version` | ML libraries cache key version | No | `jax062-torch-nightly-cuda12` |
 
@@ -57,7 +58,7 @@ Sets up a complete Conda environment for building QuantEcon lectures, including 
 **Cache Key:** `conda-{OS}-{hash(environment.yml)}-{cache-version}`
 
 **Cached Paths:**
-- `/usr/share/miniconda/envs/quantecon`
+- `/usr/share/miniconda/envs/{environment-name}`
 - `~/.conda/pkgs`
 
 **Invalidation:**
