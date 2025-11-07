@@ -21,24 +21,34 @@ Installs LaTeX packages required for Jupyter Book PDF builds with intelligent ca
 
 ## Setup
 
-Create a `latex-requirements.txt` file in your repository root:
+Create a `latex-requirements.txt` file in your repository root with version pinning:
 
 ```
 # LaTeX Requirements
-# texlive-2024 packages
+# Version pinning ensures reproducibility and explicit cache invalidation
+# TexLive 2023 (Ubuntu 24.04 LTS Noble)
 
-texlive-latex-recommended
-texlive-latex-extra
-texlive-fonts-recommended
-texlive-fonts-extra
-texlive-xetex
-texlive-luatex
+# Core LaTeX distribution
+texlive-latex-recommended=2023.20240207-1
+texlive-latex-extra=2023.20240207-1
+texlive-fonts-recommended=2023.20240207-1
+texlive-fonts-extra=2023.20240207-1
+texlive-xetex=2023.20240207-1
+texlive-luatex=2023.20240207-1
+
+# Build tools (unpinned - use latest)
 latexmk
 xindy
 dvipng
 ghostscript
 cm-super
 ```
+
+**Why version pinning?**
+- ✅ Explicit cache invalidation when you update versions
+- ✅ Reproducible builds across time
+- ✅ Clear tracking of what's installed
+- ✅ Easy to test TexLive updates before rollout
 
 ## Usage
 
