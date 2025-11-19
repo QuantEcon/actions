@@ -572,7 +572,12 @@ Lecture image: ~10-20 sec (layer verification)
 2. **GitHub Actions** for automated builds integrates perfectly with our workflow
 3. **GHCR** is free, fast, and integrated with GitHub
 
-### Repository Structure
+## Lecture-Specific Container Location: Two Options
+
+This is a critical architectural decision with trade-offs.
+
+### Option A: Centralized in actions repo (Simpler)
+
 ```
 quantecon/actions/
 ├── containers/
@@ -581,14 +586,340 @@ quantecon/actions/
 │   │   └── latex-requirements.txt
 │   ├── lecture-python-intro/
 │   │   ├── Dockerfile
-│   │   └── environment.yml  (symlink to lecture repo)
+│   │   └── .dockerignore
 │   ├── lecture-python-programming/
-│   │   └── Dockerfile
+│   │   ├── Dockerfile
+│   │   └── .dockerignore
 │   └── README.md
 ├── .github/workflows/
-│   └── build-containers.yml
+│   └── build-containers.yml (builds all images)
+```
+
+**How it works:**
+```dockerfile
+# containers/lecture-python-intro/Dockerfile
+FROM ghcr.io/quantecon/lecture-base:latest
+
+# Fetch environment.yml from lecture repo at build time
+ADD https://raw.githubusercontent.com/QuantEcon/lecture-python-intro/main/environment.yml /tmp/environment.yml
+RUN mamba env create -f /tmp/environment.yml && \
+    mamba clean -afy && \
+    rm /tmp/environment.yml
+
+ENV PATH=/opt/conda/envs/quantecon/bin:$PATH
+```
+
+**Pros:**
+- ✅ **Centralized management**: All container configs in one place
+- ✅ **Unified versioning**: Tag all images together (v1.0, v1.1)
+- ✅ **Atomic updates**: Update base and all lecture images in one PR
+- ✅ **Simpler CI**: One workflow builds all images
+- ✅ **Consistent tooling**: Same Dockerfile patterns across all lectures
+- ✅ **Easier discovery**: See all available images in one repo
+
+**Cons:**
+- ❌ **Tight coupling**: Changes require PR to actions repo
+- ❌ **Cross-repo coordination**: Lecture repo changes → must update actions repo
+- ❌ **Delayed updates**: Can't auto-rebuild when lecture environment.yml changes
+- ❌ **Permission model**: Need actions repo write access to update images
+- ❌ **Build triggers**: Can't trigger build from lecture repo changes directly
+
+**Best for:** Stable environments that change infrequently
+
+---
+
+### Option B: Decentralized in lecture repos (Flexible) ⭐ **RECOMMENDED**
+
+```
+quantecon/actions/
+├── containers/
+│   └── base/
+│       ├── Dockerfile
+│       └── latex-requirements.txt
+└── .github/workflows/
+    └── build-base-image.yml (builds base only)
+
+lecture-python-intro/
+├── .devcontainer/
+│   └── Dockerfile
+├── .github/workflows/
+│   ├── build-image.yml (builds lecture image)
+│   └── ci.yml (uses the image)
+├── environment.yml
+└── lectures/
+```
+
+**How it works:**
+```dockerfile
+# lecture-python-intro/.devcontainer/Dockerfile
+FROM ghcr.io/quantecon/lecture-base:latest
+
+# Copy local environment.yml
+COPY environment.yml /tmp/
+RUN mamba env create -f /tmp/environment.yml && \
+    mamba clean -afy && \
+    rm /tmp/environment.yml
+
+ENV PATH=/opt/conda/envs/quantecon/bin:$PATH
+ENV CONDA_DEFAULT_ENV=quantecon
+```
+
+```yaml
+# lecture-python-intro/.github/workflows/build-image.yml
+name: Build Container Image
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'environment.yml'
+      - '.devcontainer/Dockerfile'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: .devcontainer/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/quantecon/lecture-python-intro:latest
+            ghcr.io/quantecon/lecture-python-intro:${{ github.sha }}
+          cache-from: type=registry,ref=ghcr.io/quantecon/lecture-python-intro:latest
+          cache-to: type=inline
+```
+
+**Pros:**
+- ✅ **Automatic updates**: Environment changes auto-trigger image rebuild
+- ✅ **Loose coupling**: Lecture repos independent of actions repo
+- ✅ **Fast iteration**: Change environment.yml → new image in minutes
+- ✅ **Local development**: Developers can build/test images in their repo
+- ✅ **Clear ownership**: Each team owns their image
+- ✅ **VSCode integration**: `.devcontainer/` is standard for VSCode dev containers
+- ✅ **Parallel development**: Multiple lectures can update independently
+
+**Cons:**
+- ❌ **Distributed config**: Dockerfile patterns might diverge across repos
+- ❌ **More workflows**: Each repo needs build workflow
+- ❌ **Discovery**: Need to check each repo to see what images exist
+- ❌ **Initial setup**: Each repo needs Dockerfile + workflow
+
+**Best for:** Active development with frequent environment changes (our case)
+
+---
+
+### Option C: Hybrid Approach (Advanced)
+
+Base image in actions repo + lecture images in lecture repos, with **template generation**.
+
+```
+quantecon/actions/
+├── containers/
+│   ├── base/
+│   │   ├── Dockerfile
+│   │   └── latex-requirements.txt
+│   └── templates/
+│       ├── lecture.Dockerfile.template
+│       └── build-image.yml.template
+├── scripts/
+│   └── generate-container-files.sh
 └── docs/
-    └── CONTAINER-ARCHITECTURE.md (this file)
+    └── CONTAINER-SETUP-GUIDE.md
+```
+
+**How it works:**
+```bash
+# In lecture repo, run once to set up container files
+curl -sSL https://raw.githubusercontent.com/QuantEcon/actions/main/scripts/generate-container-files.sh | bash
+```
+
+This generates:
+- `.devcontainer/Dockerfile` (from template)
+- `.github/workflows/build-image.yml` (from template)
+- `.dockerignore`
+
+**Pros:**
+- ✅ **Consistent patterns**: Generated from templates
+- ✅ **Easy setup**: One command to configure
+- ✅ **Flexible**: Each repo can customize after generation
+- ✅ **Best of both worlds**: Centralized patterns + decentralized images
+
+**Cons:**
+- ❌ **Template drift**: Repos might not update templates
+- ❌ **Extra complexity**: Need to maintain generation scripts
+- ❌ **Initial overhead**: More setup required
+
+**Best for:** Large-scale deployments with many repos
+
+---
+
+## Recommended Architecture: **Option B (Decentralized)**
+
+### Repository Structure
+```
+quantecon/actions/
+├── containers/
+│   └── base/
+│       ├── Dockerfile
+│       ├── .dockerignore
+│       └── README.md
+├── .github/workflows/
+│   └── build-base-image.yml
+└── docs/
+    ├── CONTAINER-ARCHITECTURE.md
+    └── CONTAINER-SETUP-GUIDE.md
+
+lecture-python-intro/  (example lecture repo)
+├── .devcontainer/
+│   ├── Dockerfile
+│   ├── .dockerignore
+│   └── devcontainer.json (optional: VSCode dev container config)
+├── .github/workflows/
+│   ├── build-image.yml
+│   └── ci.yml
+├── environment.yml
+└── lectures/
+```
+
+### Rationale for Decentralization
+
+1. **Environment ownership**: Lecture maintainers control their environment
+2. **Fast iteration**: Change `environment.yml` → automatic image rebuild → ready in <5 min
+3. **Independence**: Actions repo updates don't block lecture development
+4. **Local testing**: Developers can `docker build` in their repo
+5. **Clear boundaries**: Base image (shared infra) vs lecture image (repo-specific)
+
+### Workflow Integration
+
+```yaml
+# lecture-python-intro/.github/workflows/ci.yml
+name: Build Lectures
+on: [pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/quantecon/lecture-python-intro:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      # Environment already set up, just build!
+      - name: Build PDF
+        run: jupyter-book build lectures/ --builder pdflatex
+      
+      - name: Build HTML
+        run: jupyter-book build lectures/ --builder html
+```
+
+**Key insight:** The container image name matches the repo name pattern, making it intuitive and scalable.
+
+---
+
+## Setup Process for New Lecture Repos
+
+### One-time Actions Repo Setup
+```bash
+# In quantecon/actions repo
+cd containers/base
+docker build -t ghcr.io/quantecon/lecture-base:latest .
+docker push ghcr.io/quantecon/lecture-base:latest
+```
+
+### One-time Lecture Repo Setup
+```bash
+# In lecture-python-intro repo
+mkdir -p .devcontainer .github/workflows
+
+# Create .devcontainer/Dockerfile
+cat > .devcontainer/Dockerfile << 'EOF'
+FROM ghcr.io/quantecon/lecture-base:latest
+COPY environment.yml /tmp/
+RUN mamba env create -f /tmp/environment.yml && \
+    mamba clean -afy && \
+    rm /tmp/environment.yml
+ENV PATH=/opt/conda/envs/quantecon/bin:$PATH
+EOF
+
+# Create build workflow (see template above)
+# Commit and push
+git add .devcontainer .github/workflows
+git commit -m "Add container image build"
+git push
+```
+
+The workflow automatically builds the image on push.
+
+---
+
+## Comparison Summary
+
+| Aspect | Centralized (A) | Decentralized (B) ⭐ | Hybrid (C) |
+|--------|----------------|---------------------|------------|
+| Setup complexity | Low | Medium | High |
+| Maintenance | Centralized | Distributed | Mixed |
+| Update speed | Slow (PR required) | Fast (auto-build) | Fast |
+| Coupling | Tight | Loose | Loose |
+| Consistency | High | Medium | High |
+| Scalability | Medium | High | High |
+| Local testing | Harder | Easier | Easier |
+| Discovery | Easy | Manual | Manual |
+| **Recommended** | Small scale | Active development ✅ | Many repos |
+
+---
+
+## Migration Path Updated
+
+### Phase 1: Proof of Concept (Week 1) - actions repo only
+1. ✅ Create base Dockerfile in `quantecon/actions/containers/base/`
+2. ✅ Build and push base image to GHCR
+3. ✅ Document base image in README
+4. ✅ Create setup guide for lecture repos
+
+### Phase 2: First Lecture Repo (Week 2) - test in one repo
+5. ✅ Add `.devcontainer/Dockerfile` to lecture-python-intro
+6. ✅ Add `build-image.yml` workflow
+7. ✅ Update `ci.yml` to use container
+8. ✅ Test full workflow
+9. ✅ Measure performance improvements
+
+### Phase 3: Documentation & Templates (Week 3)
+10. ✅ Create setup script/template (optional)
+11. ✅ Write migration guide for other repos
+12. ✅ Document debugging process
+13. ✅ Create troubleshooting guide
+
+### Phase 4: Rollout (Week 4-5)
+14. ✅ Migrate lecture-python-programming
+15. ✅ Migrate lecture-python.myst
+16. ✅ Migrate lecture-python-advanced.myst
+17. ✅ Monitor and optimize
+
+---
+
+**Decision Point:** Proceed with **Option B (Decentralized)** where:
+- Base image lives in `quantecon/actions`
+- Lecture-specific images live in each lecture repo
+- Each repo owns and controls its container build
 ```
 
 ### Workflow Changes
