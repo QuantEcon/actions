@@ -6,7 +6,9 @@ Reusable composite GitHub Actions for building QuantEcon lecture repositories.
 
 This repository provides a set of composite actions that standardize and optimize the build process for QuantEcon lecture websites. These actions include intelligent caching strategies that significantly reduce build times.
 
-**Status:** Active development - see [NEXT-STEPS.md](./NEXT-STEPS.md) for current status and roadmap.
+**Status:** Active development - Next-generation container-based CI system in development.
+
+📋 **See:** [docs/ARCHITECTURE-SUMMARY.md](./docs/ARCHITECTURE-SUMMARY.md) for the finalized architecture and [docs/NEXT-STEPS-CONTAINERS.md](./docs/NEXT-STEPS-CONTAINERS.md) for the implementation roadmap.
 
 ## Available Actions
 
