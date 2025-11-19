@@ -29,9 +29,7 @@ RUN apt-get update && \
 RUN curl -L https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o /tmp/miniconda.sh && \
     bash /tmp/miniconda.sh -b -p /opt/conda && \
     rm /tmp/miniconda.sh && \
-    /opt/conda/bin/conda config --set channel_priority strict && \
-    /opt/conda/bin/conda config --add channels conda-forge && \
-    /opt/conda/bin/conda config --remove channels defaults 2>/dev/null || true && \
+    /opt/conda/bin/conda config --set accept_default_config true && \
     /opt/conda/bin/conda install -y mamba -c conda-forge && \
     /opt/conda/bin/conda clean -afy
 
