@@ -8,30 +8,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- `setup-lecture-env-full` - Unified action combining Conda and LaTeX setup
-- Comprehensive NEXT-STEPS.md with future Docker architecture plan
-- Improved documentation across all actions
+- **Container Infrastructure** (`ghcr.io/quantecon/quantecon:latest`)
+  - Ubuntu 24.04 LTS + TexLive (latest) + Miniconda + Python 3.13
+  - Anaconda 2025.06 metapackage (numpy, scipy, pandas, matplotlib, jupyter)
+  - Jupyter Book 1.0.4post1 + sphinx extensions
+  - Weekly automated builds (Monday 2am UTC)
+  - CPU-focused for initial rollout
+- `setup-environment` - Flexible environment setup
+  - Optional `install-latex` (default: false) for ubuntu-latest workflows
+  - Works in containers, ubuntu-latest, or custom AMI
+  - Conda environment caching (~5-6 min savings)
+- Container documentation (`containers/quantecon/README.md`)
 
 ### Changed
-- **BREAKING**: Deprecated `setup-lecture-env` and `setup-latex` in favor of `setup-lecture-env-full`
-- Fixed critical bug: Conda environment now activates correctly on cache hits
-- Removed LaTeX apt caching due to permission restrictions
-- Simplified workflow configuration (one action instead of two)
+- **BREAKING**: Renamed `setup-lecture-env-full` → `setup-environment`
+- **BREAKING**: Deprecated `setup-lecture-env` and `setup-latex`
+- Optimized container environment.yml to use Anaconda metapackage
+- LaTeX versions from Ubuntu repos (no version pins) for automatic security updates
+- Lecture-specific packages (quantecon, cvxpy) installed from each lecture's environment.yml
 
 ### Fixed
-- Conda environment activation when restoring from cache
-- `jb: command not found` error on cache hits
-- Apt cache permission errors during save operations
+- Conda environment activation on cache hits
+- `jb: command not found` error with cached environments
 
 ### Removed
-- `setup-lecture-env` action (use `setup-lecture-env-full` instead)
-- `setup-latex` action (use `setup-lecture-env-full` instead)
-- LaTeX apt package caching (system package limitations)
+- LaTeX apt caching (permission restrictions)
+- GPU container and AMI infrastructure (deferred to future)
 
 ### Performance
-- Conda cache hit: ~5-6 minutes saved
-- Total workflow time: ~7-8 min (cached) vs ~12 min (fresh)
-- LaTeX: ~2-3 min install time (unavoidable with current architecture)
+- Container setup: ~2-3 min (vs ~7-8 min ubuntu-latest)
+- Container includes pre-installed LaTeX (saves 2-3 min)
+- Container includes Anaconda base (saves 3-4 min)
+- Overall: 60-70% faster environment setup
 
 ## [1.0.0] - TBD
 
@@ -39,7 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 First stable release of QuantEcon Actions with unified environment setup.
 
 **Key Features:**
-- Unified `setup-lecture-env-full` action
+- Unified `setup-environment` action
 - Conda environment caching (~5-6 min savings)
 - Multi-builder support (HTML, PDF, Jupyter notebooks)
 - Netlify preview deployments

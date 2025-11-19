@@ -1,75 +1,29 @@
-# Documentation Index
+# Documentation
 
-This directory contains documentation for the QuantEcon Actions project.
+Quick reference for QuantEcon Actions.
 
----
+## Core Documentation
 
-## 📋 Implementation Documents (Start Here)
+### [ARCHITECTURE.md](./ARCHITECTURE.md)
+Three-pillar approach: Containers + Modular Actions + Two-Layer Caching
 
-### [ARCHITECTURE-SUMMARY.md](./ARCHITECTURE-SUMMARY.md)
-**Overview of the finalized three-pillar architecture:**
-- 🐳 Containerized Environment (Docker + GHCR)
-- 🧩 Modular Actions (build, deploy-netlify, publish-gh-pages)
-- 💾 Two-Layer Caching (environment + build)
-
-**Read this first** to understand the overall approach and design decisions.
-
-### [NEXT-STEPS-CONTAINERS.md](./NEXT-STEPS-CONTAINERS.md)
-**Week-by-week implementation roadmap:**
-- Week 1: Container infrastructure
-- Week 2: Testing with one lecture
-- Week 3: Documentation
-- Week 4-5: Rollout to all lectures
-
-**Use this** as your implementation guide with code samples and tasks.
-
----
-
-## 📚 Existing Documentation
-
-### [SETUP.md](./SETUP.md)
-Setup and configuration guide for current actions (pre-container).
+### [CONTAINER-GUIDE.md](./CONTAINER-GUIDE.md)
+Using `ghcr.io/quantecon/quantecon:latest` in workflows and locally
 
 ### [MIGRATION-GUIDE.md](./MIGRATION-GUIDE.md)
-Guide for migrating lecture repositories to use the unified actions.
+Step-by-step guide for migrating lecture repositories
 
 ### [QUICK-REFERENCE.md](./QUICK-REFERENCE.md)
-Quick reference for common tasks and patterns.
+Action inputs, outputs, and usage examples
+
+### [FUTURE-DEVELOPMENT.md](./FUTURE-DEVELOPMENT.md)
+Planned enhancements: GPU support, build optimizations, monitoring
+
+### [SETUP.md](./SETUP.md)
+Initial repository setup and configuration
 
 ---
 
-## 📦 Archive
+## Archive
 
-### [archive/](./archive/)
-Detailed analysis and historical documents:
-- Container architecture options explored
-- UV vs Conda/Mamba comparison
-- Modular vs monolithic action design analysis
-- Previous optimization work (cache optimization phase)
-
-**See:** [archive/README.md](./archive/README.md) for details on archived documents.
-
----
-
-## 🚀 Getting Started
-
-1. **Understand the architecture:** Read [ARCHITECTURE-SUMMARY.md](./ARCHITECTURE-SUMMARY.md)
-2. **Start implementing:** Follow [NEXT-STEPS-CONTAINERS.md](./NEXT-STEPS-CONTAINERS.md)
-3. **Reference archived analysis:** Check [archive/](./archive/) if you need deeper context
-
----
-
-## Document Status
-
-| Document | Status | Purpose |
-|----------|--------|---------|
-| ARCHITECTURE-SUMMARY.md | ✅ Current | Final architecture overview |
-| NEXT-STEPS-CONTAINERS.md | ✅ Current | Implementation roadmap |
-| SETUP.md | 🔄 Active | Current setup guide |
-| MIGRATION-GUIDE.md | 🔄 Active | Migration instructions |
-| QUICK-REFERENCE.md | 🔄 Active | Quick reference |
-| archive/* | 📦 Archived | Design analysis documents |
-
----
-
-**Last Updated:** 19 November 2025
+[archive/](./archive/) - Design analysis: container options, UV comparison, action design philosophy

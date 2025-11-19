@@ -13,161 +13,181 @@ This repository contains **reusable GitHub Actions composite actions** for build
 
 ## Current Status
 
-**✅ COMPLETED (November 5, 2025):**
-- All 5 composite actions created with complete `action.yml` files
-- Individual README.md for each action (detailed documentation)
-- Main repository documentation:
-  - README.md (overview & quick start)
-  - MIGRATION-GUIDE.md (step-by-step migration instructions)
-  - TESTING.md (3-phase testing strategy)
-  - QUICK-REFERENCE.md (cheat sheet)
-  - CONTRIBUTING.md (development guidelines)
-  - CHANGELOG.md (version history)
-  - SETUP.md (GitHub repository initialization)
-  - LICENSE (MIT)
-  - .gitignore
-- Git repository initialized
-- GitHub repository created at `quantecon/actions`
+**✅ COMPLETED (November 20, 2025):**
+- Container infrastructure (`ghcr.io/quantecon/quantecon:latest`)
+  - Ubuntu 24.04 LTS + TexLive + Miniconda + Python 3.13
+  - Anaconda 2025.06 metapackage (base scientific stack)
+  - Jupyter Book 1.0.4post1 + extensions
+  - Weekly automated builds (Monday 2am UTC)
+- Composite actions:
+  - `setup-environment` - Flexible environment setup with optional LaTeX
+  - `build-lectures` - Jupyter Book builds
+  - `deploy-netlify` - Netlify deployment
+  - `publish-gh-pages` - GitHub Pages publishing
+- Documentation:
+  - docs/CONTAINER-GUIDE.md - Container usage
+  - docs/ARCHITECTURE.md - System design
+  - docs/MIGRATION-GUIDE.md - Migration steps
+  - docs/FUTURE-DEVELOPMENT.md - GPU roadmap
+  - TESTING.md - Validation strategy
 
-**🧪 CURRENT PHASE: TESTING**
-- **Status:** Testing phase - NO releases until testing is complete
-- **Test Repository:** `QuantEcon/test-lecture-python-intro` (clone for testing)
-- **Next:** Execute 3-phase testing strategy (see TESTING.md)
-- Phase 1: Test in test-lecture-python-intro repository
-- Phase 2: Convert workflows to use composite actions
-- Phase 3: Validate full build and deployment cycle
+**🧪 NEXT: TESTING PHASE**
+- **Test Repository:** `QuantEcon/test-lecture-python-intro`
+- **Goal:** Validate container workflow with real lecture content
+- **Metrics:** Compare build times, outputs, deployment
+- **See:** TESTING.md for detailed validation steps
 
-**⏳ PENDING (Post-Testing):**
-- Create v1.0.0 release (after successful testing)
-- Migration of lecture repositories
-- Performance validation
+**⏳ PENDING:**
+- Test container with test-lecture-python-intro
+- Measure actual performance improvements
+- Migrate CPU lecture repositories
+- Document GPU support plans
 
-## Test Repository
+## Testing Approach
 
 **Test Repository:** `QuantEcon/test-lecture-python-intro`
-- **URL:** https://github.com/QuantEcon/test-lecture-python-intro
-- **Purpose:** Clone of lecture-python-intro for testing composite actions
-- **Setup:**
-  - `gh-pages` branch created for GitHub Pages deployment
-  - CNAME removed (no custom domain - will use github.io)
-  - Notebook syncing disabled (commented out in publish.yml)
-  - Netlify secrets need configuration: `NETLIFY_AUTH_TOKEN`, `NETLIFY_SITE_ID`
-- **Status:** Ready for workflow conversion and testing
-- **Note:** Does NOT require `QUANTECON_SERVICES_PAT` for basic testing
+- **Purpose:** Validate container workflow with real lecture content
+- **Workflow:** Create container-based build workflow
+- **Compare:** Build times, outputs, and deployment vs current ubuntu-latest approach
+- **Validate:** 
+  - Container pulls successfully from GHCR
+  - LaTeX pre-installed (no 2-3 min install)
+  - Anaconda base packages available
+  - Lecture-specific packages install (1-2 min)
+  - Build output matches production
+  - Setup time reduced by 60-70%
+
+**Testing Steps:**
+1. Build container via GitHub Actions workflow
+2. Create test workflow in test-lecture-python-intro
+3. Compare build outputs (HTML artifacts)
+4. Measure performance (setup time, build time, total time)
+5. Validate deployment to Netlify
+
+**Success Criteria:**
+- Setup: 2-3 min (container) vs 7-8 min (ubuntu-latest)
+- Output: Identical HTML artifacts
+- No new errors or warnings
 
 ## Repository Structure
 
 ```
 quantecon/actions/
-├── setup-lecture-env/      # Conda environment with ML libraries
-│   ├── action.yml          # Caching: 3-5 min → 30 sec
+├── containers/quantecon/          # Container infrastructure
+│   ├── Dockerfile                 # Ubuntu 24.04 + LaTeX + Miniconda
+│   ├── environment.yml            # Anaconda + Jupyter Book tools
 │   └── README.md
-├── setup-latex/            # LaTeX package installation
-│   ├── action.yml          # Caching: 2-3 min → 10 sec
+├── .github/workflows/
+│   └── build-containers.yml       # Weekly container builds
+├── setup-environment/             # Flexible environment setup
+│   ├── action.yml                 # Optional LaTeX, works anywhere
 │   └── README.md
-├── build-lectures/         # Jupyter Book builds
-│   ├── action.yml          # Multi-builder: HTML/PDF/Jupyter
+├── build-lectures/                # Jupyter Book builds
+│   ├── action.yml
 │   └── README.md
-├── deploy-netlify/         # Netlify deployment
-│   ├── action.yml          # Preview + Production, Auto PR comments
+├── deploy-netlify/                # Netlify deployment
+│   ├── action.yml
 │   └── README.md
-├── publish-gh-pages/       # GitHub Pages publishing
-│   ├── action.yml          # Custom domain, orphan branch
+├── publish-gh-pages/              # GitHub Pages publishing
+│   ├── action.yml
 │   └── README.md
+├── docs/
+│   ├── CONTAINER-GUIDE.md         # Container usage
+│   ├── ARCHITECTURE.md            # System design
+│   ├── MIGRATION-GUIDE.md         # Migration steps
+│   ├── FUTURE-DEVELOPMENT.md      # GPU roadmap
+│   ├── QUICK-REFERENCE.md
+│   └── SETUP.md
 ├── README.md
-├── MIGRATION-GUIDE.md
 ├── TESTING.md
-├── QUICK-REFERENCE.md
-├── CONTRIBUTING.md
 ├── CHANGELOG.md
-├── SETUP.md
-├── LICENSE
-└── .gitignore
+├── CONTRIBUTING.md
+└── LICENSE
 ```
 
-## Five Composite Actions
+## Core Components
 
-### 1. setup-lecture-env
+### Container Infrastructure
 
-**Purpose:** Sets up Conda environment with Python, Jupyter Book, and optional ML libraries
+**Image:** `ghcr.io/quantecon/quantecon:latest`
+
+**Contents:**
+- Ubuntu 24.04 LTS base
+- TexLive (latest from Ubuntu repos)
+- Miniconda + Python 3.13
+- Anaconda 2025.06 (numpy, scipy, pandas, matplotlib, jupyter)
+- Jupyter Book 1.0.4post1 + extensions
+
+**Usage in workflows:**
+```yaml
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/quantecon/quantecon:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: conda env update -f environment.yml
+      - name: Build
+        run: jupyter-book build lectures/
+```
+
+### Composite Actions
+
+### 1. setup-environment
+
+**Purpose:** Flexible environment setup for non-container workflows
 
 **Key Features:**
-- Conda environment caching (saves 3-5 minutes)
-- Optional JAX/PyTorch/CUDA support for lecture-python.myst
-- pip package caching for ML libraries
-- Configurable Python version
+- Optional `install-latex` (default: false)
+- Conda caching (~5-6 min savings)
+- Works in ubuntu-latest, containers, or custom AMI
 
 **Usage:**
 ```yaml
-- uses: quantecon/actions/setup-lecture-env@v1
+- uses: quantecon/actions/setup-environment@main
   with:
-    install-ml-libs: 'true'  # Only for lecture-python.myst
+    install-latex: 'true'
+    environment-file: 'environment.yml'
 ```
 
-### 2. setup-latex
+**Note:** Not needed when using container (LaTeX + Anaconda already included).
 
-**Purpose:** Installs LaTeX packages for PDF builds
-
-**Key Features:**
-- Workflow-based caching (saves 2-3 minutes)
-- Cache invalidates only when workflow file changes
-- Configurable package list
-
-**Usage:**
-```yaml
-- uses: quantecon/actions/setup-latex@v1
-```
-
-### 3. build-lectures
+### 2. build-lectures
 
 **Purpose:** Builds lectures using Jupyter Book
 
-**Key Features:**
-- Multi-builder support (html, pdflatex, jupyter)
-- Notebook execution caching for incremental builds
-- Outputs build path for next steps
-
 **Usage:**
 ```yaml
-- uses: quantecon/actions/build-lectures@v1
+- uses: quantecon/actions/build-lectures@main
   id: build
   with:
-    builder: 'html'  # or 'pdflatex' or 'jupyter'
+    builder: 'html'
 ```
 
-### 4. deploy-netlify
+### 3. deploy-netlify
 
-**Purpose:** Deploys to Netlify (used by lecture-python-intro for production, all repos for PR previews)
-
-**Key Features:**
-- Production and preview deployments
-- Automatic PR comments with preview URLs
-- Custom alias support (pr-123)
+**Purpose:** Deploys to Netlify (preview + production)
 
 **Usage:**
 ```yaml
-- uses: quantecon/actions/deploy-netlify@v1
+- uses: quantecon/actions/deploy-netlify@main
   with:
     netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
     netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
-    build-dir: ${{ steps.build.outputs.build-path }}
-    production: 'false'  # true for production deploys
+    build-dir: lectures/_build/html/
 ```
 
-### 5. publish-gh-pages
+### 4. publish-gh-pages
 
-**Purpose:** Publishes to GitHub Pages (used by lecture-python.myst, programming, advanced)
-
-**Key Features:**
-- Custom domain support via CNAME
-- Orphan branch option (no history)
-- Automatic URL generation
+**Purpose:** Publishes to GitHub Pages
 
 **Usage:**
 ```yaml
-- uses: quantecon/actions/publish-gh-pages@v1
+- uses: quantecon/actions/publish-gh-pages@main
   with:
-    build-dir: ${{ steps.build.outputs.build-path }}
+    build-dir: lectures/_build/html/
     github-token: ${{ secrets.GITHUB_TOKEN }}
     cname: 'python.quantecon.org'
 ```
@@ -191,158 +211,137 @@ quantecon/actions/
 - **CI (PRs):** Netlify previews  
 - **Publish (tags):** GitHub Pages to `python-advanced.quantecon.org`
 
-## Performance Expectations
+## Performance Targets
 
-### Time Savings per Workflow
+### Setup Time Comparison
 
-**First Run (no cache):**
-- Conda setup: 3-5 minutes
-- LaTeX install: 2-3 minutes
-- Total: 5-8 minutes
+| Environment | Setup Time | Details |
+|-------------|-----------|---------|
+| ubuntu-latest | 7-8 min | Conda + LaTeX install fresh each time |
+| Container | 2-3 min | Pull container + install lecture packages |
+| Improvement | 60-70% | LaTeX pre-installed, base packages included |
 
-**Subsequent Runs (with cache):**
-- Conda restore: ~30 seconds
-- LaTeX restore: ~10 seconds
-- Total: ~40 seconds
+### Breakdown
 
-**Net savings: 8-12 minutes per workflow run**
+**ubuntu-latest:**
+- Conda setup: 3-4 min
+- LaTeX install: 2-3 min
+- Package install: 1-2 min
+- Total: 7-8 min
+
+**Container:**
+- Container pull: 20 sec (first), 10 sec (cached)
+- Lecture packages: 1-2 min (conda env update)
+- Total: 2-3 min
 
 ### Build Times
 
-- **HTML build:** 45-60 minutes (first), 5-30 min (incremental with cache)
-- **PDF build:** 30-45 minutes (requires LaTeX)
-- **Jupyter build:** 30-45 minutes
+Build times unchanged (depends on content):
+- **HTML build:** 8-10 minutes
+- **PDF build:** 8-10 minutes (with LaTeX)
+- **Total workflow:** 10-13 min (container) vs 15-18 min (ubuntu-latest)
 
-## Caching Strategy
+## Key Decisions
 
-**Global Caching Philosophy:** All workflows share caches for maximum efficiency.
+### Why Containers?
 
-### Conda Cache
-- **Key:** `conda-{OS}-{hash(environment.yml)}-{cache-version}`
-- **Shared:** ✅ Across all workflows (cache.yml, ci.yml, publish.yml)
-- **Invalidates:** When environment.yml changes or manual version bump
-- **Size:** ~1-2GB (includes pip packages for ML libs)
-- **Scope:** Same environment.yml = same cache, regardless of workflow
+LaTeX installation is unavoidable bottleneck:
+- Takes 2-3 min with any package manager
+- Cannot be meaningfully cached
+- **Solution:** Pre-install in container, reuse across all builds
 
-### LaTeX Cache
-- **Key:** `latex-{OS}-{cache-version}`
-- **Shared:** ✅ **Globally across ALL workflows** (changed from workflow-specific)
-- **Invalidates:** Manual version bump only
-- **Size:** ~500MB-1GB
-- **Benefit:** LaTeX packages installed once, used everywhere
+### Why Global Container?
 
-### Jupyter Execution Cache
-- **Key:** `jupyter-cache-{OS}-{hash(lectures/**/*.md)}-{sha}`
-- **Shared:** ✅ Via restore-keys fallback
-- **Invalidates:** When lecture content changes
-- **Restore-keys:** Allows partial cache hits for unchanged lectures
-- **Benefit:** Only rebuild changed lectures, reuse cached executions
-- **Size:** Varies by content
+Single container for all CPU lectures:
+- All lectures share same scientific Python stack
+- Simpler to maintain than per-lecture containers
+- Disk space cheap (~2 GB acceptable)
+- Updates centralized (one PR affects all)
 
-## Important Design Decisions
+### Why Anaconda Metapackage?
 
-### 1. Why Composite Actions (not Reusable Workflows)?
-- **Better visibility:** Each step appears in workflow logs
-- **More flexible:** Can be mixed with custom steps
-- **Easier testing:** Can test individual actions in isolation
+Anaconda 2025.06 includes most common packages:
+- numpy, scipy, pandas, matplotlib, jupyter
+- Eliminates explicit dependencies
+- Faster conda solve times
+- Lecture-specific packages (quantecon, cvxpy) installed separately
 
-### 2. Why Workflow-Based LaTeX Caching?
-- LaTeX packages are stable; don't need to reinstall on every content change
-- Cache invalidates only when workflow requirements change
-- Provides maximum cache hits across branches
+### GPU Support Deferred
 
-### 3. Why Separate deploy-netlify and publish-gh-pages?
-- Different repositories use different deployment targets
-- Allows flexibility (some use Netlify, some use GitHub Pages)
-- Clear separation of concerns
+Phase 1 focuses on CPU lecture builds:
+- Simpler implementation and testing
+- GPU options (RunsOn AMI, GitHub GPU runners) explored in future
+- See docs/FUTURE-DEVELOPMENT.md for plans
 
-### 4. Why Optional ML Libraries?
-- Only lecture-python.myst needs JAX/PyTorch (GPU computations)
-- Other repos are lighter weight
-- Separate cache key prevents cache conflicts
+## Next Steps
 
-## Next Steps (Priority Order)
+**CURRENT: Testing Phase**
 
-**TESTING PHASE (Current):**
+1. **Build Container**
+   - Trigger `.github/workflows/build-containers.yml`
+   - Verify image at `ghcr.io/quantecon/quantecon:latest`
+   - Test locally: `docker pull ghcr.io/quantecon/quantecon:latest`
 
-1. **Phase 1 Testing** - Test in test-lecture-python-intro
-   - Set up Netlify site and configure secrets
-   - Enable GitHub Pages on repository
-   - Test current workflows work as-is
-   - Verify baseline functionality
+2. **Test with test-lecture-python-intro**
+   - Create container-based workflow
+   - Compare build times and outputs with ubuntu-latest
+   - Validate 60-70% setup time reduction
+   - Ensure HTML output identical
 
-2. **Phase 2 Testing** - Convert workflows to use composite actions
-   - Update publish.yml to use new actions
-   - Update ci.yml to use new actions
-   - Test builds with composite actions
-   - Verify caching works correctly
-   - Validate outputs and error handling
+3. **Migration** (after validation)
+   - lecture-python-intro
+   - lecture-python-programming.myst
+   - lecture-python-advanced.myst
+   - lecture-python.myst (CPU builds)
 
-3. **Phase 3 Testing** - Full validation
-   - Run full build cycle (HTML, PDF, Jupyter)
-   - Test GitHub Pages deployment
-   - Test Netlify deployment (preview and production)
-   - Monitor cache performance and build times
-   - Validate against production lecture-python-intro
+**See:** TESTING.md for detailed validation steps
 
-**POST-TESTING (After successful validation):**
+## Common Tasks
 
-4. **Create v1.0.0 Release** - Only after all testing passes
-5. **Migration** - Follow MIGRATION-GUIDE.md for each repo
-6. **Monitor** - Track cache hit rates and performance in production
+### Test Container Locally
 
-**⚠️ IMPORTANT: Do NOT create git tags or GitHub releases until testing is complete**
+```bash
+# Pull image
+docker pull ghcr.io/quantecon/quantecon:latest
 
-## Common Commands
+# Check environment
+docker run --rm ghcr.io/quantecon/quantecon:latest python --version
+docker run --rm ghcr.io/quantecon/quantecon:latest conda list
+docker run --rm ghcr.io/quantecon/quantecon:latest pdflatex --version
 
-### Testing in a Fork
-```yaml
-- uses: YOUR-USERNAME/actions/setup-lecture-env@test-branch
+# Build lectures locally
+docker run --rm \
+  -v $(pwd):/workspace \
+  -w /workspace \
+  ghcr.io/quantecon/quantecon:latest \
+  bash -c "conda env update -f environment.yml && jupyter-book build lectures/"
 ```
 
-### Force Cache Rebuild
-```yaml
-- uses: quantecon/actions/setup-lecture-env@v1
-  with:
-    cache-version: 'v2'  # Bump from v1
+### Trigger Container Rebuild
+
+```bash
+gh workflow run build-containers.yml
 ```
 
-### Check Cache Status
-Look for in workflow logs:
-```
-Conda cache hit: true
-LaTeX cache hit: true
-```
+## Known Limitations
 
-## Known Issues / Limitations
+1. **GPU support deferred** - Phase 1 CPU only, GPU plans in docs/FUTURE-DEVELOPMENT.md
+2. **Container size** - ~2 GB (acceptable for CI, one-time download)
+3. **Weekly builds** - Security updates via automated Monday 2am UTC builds
 
-1. **GPU runners** - JAX runs in CPU mode in most environments (expected)
-2. **Network warnings** - Intersphinx warnings for external sites are normal
-3. **Cache size limits** - GitHub has 10GB total per repo
-4. **Build times** - First builds are still 45-60 min (can't cache everything)
+## Documentation Reference
 
-## Files Reference
-
-- **README.md** - Start here for overview
-- **TESTING.md** - Testing strategy before production use
-- **MIGRATION-GUIDE.md** - How to convert existing workflows
-- **QUICK-REFERENCE.md** - Cheat sheet for common tasks
-- **CONTRIBUTING.md** - Development guidelines
-- **SETUP.md** - How to initialize GitHub repository
+- **docs/CONTAINER-GUIDE.md** - Container usage and local development
+- **docs/ARCHITECTURE.md** - System design rationale
+- **docs/MIGRATION-GUIDE.md** - Repository migration steps
+- **docs/FUTURE-DEVELOPMENT.md** - GPU support and roadmap
+- **TESTING.md** - Validation strategy with test-lecture-python-intro
 - **CHANGELOG.md** - Version history
 
-## Questions to Address in Future Development
+## Status
 
-1. Should we add a `setup-python-only` action for simpler repos?
-2. Can we optimize Jupyter execution caching further?
-3. Should we add a `build-all` meta-action that combines common patterns?
-4. How to handle cache eviction when hitting 10GB limit?
-5. Should we version-pin the peaceiris/actions-gh-pages action?
-
-## Contact & Support
-
-- **Issues:** https://github.com/quantecon/actions/issues
-- **Repository:** https://github.com/quantecon/actions
-- **Maintainers:** QuantEcon team
-- **Created:** November 5, 2025
-- **Status:** Testing phase (v1.0.0 pending successful testing)
+- **Created:** November 2025
+- **Current Phase:** Container infrastructure complete, ready for testing
+- **Container:** ghcr.io/quantecon/quantecon:latest (weekly builds)
+- **Test Repo:** test-lecture-python-intro
+- **Next:** Validate container workflow with real lecture builds

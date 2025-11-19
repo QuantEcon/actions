@@ -1,202 +1,190 @@
-# Testing Strategy for QuantEcon Actions
+# Testing Strategy
 
-## Current Status (2025-11-07)
+## Current Status (2025-11-20)
 
-**Testing in progress** for the unified `setup-lecture-env-full` action. See [NEXT-STEPS.md](./NEXT-STEPS.md) for:
-- Current validation status
-- Known issues and fixes
-- Pending tests
+**Container infrastructure complete.** Ready for testing with `test-lecture-python-intro`.
 
-**Active test repository:** `test-lecture-python-intro`
-- PR #4 (ci-migration): Testing unified action in CI workflow
-- cache.yml on main: Building global caches
+**Test Repository:** `QuantEcon/test-lecture-python-intro`
+- Clone of `lecture-python-intro` for testing
+- Will test container-based workflow
+- Validates build output, timing, and deployment
 
 ---
 
-## Overview
+## Approach
 
-Since QuantEcon lecture repositories manage **live production websites**, we need a careful testing strategy to validate changes to these composite actions without disrupting the live sites.
+**Test in isolation** using `test-lecture-python-intro` before production rollout.
 
-## Testing Principles
+### Testing Principles
 
-1. **Never test on production** - Always use feature branches
-2. **Validate output** - Compare build artifacts with existing workflows
-3. **Parallel testing** - Run new and old workflows side-by-side initially
-4. **Staged rollout** - One repository at a time
-5. **Quick rollback** - Keep old workflows until confident
+1. **Isolated testing** - Use test repository, not production
+2. **Compare outputs** - Build artifacts must match current approach
+3. **Measure performance** - Document actual vs expected timing
+4. **Validate deployment** - Test Netlify and build artifacts
+5. **Staged rollout** - One repository at a time after validation
 
 ---
 
 ## Testing Workflow
 
-### Phase 1: Local Development & Action Testing
+## Phase 1: Container Validation
 
-#### 1.1 Create Test Branch in Actions Repo
+### 1.1 Build Container
+
+Trigger container build workflow:
 
 ```bash
-cd /Users/mmcky/work/quantecon/actions
-git checkout -b feature/test-new-caching
-# Make changes to composite actions
-git add .
-git commit -m "Add caching to setup-lecture-env"
-git push origin feature/test-new-caching
+# Manual trigger
+gh workflow run build-containers.yml
+
+# Or push to main (auto-triggers)
+git push origin main
 ```
 
-#### 1.2 Reference Development Branch in Test Workflow
+### 1.2 Verify Container Image
 
-Create a test workflow in a lecture repository that references your development branch:
+```bash
+# Pull and inspect
+docker pull ghcr.io/quantecon/quantecon:latest
+docker run --rm ghcr.io/quantecon/quantecon:latest python --version
+docker run --rm ghcr.io/quantecon/quantecon:latest conda list
+docker run --rm ghcr.io/quantecon/quantecon:latest pdflatex --version
+```
+
+**Verify:**
+- Python 3.13 installed
+- Anaconda base packages available (numpy, scipy, pandas, matplotlib)
+- Jupyter Book tools installed
+- LaTeX commands work
+
+## Phase 2: Test Repository Workflow
+
+### 2.1 Update test-lecture-python-intro
+
+Create container-based workflow:
 
 ```yaml
-# In lecture-python.myst: .github/workflows/test-new-actions.yml
-name: Test New Actions (DO NOT MERGE)
-on: 
-  workflow_dispatch:  # Manual trigger only
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      
-      # Reference the development branch
-      - uses: quantecon/actions/setup-lecture-env@feature/test-new-caching
-        with:
-          install-ml-libs: 'true'
-      
-      - uses: quantecon/actions/build-lectures@feature/test-new-caching
-        with:
-          build-html: 'true'
-```
-
-### Phase 2: Controlled Testing in Lecture Repository
-
-#### 2.1 Create Test Branch in Lecture Repo
-
-```bash
-cd /Users/mmcky/work/quantecon/lecture-python.myst
-git checkout -b test/new-composite-actions
-```
-
-#### 2.2 Create Parallel Test Workflow
-
-Don't modify existing workflows yet. Create a new test workflow:
-
-```bash
-# Copy existing ci.yml to test-ci.yml
-cp .github/workflows/ci.yml .github/workflows/test-ci.yml
-```
-
-Modify `test-ci.yml`:
-- Change name to `Test CI (New Actions)`
-- Reference actions via `@main` or `@feature-branch`
-- Add workflow dispatch trigger for manual testing
-- **Do NOT trigger on pull_request** (prevent auto-runs)
-
-```yaml
-name: Test CI (New Actions)
+name: Build with Container
 on:
-  workflow_dispatch:  # Manual trigger only
-  
+  workflow_dispatch:
+  push:
+    branches: [test-container]
+
 jobs:
-  test:
+  build:
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/quantecon/quantecon:latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
       
-      - uses: quantecon/actions/setup-lecture-env@main
+      # Install lecture-specific packages
+      - name: Install dependencies
+        run: conda env update -f environment.yml
+      
+      - name: Build lectures
+        run: jupyter-book build lectures/
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          install-ml-libs: 'false'
-      
-      # ... rest of workflow
+          name: html
+          path: lectures/_build/html/
 ```
 
-#### 2.3 Run Comparison Tests
+### 2.2 Compare Builds
 
-Run both workflows and compare:
+Run both container and ubuntu-latest workflows:
 
-1. **Execution time** - Check if caching works
-2. **Build artifacts** - Compare HTML output
-3. **Error reports** - Check for new issues
-4. **Cache behavior** - Verify cache hits/misses
+1. **Timing** - Measure setup time, build time, total time
+2. **Artifacts** - Download and diff HTML outputs
+3. **Errors** - Check for differences in warnings/errors
+4. **Performance** - Verify 60-70% faster setup time
 
-### Phase 3: Validation Checklist
+## Phase 3: Validation Checklist
 
-Before merging, verify:
+Before production rollout:
 
-- [ ] Workflow completes successfully
-- [ ] Build time reduced (first run may be slower, second should be faster)
-- [ ] HTML output is identical to production
-- [ ] PDF output is identical to production  
-- [ ] Notebooks are identical to production
+- [ ] Container builds successfully via GitHub Actions
+- [ ] Container image accessible from `ghcr.io/quantecon/quantecon:latest`
+- [ ] Python 3.13 and Anaconda packages available in container
+- [ ] LaTeX commands work in container
+- [ ] Lecture-specific packages install successfully
+- [ ] Build completes successfully
+- [ ] HTML output matches current production
+- [ ] Setup time reduced by 60-70% (target: 2-3 min vs 7-8 min)
 - [ ] No new errors or warnings
-- [ ] Cache is created and restored correctly
-- [ ] Execution reports match expected format
+- [ ] Deployment to Netlify works
 
 ---
 
-## Testing Scenarios
+## Validation Tests
 
-### Scenario 1: Test Conda Caching
+### Test 1: Container Pull Performance
 
-**Goal:** Verify conda environment is cached and restored
+**Goal:** Verify container pulls quickly from GHCR
 
-**Steps:**
-1. Run workflow twice
-2. First run: Should install conda packages (3-5 min)
-3. Second run: Should restore from cache (~30 sec)
+**Check workflow logs:**
+- First pull: ~1-2 min (download ~2 GB)
+- Subsequent pulls: ~10-20 sec (runner cache)
 
-**Validation:**
+### Test 2: Environment Validation
+
+**Goal:** Verify all required packages available
+
 ```bash
-# Check workflow logs for:
-# First run: "Cache not found for input keys: conda-Linux-abc123-v1"
-# Second run: "Cache restored from key: conda-Linux-abc123-v1"
+# In workflow, add diagnostic step:
+- name: Validate environment
+  run: |
+    python --version
+    conda list | grep -E "(numpy|scipy|pandas|matplotlib|jupyter)"
+    jupyter-book --version
+    pdflatex --version
 ```
 
-### Scenario 2: Test LaTeX Caching
+### Test 3: Lecture Package Installation
 
-**Goal:** Verify LaTeX packages are cached
+**Goal:** Verify lecture-specific packages install correctly
 
-**Steps:**
-1. Run workflow with PDF build
-2. Check logs for apt-get installation
-3. Run again, verify cache restore
+**Check workflow logs:**
+- `conda env update -f environment.yml` completes
+- Packages like `quantecon`, `cvxpy` installed
+- Installation time: ~1-2 min
 
-**Validation:**
-- First run: `apt-get install` runs (~2-3 min)
-- Second run: Skips installation, restores cache (~10 sec)
+### Test 4: Build Output Comparison
 
-### Scenario 3: Test ML Libraries (lecture-python.myst only)
-
-**Goal:** Verify JAX/PyTorch installation with caching
+**Goal:** Verify builds produce identical output
 
 **Steps:**
-1. Run with `install-ml-libs: 'true'`
-2. Verify pip cache is created
-3. Run again, verify restore
+1. Build with container workflow
+2. Build with current ubuntu-latest workflow
+3. Download both HTML artifacts
+4. Compare:
+   ```bash
+   diff -r container-html/ ubuntu-html/
+   ```
 
-**Expected:**
-- First run: Downloads ~2GB of packages (3-5 min)
-- Second run: Restores from cache (~1 min)
+**Expected:** No differences (or only timestamp differences)
 
-### Scenario 4: Test Cache Invalidation
+### Test 5: Performance Measurement
 
-**Goal:** Verify cache updates when dependencies change
+**Goal:** Document actual performance improvements
 
-**Steps:**
-1. Run workflow, establish cache
-2. Modify `environment.yml` (add a package)
-3. Run again, verify new cache is created
+**Measure:**
+- Setup time (container pull + package install)
+- Build time (jupyter-book build)
+- Total workflow time
 
-**Expected:**
-- Cache key changes (hash of environment.yml changes)
-- New packages installed
-- New cache saved
+**Compare to baseline:**
+- ubuntu-latest setup: 7-8 min
+- Container setup target: 2-3 min
+- Improvement: 60-70%
 
 ---
 
-## Rollout Strategy
+## Rollout Plan
 
-### Stage 1: Single Repository (Non-Production)
+### Stage 1: Test Repository
 
 Pick a test repository or create a fork:
 
@@ -209,87 +197,65 @@ Pick a test repository or create a fork:
 2. Monitor for 1 week
 3. Collect metrics (build times, success rate)
 
-### Stage 2: Staged Migration
+Complete testing with test-lecture-python-intro, validate all metrics.
 
-Migrate repositories in this order:
+### Stage 2: CPU Lecture Repositories
 
-1. **lecture-python-programming.myst** (simplest, no ML libs)
-2. **lecture-python-intro** (similar to above)
-3. **lecture-python-advanced.myst** (similar patterns)
-4. **lecture-python.myst** (most complex, has ML libs)
+After successful testing, migrate CPU-based lecture repositories:
 
-### Stage 3: Production Migration
+1. **lecture-python-intro** (Netlify, similar to test repo)
+2. **lecture-python-programming.myst** (GitHub Pages)
+3. **lecture-python-advanced.myst** (GitHub Pages)
+4. **lecture-python.myst** - CPU builds only (defer GPU workflows)
+
+### Stage 3: Production Validation
 
 For each repository:
+1. Create migration PR with container workflow
+2. Test in PR (manual trigger)
+3. Compare outputs with current workflow
+4. Merge after validation
+5. Monitor first production build
 
-1. Create migration PR
-2. Update workflows to use `@v1` (stable release)
-3. Keep old workflows commented out for 1 week
-4. Monitor for issues
-5. Remove old workflows after confirmation
-
----
-
-## Rollback Plan
-
-If issues occur after migration:
-
-### Quick Rollback (Emergency)
-
-```yaml
-# In affected workflow file, change:
-- uses: quantecon/actions/setup-lecture-env@v1
-
-# To: (revert to manual setup)
-- name: Setup Anaconda
-  uses: conda-incubator/setup-miniconda@v3
-  with:
-    # ... original configuration
-```
-
-### Controlled Rollback
-
-1. Revert the workflow file commit
-2. Push to main
-3. Wait for next workflow run to confirm
-4. Investigate issue in actions repository
+**Rollback:** Revert workflow commit if issues occur.
 
 ---
 
-## Monitoring & Metrics
+## Success Metrics
 
-Track these metrics before and after migration:
+Track before/after migration:
 
-### Build Time Metrics
+| Metric | Current (ubuntu-latest) | Target (Container) |
+|--------|-------------------------|-------------------|
+| Setup time | 7-8 min | 2-3 min |
+| Build time | 8-10 min | 8-10 min (same) |
+| Total time | 15-18 min | 10-13 min |
+| LaTeX install | 2-3 min | 0 min (pre-installed) |
+| Base packages | 3-4 min | 0 min (pre-installed) |
 
-| Metric | Before | After (First Run) | After (Cached) |
-|--------|--------|-------------------|----------------|
-| Conda setup | 3-5 min | 3-5 min | ~30 sec |
-| pip install | 2-4 min | 2-4 min | ~30 sec |
-| LaTeX install | 2-3 min | 2-3 min | ~10 sec |
-| Total setup | 8-12 min | 8-12 min | ~1 min |
-| Full workflow | 45-60 min | 45-60 min | 10-15 min |
-
-### Success Rate
-
-- Workflow completion rate (target: >95%)
-- Cache hit rate (target: >80% after initial runs)
-- Build artifact consistency (target: 100%)
+**Success criteria:**
+- Build output matches current production (100%)
+- Setup time reduced by 60-70%
+- No new errors or warnings
 
 ---
 
-## Debugging Failed Tests
+## Troubleshooting
 
-### Common Issues
+### Container not found
 
-#### Issue: Cache not restoring
+**Issue:** `Error: failed to pull image`
 
-**Symptom:** Every run installs packages from scratch
+**Solution:** 
+- Verify image name: `ghcr.io/quantecon/quantecon:latest`
+- Check container build workflow ran successfully
+- Ensure image is public (no auth required)
+
+### Package conflicts
+
+**Issue:** Conda solve fails or package conflicts
 
 **Debug:**
-```yaml
-- name: Debug cache
-  run: |
     echo "Cache key: conda-${{ runner.os }}-${{ hashFiles('environment.yml') }}-v1"
     ls -la ~/.conda/pkgs || echo "No conda cache"
 ```
@@ -315,61 +281,31 @@ Track these metrics before and after migration:
 
 **Solution:** Increase timeout or investigate slow steps
 
----
-
-## Testing Checklist Template
-
-Use this checklist for each repository migration:
-
-```markdown
-## Migration Test: [Repository Name]
-
-### Pre-Migration
-- [ ] Document current build times
-- [ ] Save current workflow files
-- [ ] Create test branch
-- [ ] Create test workflow
-
-### Testing Phase  
-- [ ] Test workflow runs successfully
-- [ ] Compare build artifacts
-- [ ] Verify caching works
-- [ ] Test cache invalidation
-- [ ] Run 3+ times to confirm cache stability
-
-### Validation
-- [ ] Build time improved after cache
-- [ ] Artifacts identical to production
-- [ ] No new errors
-- [ ] Team review completed
-
-### Migration
-- [ ] Update workflows to use actions@v1
-- [ ] Merge to main
-- [ ] Monitor first 5 production runs
-- [ ] Document any issues
-
-### Cleanup
-- [ ] Remove test workflow after 1 week
-- [ ] Remove old workflow comments after 1 week
-- [ ] Update documentation
+```yaml
+- name: Debug environment
+  run: |
+    conda list
+    python -c "import quantecon; print(quantecon.__version__)"
 ```
 
+**Check:**
+- Verify lecture's `environment.yml` doesn't conflict with container base
+- Try updating conda: `conda update -n base conda`
+
+### Build differences
+
+**Issue:** Container build differs from ubuntu-latest
+
+**Debug:**
+- Compare Python versions
+- Check package versions: `conda list > versions.txt`
+- Diff HTML outputs to identify specific differences
+- Look for timestamp-only changes vs content changes
+
 ---
 
-## Contact & Support
+## See Also
 
-For testing questions or issues:
-
-1. Open issue in `quantecon/actions` repository
-2. Tag with `testing` label
-3. Include workflow run logs
-4. Include comparison results
-
-## Continuous Improvement
-
-After each migration:
-1. Document lessons learned
-2. Update this testing guide
-3. Improve validation scripts
-4. Enhance error messages in actions
+- [docs/CONTAINER-GUIDE.md](./docs/CONTAINER-GUIDE.md) - Container usage
+- [docs/MIGRATION-GUIDE.md](./docs/MIGRATION-GUIDE.md) - Migration steps
+- [containers/quantecon/README.md](./containers/quantecon/README.md) - Container details

@@ -6,14 +6,14 @@ Reusable composite GitHub Actions for building QuantEcon lecture repositories.
 
 This repository provides a set of composite actions that standardize and optimize the build process for QuantEcon lecture websites. These actions include intelligent caching strategies that significantly reduce build times.
 
-**Status:** Active development - Next-generation container-based CI system in development.
+**Status:** Container infrastructure complete. Ready for testing with lecture repositories.
 
-📋 **See:** [docs/ARCHITECTURE-SUMMARY.md](./docs/ARCHITECTURE-SUMMARY.md) for the finalized architecture and [docs/NEXT-STEPS-CONTAINERS.md](./docs/NEXT-STEPS-CONTAINERS.md) for the implementation roadmap.
+📋 **See:** [docs/CONTAINER-GUIDE.md](./docs/CONTAINER-GUIDE.md) for quick start, [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for design overview.
 
 ## Available Actions
 
-### 🚀 [`setup-lecture-env-full`](./setup-lecture-env-full) **[Recommended]**
-**Unified environment setup** with Conda and LaTeX packages with optimized caching.
+### 🚀 [`setup-environment`](./setup-environment) **[Recommended]**
+**Flexible environment setup** with optional Conda, LaTeX, and ML libraries.
 
 **Time Savings:** ~5-6 minutes per run (via Conda caching)
 
@@ -38,9 +38,9 @@ Publishes production builds to GitHub Pages with release asset creation.
 
 ### Deprecated Actions
 
-The following actions have been replaced by `setup-lecture-env-full`:
-- ~~`setup-lecture-env`~~ - Use `setup-lecture-env-full` instead
-- ~~`setup-latex`~~ - Use `setup-lecture-env-full` instead
+The following actions have been replaced by `setup-environment`:
+- ~~`setup-lecture-env`~~ - Use `setup-environment` instead
+- ~~`setup-latex`~~ - Use `setup-environment` instead
 
 ## Quick Start
 
@@ -56,14 +56,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       
-      # Unified environment setup (replaces setup-lecture-env + setup-latex)
-      - uses: quantecon/actions/setup-lecture-env-full@main
+      # Flexible environment setup
+      - uses: quantecon/actions/setup-environment@main
         with:
           python-version: '3.13'
           environment-file: 'environment.yml'
+          install-latex: 'true'
           latex-requirements-file: 'latex-requirements.txt'
           environment-name: 'quantecon'
-          install-ml-libs: 'false'
       
       - uses: quantecon/actions/build-lectures@main
         with:
@@ -88,10 +88,12 @@ jobs:
 
 After caching: **Setup completes in ~7-8 minutes** (cached) instead of ~12 minutes (fresh)!
 
-**Current Architecture:**
-- ✅ Conda cache: Restores complete environment (~30 seconds)
-- ⚠️ LaTeX: Always installs fresh (~2-3 minutes) - system package limitations
-- 📋 See [NEXT-STEPS.md](./NEXT-STEPS.md) for future Docker-based architecture plan
+**Container-Based Architecture (Available Now):**
+- 🚀 Pre-built container images with LaTeX and Python environment included
+- 📦 `ghcr.io/quantecon/quantecon:latest` - CPU-optimized container (Ubuntu 24.04 + TexLive + Miniconda)
+- ⚡ Expected setup time: ~2-3 minutes (container pull + lecture-specific packages)
+- 📋 See [containers/quantecon/README.md](./containers/quantecon/README.md) for container usage
+- 🔄 Weekly automated builds (Monday 2am UTC) for security updates
 
 ## Usage by Repository
 
@@ -112,11 +114,12 @@ We use semantic versioning with Git tags:
 
 ## Documentation
 
-- **[NEXT-STEPS.md](./NEXT-STEPS.md)** - Current status, testing progress, and future Docker architecture plan
-- **[TESTING.md](./TESTING.md)** - Testing strategy and validation approach
-- **[docs/MIGRATION-GUIDE.md](./docs/MIGRATION-GUIDE.md)** - Step-by-step migration instructions
-- **[docs/QUICK-REFERENCE.md](./docs/QUICK-REFERENCE.md)** - Quick reference for all actions
-- **[docs/SETUP.md](./docs/SETUP.md)** - Initial setup and configuration
+- **[docs/CONTAINER-GUIDE.md](./docs/CONTAINER-GUIDE.md)** - Quick start with containers
+- **[docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)** - System design and rationale
+- **[docs/MIGRATION-GUIDE.md](./docs/MIGRATION-GUIDE.md)** - Migrating lecture repositories
+- **[docs/QUICK-REFERENCE.md](./docs/QUICK-REFERENCE.md)** - Action reference
+- **[docs/FUTURE-DEVELOPMENT.md](./docs/FUTURE-DEVELOPMENT.md)** - GPU support and roadmap
+- **[TESTING.md](./TESTING.md)** - Testing strategy
 
 ## Getting Started
 

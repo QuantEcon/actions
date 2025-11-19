@@ -26,7 +26,7 @@ LaTeX installation via `apt-get install` takes ~2-3 minutes but is unavoidable. 
 
 ```yaml
 - name: Setup Complete Environment
-  uses: quantecon/actions/setup-lecture-env-full@main
+  uses: quantecon/actions/setup-environment-full@main
   with:
     python-version: '3.13'
     environment-file: 'environment.yml'
@@ -78,7 +78,7 @@ If you're currently using `setup-lecture-env` and `setup-latex` separately, you 
 
 **After:**
 ```yaml
-- uses: quantecon/actions/setup-lecture-env-full@main
+- uses: quantecon/actions/setup-environment-full@main
 ```
 
 This provides simpler workflow configuration and unified environment setup.

@@ -45,10 +45,11 @@ Before starting migration:
 
 ### After (Unified Action)
 ```yaml
-- uses: quantecon/actions/setup-lecture-env-full@main
+- uses: quantecon/actions/setup-environment@main
   with:
     python-version: '3.13'
     environment-file: 'environment.yml'
+    install-latex: 'true'
     latex-requirements-file: 'latex-requirements.txt'
     environment-name: 'quantecon'
 ```

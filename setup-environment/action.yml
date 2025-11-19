@@ -1,5 +1,5 @@
-name: 'Setup Complete Lecture Environment'
-description: 'Sets up Conda environment and LaTeX packages with unified caching for maximum performance'
+name: 'Setup Environment'
+description: 'Flexible environment setup with optional Conda, LaTeX, and ML libraries'
 author: 'QuantEcon'
 
 inputs:
@@ -11,10 +11,6 @@ inputs:
     description: 'Path to environment.yml'
     required: false
     default: 'environment.yml'
-  latex-requirements-file:
-    description: 'Path to latex-requirements.txt file listing packages to install'
-    required: false
-    default: 'latex-requirements.txt'
   environment-name:
     description: 'Conda environment name (must match name in environment.yml)'
     required: false
@@ -23,6 +19,14 @@ inputs:
     description: 'Cache version for manual invalidation (bump to force cache rebuild)'
     required: false
     default: 'v1'
+  install-latex:
+    description: 'Whether to install LaTeX packages (set to false if using container or pre-installed)'
+    required: false
+    default: 'false'
+  latex-requirements-file:
+    description: 'Path to latex-requirements.txt file listing packages to install (only used if install-latex is true)'
+    required: false
+    default: 'latex-requirements.txt'
   install-ml-libs:
     description: 'Whether to install JAX/PyTorch with CUDA support'
     required: false
@@ -61,6 +65,7 @@ runs:
         use-only-tar-bz2: true
 
     - name: Install LaTeX packages
+      if: inputs.install-latex == 'true'
       shell: bash
       run: |
         if [ -f "${{ inputs.latex-requirements-file }}" ]; then
@@ -70,8 +75,8 @@ runs:
           sudo apt-get update
           sudo apt-get install -y $PACKAGES
         else
-          echo "Error: No latex-requirements.txt found at ${{ inputs.latex-requirements-file }}"
-          exit 1
+          echo "Warning: No latex-requirements.txt found at ${{ inputs.latex-requirements-file }}"
+          echo "Skipping LaTeX installation"
         fi
 
     - name: Cache pip packages
@@ -100,7 +105,7 @@ runs:
     - name: Display Environment Info
       shell: bash -l {0}
       run: |
-        echo "::group::Cache status"
+        echo "::group::Environment Setup Summary"
         echo "Conda cache hit: ${{ steps.conda-cache.outputs.cache-hit }}"
         if [ "${{ steps.conda-cache.outputs.cache-hit }}" == "true" ]; then
           echo "✅ Conda environment restored from cache (saved ~5-6 minutes)"
@@ -108,8 +113,14 @@ runs:
           echo "❌ Conda environment installed fresh"
         fi
         echo ""
-        echo "LaTeX: Always installed fresh (~2-3 minutes)"
-        echo "Note: System package caching not supported due to permission restrictions"
+        if [ "${{ inputs.install-latex }}" == "true" ]; then
+          echo "LaTeX: Installed (~2-3 minutes)"
+        else
+          echo "LaTeX: Skipped (pre-installed or not needed)"
+        fi
+        if [ "${{ inputs.install-ml-libs }}" == "true" ]; then
+          echo "ML Libraries: Installed (JAX, PyTorch)"
+        fi
         echo "::endgroup::"
         echo "::group::Conda packages"
         conda list
