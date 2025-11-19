@@ -65,17 +65,23 @@ We've migrated to a unified `setup-lecture-env-full` composite action that combi
 
 ---
 
-## Future Architecture: Docker-Based Approach 🐳
+## Future Architecture: Container-Based Approach 🐳
+
+**📖 See [docs/CONTAINER-ARCHITECTURE.md](./docs/CONTAINER-ARCHITECTURE.md) for complete technical exploration**
 
 ### Concept
 Instead of caching individual components, use a **custom Docker container** with pre-built environments:
 
 ```
-quantecon/lecture-builder:latest
-├── Conda environment (fully installed)
+quantecon/lecture-base:latest (shared)
 ├── LaTeX packages (system-level)
-├── Jupyter Book + dependencies
-└── All tools ready to use
+├── Miniconda installation
+└── Common tools
+
+quantecon/lecture-python-intro:latest
+├── FROM lecture-base
+├── Conda environment (fully installed)
+└── All dependencies ready
 ```
 
 ### Advantages
