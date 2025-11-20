@@ -26,17 +26,18 @@ RUN apt-get update && \
         && rm -rf /var/lib/apt/lists/*
 
 # Install Miniconda
+ENV CONDA_DIR=/opt/conda
 RUN curl -L https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o /tmp/miniconda.sh && \
     bash /tmp/miniconda.sh -b -p /opt/conda && \
-    rm /tmp/miniconda.sh && \
-    /opt/conda/bin/conda config --set accept_default_config true && \
-    /opt/conda/bin/conda install -y mamba -c conda-forge && \
-    /opt/conda/bin/conda clean -afy
+    rm /tmp/miniconda.sh
+
+# Put conda in path
+ENV PATH=$CONDA_DIR/bin:$PATH
 
 # Copy environment file and create conda environment
 COPY environment.yml /tmp/environment.yml
-RUN /opt/conda/bin/mamba env create -f /tmp/environment.yml && \
-    /opt/conda/bin/mamba clean -afy && \
+RUN conda env create -f /tmp/environment.yml && \
+    conda clean -afy && \
     rm /tmp/environment.yml
 
 # Set environment variables to activate the quantecon environment by default
