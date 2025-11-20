@@ -56,11 +56,18 @@ docker run -it --rm \
 
 ## Performance
 
-| Metric | ubuntu-latest | Container | Improvement |
-|--------|--------------|-----------|-------------|
-| Setup time | 7-8 min | 2-3 min | 60-70% |
-| LaTeX | 2-3 min | 0 min | Pre-installed |
-| Base packages | 3-4 min | 0 min | Pre-installed |
+### GitHub-Hosted Runners
+
+| Metric | ubuntu-latest | Container | Notes |
+|--------|--------------|-----------|-------|
+| Container init | N/A | ~2 min | Downloading image from GHCR |
+| LaTeX install | 2-3 min | 0 min | Pre-installed in container |
+| Base packages | 3-4 min | 0 min | Pre-installed in container |
+| **Total setup** | **7-8 min** | **~2 min** | **60-70% faster** |
+
+**Container initialization:** The 2-minute container load time is unavoidable on GitHub-hosted runners as the ~1.5-2GB image must be pulled from GHCR. However, this is still faster than installing LaTeX and Python packages separately.
+
+**For faster startup times:** Consider self-hosted runners where the container can be pre-pulled and cached locally, reducing initialization to < 10 seconds.
 
 ## Lecture Environment
 
@@ -81,6 +88,36 @@ dependencies:
 - numpy, scipy, pandas, matplotlib (in Anaconda base)
 - jupyter, jupyterbook (pre-installed)
 
+## Self-Hosted Runners (Optional)
+
+For high-frequency builds or faster startup times, consider self-hosted runners:
+
+**Benefits:**
+- Container pre-pulled and cached locally (~10s initialization vs 2min)
+- Consistent performance across runs
+- Custom hardware/resources
+
+**Setup:**
+```bash
+# On your Ubuntu server
+docker pull ghcr.io/quantecon/quantecon:latest
+
+# Register as GitHub runner
+./config.sh --url https://github.com/QuantEcon
+./run.sh
+```
+
+**Workflow usage:**
+```yaml
+jobs:
+  build:
+    runs-on: self-hosted
+    container:
+      image: ghcr.io/quantecon/quantecon:latest
+```
+
+See [GitHub's self-hosted runner documentation](https://docs.github.com/en/actions/hosting-your-own-runners) for detailed setup.
+
 ## Troubleshooting
 
 **Package conflicts:**
@@ -96,9 +133,10 @@ docker run --rm ghcr.io/quantecon/quantecon:latest python --version
 - Ensure image name is correct: `ghcr.io/quantecon/quantecon:latest`
 - No authentication required for public images
 
-**Slow pulls:**
-- First pull downloads ~2 GB
-- Subsequent pulls use GitHub Actions runner cache (~10-20 sec)
+**Slow initialization:**
+- GitHub-hosted runners: ~2min pull time is normal for first run
+- Subsequent runs on same runner may be cached (varies)
+- For consistently fast startup: Use self-hosted runners (see above)
 
 ## Building Containers
 
