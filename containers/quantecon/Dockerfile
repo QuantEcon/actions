@@ -28,7 +28,7 @@ RUN apt-get update && \
         curl \
         ca-certificates \
         && rm -rf /var/lib/apt/lists/* \
-        && fc-cache -fv
+        && fc-cache -f -s
 
 # Install Miniconda
 ENV CONDA_DIR=/opt/conda
@@ -50,8 +50,8 @@ RUN conda tos accept && \
 ENV PATH=/opt/conda/envs/quantecon/bin:$PATH
 ENV CONDA_DEFAULT_ENV=quantecon
 
-# Rebuild font cache after conda environment is active
-RUN fc-cache -fv
+# Rebuild font cache after conda environment is active (system-wide for Docker)
+RUN fc-cache -f -s
 
 # Set working directory
 WORKDIR /workspace
