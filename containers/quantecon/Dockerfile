@@ -13,9 +13,6 @@ RUN apt-get update && \
         texlive-fonts-extra \
         texlive-xetex \
         texlive-luatex \
-        # Fonts for XeLaTeX
-        fonts-freefont-ttf \
-        fontconfig \
         # Build tools
         latexmk \
         xindy \
@@ -27,11 +24,7 @@ RUN apt-get update && \
         git \
         curl \
         ca-certificates \
-        && rm -rf /var/lib/apt/lists/* \
-        && fc-cache -f -s \
-        && mkdir -p /root/.fonts \
-        && ln -s /usr/share/fonts/truetype/freefont /root/.fonts/freefont \
-        && fc-cache -fv
+        && rm -rf /var/lib/apt/lists/*
 
 # Install Miniconda
 ENV CONDA_DIR=/opt/conda
@@ -52,17 +45,6 @@ RUN conda tos accept && \
 # Set environment variables to activate the quantecon environment by default
 ENV PATH=/opt/conda/envs/quantecon/bin:$PATH
 ENV CONDA_DEFAULT_ENV=quantecon
-
-# Set environment variables for XeTeX font discovery and TeX cache
-ENV OSFONTDIR=/usr/share/fonts:/usr/local/share/fonts
-ENV TEXMFVAR=/tmp/texmf-var
-ENV TEXMFCACHE=/tmp/texmf-cache
-
-# Create writable TeX cache directories
-RUN mkdir -p /tmp/texmf-var /tmp/texmf-cache && chmod 777 /tmp/texmf-var /tmp/texmf-cache
-
-# Rebuild font cache after conda environment is active (system-wide for Docker)
-RUN fc-cache -f -s
 
 # Set working directory
 WORKDIR /workspace

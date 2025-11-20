@@ -13,5 +13,5 @@ latex:
 sphinx:
   config:
     html_theme: sphinx_book_theme
-    # latex_elements:
-    #   fontpkg: ""  # Don't load font packages, use TeX defaults
+    latex_elements:
+      fontpkg: ""  # Don't load font packages, use TeX defaults
