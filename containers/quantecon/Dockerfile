@@ -50,6 +50,9 @@ RUN conda tos accept && \
 ENV PATH=/opt/conda/envs/quantecon/bin:$PATH
 ENV CONDA_DEFAULT_ENV=quantecon
 
+# Rebuild font cache after conda environment is active
+RUN fc-cache -fv
+
 # Set working directory
 WORKDIR /workspace
 
@@ -58,7 +61,9 @@ RUN python --version && \
     conda --version && \
     jupyter --version && \
     jupyter-book --version && \
-    pdflatex --version
+    pdflatex --version && \
+    echo "=== Checking FreeSerif font ===" && \
+    fc-list | grep -i freeserif
 
 # Default command
 CMD ["/bin/bash"]
