@@ -28,7 +28,10 @@ RUN apt-get update && \
         curl \
         ca-certificates \
         && rm -rf /var/lib/apt/lists/* \
-        && fc-cache -f -s
+        && fc-cache -f -s \
+        && mkdir -p /root/.fonts \
+        && ln -s /usr/share/fonts/truetype/freefont /root/.fonts/freefont \
+        && fc-cache -fv
 
 # Install Miniconda
 ENV CONDA_DIR=/opt/conda
