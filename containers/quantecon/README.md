@@ -198,6 +198,68 @@ Check the Actions tab in the repository for build status and logs.
 - 📦 LaTeX pre-installed (no wait time)
 - 🔄 Simple workflow configuration
 
+## Testing
+
+The container includes a test suite to verify LaTeX and Jupyter Book functionality.
+
+### Running Tests
+
+To run all tests:
+
+```bash
+cd containers/quantecon
+./tests/test-container.sh
+```
+
+The test script will:
+1. Pull the latest container from GHCR
+2. Test XeLaTeX compilation with fontspec and unicode
+3. Test Jupyter Book HTML build
+4. Test Jupyter Book PDF build via pdflatex
+
+### Test Files
+
+- `tests/test-xelatex.tex` - Minimal XeLaTeX document testing fonts and unicode
+- `tests/minimal-jupyter-book/` - Minimal Jupyter Book project for build testing
+- `tests/test-container.sh` - Automated test script
+
+### Manual Testing
+
+Test XeLaTeX compilation:
+```bash
+cd containers/quantecon
+docker run --rm -v $(pwd):/workspace -w /workspace/tests \
+  ghcr.io/quantecon/quantecon:latest \
+  xelatex test-xelatex.tex
+```
+
+Test Jupyter Book HTML build:
+```bash
+cd containers/quantecon
+docker run --rm -v $(pwd):/workspace -w /workspace/tests \
+  ghcr.io/quantecon/quantecon:latest \
+  bash -c "cd minimal-jupyter-book && jb build . --builder html"
+```
+
+Test Jupyter Book PDF build:
+```bash
+cd containers/quantecon
+docker run --rm -v $(pwd):/workspace -w /workspace/tests \
+  ghcr.io/quantecon/quantecon:latest \
+  bash -c "cd minimal-jupyter-book && jb build . --builder pdflatex"
+```
+
+### Expected Output
+
+All tests should complete successfully with:
+- `tests/test-xelatex.pdf` generated
+- `tests/minimal-jupyter-book/_build/html/` directory with HTML output
+- `tests/minimal-jupyter-book/_build/latex/test-book.pdf` generated
+
+### GitHub Actions Testing
+
+The container is automatically tested after each successful build via the `test-container.yml` workflow. Tests can also be triggered manually from the Actions tab.
+
 ## Troubleshooting
 
 ### Permission Issues

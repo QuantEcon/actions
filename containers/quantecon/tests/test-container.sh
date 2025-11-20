@@ -17,25 +17,25 @@ echo ""
 
 # Test 2: XeLaTeX compilation test
 echo "Test 2: Testing XeLaTeX compilation..."
-docker run --rm -v "$(pwd)":/workspace -w /workspace \
+docker run --rm -v "$(pwd)":/workspace -w /workspace/tests \
   ghcr.io/quantecon/quantecon:latest \
-  bash -c "cd /workspace && xelatex test-xelatex.tex && ls -lh test-xelatex.pdf"
+  bash -c "xelatex test-xelatex.tex && ls -lh test-xelatex.pdf"
 echo "✓ XeLaTeX compilation successful"
 echo ""
 
 # Test 3: Jupyter Book HTML build
 echo "Test 3: Testing Jupyter Book HTML build..."
-docker run --rm -v "$(pwd)":/workspace -w /workspace \
+docker run --rm -v "$(pwd)":/workspace -w /workspace/tests \
   ghcr.io/quantecon/quantecon:latest \
-  bash -c "cd /workspace/minimal-jupyter-book && jb build . --builder html"
+  bash -c "cd minimal-jupyter-book && jb build . --builder html"
 echo "✓ Jupyter Book HTML build successful"
 echo ""
 
 # Test 4: Jupyter Book PDF build (via LaTeX)
 echo "Test 4: Testing Jupyter Book PDF build..."
-docker run --rm -v "$(pwd)":/workspace -w /workspace \
+docker run --rm -v "$(pwd)":/workspace -w /workspace/tests \
   ghcr.io/quantecon/quantecon:latest \
-  bash -c "cd /workspace/minimal-jupyter-book && jb build . --builder pdflatex && ls -lh _build/latex/*.pdf"
+  bash -c "cd minimal-jupyter-book && jb build . --builder pdflatex && ls -lh _build/latex/*.pdf"
 echo "✓ Jupyter Book PDF build successful"
 echo ""
 
