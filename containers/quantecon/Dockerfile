@@ -13,6 +13,8 @@ RUN apt-get update && \
         texlive-fonts-extra \
         texlive-xetex \
         texlive-luatex \
+        # Fonts
+        fonts-freefont-ttf \
         # Build tools
         latexmk \
         xindy \
