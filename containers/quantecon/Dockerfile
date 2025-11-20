@@ -19,6 +19,7 @@ RUN apt-get update && \
         dvipng \
         ghostscript \
         cm-super \
+        make \
         # Additional utilities
         git \
         curl \
