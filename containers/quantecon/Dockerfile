@@ -13,9 +13,6 @@ RUN apt-get update && \
         texlive-fonts-extra \
         texlive-xetex \
         texlive-luatex \
-        # Fonts
-        fonts-freefont-ttf \
-        fontconfig \
         # Build tools
         latexmk \
         xindy \
@@ -27,8 +24,7 @@ RUN apt-get update && \
         git \
         curl \
         ca-certificates \
-        && rm -rf /var/lib/apt/lists/* \
-        && fc-cache -fv
+        && rm -rf /var/lib/apt/lists/*
 
 # Install Miniconda
 ENV CONDA_DIR=/opt/conda
@@ -50,9 +46,6 @@ RUN conda tos accept && \
 ENV PATH=/opt/conda/envs/quantecon/bin:$PATH
 ENV CONDA_DEFAULT_ENV=quantecon
 
-# Ensure fontconfig can find system fonts from within conda environment
-RUN fc-cache -fv
-
 # Set working directory
 WORKDIR /workspace
 
@@ -61,9 +54,7 @@ RUN python --version && \
     conda --version && \
     jupyter --version && \
     jupyter-book --version && \
-    pdflatex --version && \
-    echo "=== Checking FreeSerif font ===" && \
-    fc-list | grep -i freeserif || echo "FreeSerif not found in fc-list"
+    pdflatex --version
 
 # Default command
 CMD ["/bin/bash"]
