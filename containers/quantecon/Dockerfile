@@ -54,9 +54,7 @@ RUN python --version && \
     conda --version && \
     jupyter --version && \
     jupyter-book --version && \
-    pdflatex --version && \
-    echo "=== Checking FreeSerif font ===" && \
-    fc-list | grep -i freeserif
+    pdflatex --version
 
 # Default command
 CMD ["/bin/bash"]
