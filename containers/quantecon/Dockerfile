@@ -50,6 +50,9 @@ RUN conda tos accept && \
 ENV PATH=/opt/conda/envs/quantecon/bin:$PATH
 ENV CONDA_DEFAULT_ENV=quantecon
 
+# Ensure fontconfig can find system fonts from within conda environment
+RUN fc-cache -fv
+
 # Set working directory
 WORKDIR /workspace
 
