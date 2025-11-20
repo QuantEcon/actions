@@ -15,6 +15,7 @@ RUN apt-get update && \
         texlive-luatex \
         # Fonts
         fonts-freefont-ttf \
+        fontconfig \
         # Build tools
         latexmk \
         xindy \
@@ -26,7 +27,8 @@ RUN apt-get update && \
         git \
         curl \
         ca-certificates \
-        && rm -rf /var/lib/apt/lists/*
+        && rm -rf /var/lib/apt/lists/* \
+        && fc-cache -fv
 
 # Install Miniconda
 ENV CONDA_DIR=/opt/conda
