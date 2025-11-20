@@ -323,6 +323,23 @@ docker run --rm \
 gh workflow run build-containers.yml
 ```
 
+### ⚠️ CRITICAL: GitHub CLI Output
+
+**ALWAYS write `gh` command output to a file** - gh CLI is interactive and won't display in terminal:
+
+```bash
+# View workflow runs
+gh run list --limit 10 > /tmp/gh-runs.txt && cat /tmp/gh-runs.txt
+
+# View specific run logs
+gh run view RUN_ID --log > /tmp/gh-logs.txt && cat /tmp/gh-logs.txt
+
+# View failed logs only
+gh run view RUN_ID --log-failed > /tmp/gh-failed.txt && cat /tmp/gh-failed.txt
+```
+
+**Never run `gh` commands without redirecting to a file first.**
+
 ## Known Limitations
 
 1. **GPU support deferred** - Phase 1 CPU only, GPU plans in docs/FUTURE-DEVELOPMENT.md
