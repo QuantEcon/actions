@@ -8,7 +8,10 @@ execute:
 latex:
   latex_documents:
     targetname: test-book.tex
+  latex_engine: xelatex
 
 sphinx:
   config:
     html_theme: sphinx_book_theme
+    latex_elements:
+      fontpkg: ""  # Don't load font packages, use TeX defaults
