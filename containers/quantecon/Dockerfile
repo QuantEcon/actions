@@ -50,6 +50,9 @@ RUN conda tos accept && \
 ENV PATH=/opt/conda/envs/quantecon/bin:$PATH
 ENV CONDA_DEFAULT_ENV=quantecon
 
+# Set OSFONTDIR to help XeTeX find system fonts (needed for latexmk subprocess)
+ENV OSFONTDIR=/usr/share/fonts
+
 # Rebuild font cache after conda environment is active (system-wide for Docker)
 RUN fc-cache -f -s
 
