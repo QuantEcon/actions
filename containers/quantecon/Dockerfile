@@ -34,9 +34,10 @@ RUN curl -L https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.s
 # Put conda in path
 ENV PATH=$CONDA_DIR/bin:$PATH
 
-# Copy environment file and create conda environment
+# Copy environment file, accept ToS, and create conda environment
 COPY environment.yml /tmp/environment.yml
-RUN conda env create -f /tmp/environment.yml && \
+RUN conda tos accept && \
+    conda env create -f /tmp/environment.yml && \
     conda clean -afy && \
     rm /tmp/environment.yml
 
