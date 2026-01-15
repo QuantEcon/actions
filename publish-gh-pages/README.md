@@ -1,25 +1,34 @@
 # Publish to GitHub Pages Action
 
-Publishes QuantEcon lecture builds to GitHub Pages with automated deployment and custom domain support.
+Publishes QuantEcon lecture builds to GitHub Pages using native GitHub Pages deployment.
 
 ## Features
 
-- 📄 **GitHub Pages deployment** with orphan branch support
+- 📄 **Native GitHub Pages deployment** - No gh-pages branch needed
 - 🌐 **Custom domain support** via CNAME file
 - 📊 **Deployment statistics** (file count, size)
-- 🔗 **Automatic URL generation** based on repository
-- ⚡ **Fast deployment** using peaceiris/actions-gh-pages
+- 🔗 **Automatic URL generation** from GitHub
+- ⚡ **No repo bloat** - Eliminates gh-pages branch history issues
+
+## Why Native Deployment?
+
+This action uses GitHub's native Pages deployment (via artifacts) instead of pushing to a gh-pages branch:
+
+| Aspect | Native (this action) | Branch-based (old) |
+|--------|---------------------|-------------------|
+| gh-pages branch | ❌ Not needed | ✅ Required |
+| Repo size growth | ❌ None | ⚠️ Grows over time |
+| GitHub support | ✅ First-party | Third-party |
+| Concurrency | ✅ Built-in | Manual |
 
 ## Inputs
 
 | Input | Description | Required | Default |
 |-------|-------------|----------|---------|
 | `build-dir` | Directory with built site | Yes | - |
-| `github-token` | GitHub token (use secrets.GITHUB_TOKEN) | Yes | - |
-| `target-branch` | Branch to deploy to | No | `gh-pages` |
 | `cname` | Custom domain | No | - |
-| `force-orphan` | Force orphan branch | No | `true` |
-| `commit-message` | Deployment commit message | No | `Deploy to GitHub Pages` |
+
+**Note:** `github-token` is no longer needed - native deployment uses OIDC.
 
 ## Outputs
 
@@ -35,7 +44,6 @@ Publishes QuantEcon lecture builds to GitHub Pages with automated deployment and
 - uses: quantecon/actions/publish-gh-pages@v1
   with:
     build-dir: '_build/html'
-    github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 ### With Custom Domain
@@ -44,19 +52,7 @@ Publishes QuantEcon lecture builds to GitHub Pages with automated deployment and
 - uses: quantecon/actions/publish-gh-pages@v1
   with:
     build-dir: '_build/html'
-    github-token: ${{ secrets.GITHUB_TOKEN }}
     cname: 'python.quantecon.org'
-```
-
-### Custom Branch and Message
-
-```yaml
-- uses: quantecon/actions/publish-gh-pages@v1
-  with:
-    build-dir: '_build/html'
-    github-token: ${{ secrets.GITHUB_TOKEN }}
-    target-branch: 'docs'
-    commit-message: 'Deploy version ${{ github.ref_name }}'
 ```
 
 ### Using Page URL
@@ -66,93 +62,58 @@ Publishes QuantEcon lecture builds to GitHub Pages with automated deployment and
   id: pages
   with:
     build-dir: '_build/html'
-    github-token: ${{ secrets.GITHUB_TOKEN }}
 
 - name: Verify deployment
   run: |
     echo "Site deployed to: ${{ steps.pages.outputs.page-url }}"
-    curl -f ${{ steps.pages.outputs.page-url }}
 ```
 
 ## Setup Requirements
 
+### Required Workflow Permissions
+
+The workflow must have these permissions:
+
+```yaml
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+```
+
 ### Enable GitHub Pages
 
 1. Go to repository Settings → Pages
-2. Set Source to "Deploy from a branch"
-3. Select branch: `gh-pages` (or your target branch)
-4. Select folder: `/ (root)`
-5. Save
+2. Set Source to **"GitHub Actions"** (not "Deploy from a branch")
+3. Save
+
+### Concurrency (Recommended)
+
+Add to your workflow to prevent deployment conflicts:
+
+```yaml
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+```
 
 ### Custom Domain Setup
 
 If using custom domain:
 
-1. Add CNAME to action inputs
+1. Add `cname` to action inputs
 2. Configure DNS records at your domain provider:
-   - CNAME record: `python → <username>.github.io`
+   - CNAME record: `python → quantecon.github.io`
    - Or A records to GitHub's IPs
 3. Enable HTTPS in repository settings (automatic after DNS propagation)
 
-### GitHub Token Permissions
-
-The default `GITHUB_TOKEN` needs write permissions:
-
-```yaml
-permissions:
-  contents: write
-```
-
-Add to workflow file if deployment fails with permissions error.
-
-## Deployment Behavior
-
-### Orphan Branch (Default)
-
-**Setting:** `force-orphan: 'true'`
-
-**Behavior:**
-- Creates fresh commit each time
-- No deployment history
-- Smaller repository size
-- Faster deployments
-
-**Use when:** You don't need deployment history
-
-### Normal Branch
-
-**Setting:** `force-orphan: 'false'`
-
-**Behavior:**
-- Preserves deployment history
-- Git history shows changes over time
-- Larger repository size
-- Useful for auditing
-
-**Use when:** You want to track deployment changes
-
-## URL Generation
-
-### With Custom Domain
-
-**Input:** `cname: 'python.quantecon.org'`
-**Output:** `https://python.quantecon.org`
-
-### Without Custom Domain
-
-**Repository:** `quantecon/lecture-python.myst`
-**Output:** `https://quantecon.github.io/lecture-python.myst`
-
 ## Troubleshooting
 
-### Deployment Fails
-
-**Symptom:** `Error: Action failed with "The process '/usr/bin/git' failed with exit code 128"`
+### Deployment Fails with Permissions Error
 
 **Solutions:**
-1. Check `GITHUB_TOKEN` permissions (needs `contents: write`)
-2. Verify target branch doesn't have protection rules
-3. Ensure build directory exists and isn't empty
+1. Ensure workflow has `pages: write` and `id-token: write` permissions
+2. Verify GitHub Pages source is set to "GitHub Actions" in repo settings
 
 ### Build Directory Not Found
 
@@ -169,9 +130,8 @@ Add to workflow file if deployment fails with permissions error.
 
 **Solutions:**
 1. Wait 1-2 minutes for propagation
-2. Verify GitHub Pages is enabled in settings
-3. Check correct branch is selected
-4. Verify index.html exists in root
+2. Verify GitHub Pages source is "GitHub Actions" in settings
+3. Verify index.html exists in root
 
 ### Custom Domain Not Working
 
@@ -183,27 +143,14 @@ Add to workflow file if deployment fails with permissions error.
 3. Check CNAME file exists in deployed site
 4. Enable HTTPS in repository settings
 
-### 422 Error
-
-**Symptom:** `Error: Unprocessable Entity (HTTP 422)`
-
-**Solutions:**
-1. Check repository isn't archived
-2. Verify you have write access
-3. Ensure branch name is valid
-4. Check GitHub Actions status
-
 ## Performance
 
 | Step | Time |
 |------|------|
 | Prepare build | ~2 seconds |
-| Deploy to branch | ~10-30 seconds |
-| Generate URL | ~1 second |
-| GitHub propagation | ~1-2 minutes |
-| **Total** | **~15-35 seconds** |
-
-**Note:** Propagation time (1-2 min) is after workflow completes.
+| Upload artifact | ~10-30 seconds |
+| Deploy to Pages | ~30-60 seconds |
+| **Total** | **~45-90 seconds** |
 
 ## Examples
 
@@ -217,11 +164,20 @@ on:
     tags: ['publish-*']
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page-url }}
     steps:
       - uses: actions/checkout@v4
       
@@ -233,43 +189,10 @@ jobs:
         id: build
       
       - uses: quantecon/actions/publish-gh-pages@v1
+        id: deploy
         with:
           build-dir: ${{ steps.build.outputs.build-path }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
           cname: 'python.quantecon.org'
-          commit-message: 'Deploy ${{ github.ref_name }}'
-```
-
-### Multi-Site Deployment
-
-Deploy different builders to different branches:
-
-```yaml
-jobs:
-  publish-html:
-    steps:
-      - uses: quantecon/actions/build-lectures@v1
-        with:
-          builder: 'html'
-      
-      - uses: quantecon/actions/publish-gh-pages@v1
-        with:
-          build-dir: '_build/html'
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          target-branch: 'gh-pages'
-
-  publish-notebooks:
-    steps:
-      - uses: quantecon/actions/build-lectures@v1
-        with:
-          builder: 'jupyter'
-      
-      - uses: quantecon/actions/publish-gh-pages@v1
-        with:
-          build-dir: '_build/jupyter'
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          target-branch: 'notebooks'
-          cname: 'notebooks.quantecon.org'
 ```
 
 ### Conditional Deployment
@@ -281,7 +204,39 @@ Deploy only on main branch:
   if: github.ref == 'refs/heads/main'
   with:
     build-dir: '_build/html'
-    github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
+
+## Migration from Branch-Based Deployment
+
+If migrating from peaceiris/actions-gh-pages or similar:
+
+1. **Update workflow permissions:**
+   ```yaml
+   permissions:
+     contents: read
+     pages: write
+     id-token: write
+   ```
+
+2. **Change GitHub Pages source:**
+   - Go to Settings → Pages
+   - Change from "Deploy from a branch" to "GitHub Actions"
+
+3. **Update action usage:**
+   ```yaml
+   # Before
+   - uses: quantecon/actions/publish-gh-pages@v0
+     with:
+       build-dir: '_build/html'
+       github-token: ${{ secrets.GITHUB_TOKEN }}
+       target-branch: 'gh-pages'
+   
+   # After
+   - uses: quantecon/actions/publish-gh-pages@v1
+     with:
+       build-dir: '_build/html'
+   ```
+
+4. **Optional: Delete gh-pages branch** to reclaim repo space
 
 See [docs/MIGRATION-GUIDE.md](../docs/MIGRATION-GUIDE.md) for complete workflow examples.

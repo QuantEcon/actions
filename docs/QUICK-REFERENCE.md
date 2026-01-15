@@ -47,11 +47,20 @@ on:
     tags: ['publish-*']
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page-url }}
     steps:
       - uses: actions/checkout@v4
       - uses: quantecon/actions/setup-environment@v1
@@ -60,9 +69,9 @@ jobs:
       - uses: quantecon/actions/build-lectures@v1
         id: build
       - uses: quantecon/actions/publish-gh-pages@v1
+        id: deploy
         with:
           build-dir: ${{ steps.build.outputs.build-path }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
           cname: 'python.quantecon.org'
 ```
 
@@ -160,11 +169,14 @@ lectures-dir: 'lectures'         # For change detection (default)
 
 ```yaml
 build-dir: '_build/html'         # Required
-github-token: ${{ secrets.GITHUB_TOKEN }}  # Required
-target-branch: 'gh-pages'        # Deploy branch
-cname: ''                        # Custom domain
-force-orphan: 'true'             # No history
-commit-message: 'Deploy to GH Pages'  # Commit msg
+cname: ''                        # Custom domain (optional)
+```
+
+**Note:** Uses native GitHub Pages deployment. Requires workflow permissions:
+```yaml
+permissions:
+  pages: write
+  id-token: write
 ```
 
 ## 📊 Outputs Quick Reference

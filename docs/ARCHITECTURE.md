@@ -129,7 +129,6 @@ jobs:
         if: github.ref == 'refs/heads/main'
         with:
           build-dir: ${{ steps.build.outputs.build-path }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 **Improvements:**

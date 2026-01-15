@@ -1,35 +1,20 @@
 name: 'Publish to GitHub Pages'
-description: 'Publishes lecture builds to GitHub Pages with intelligent caching and artifact management'
+description: 'Publishes lecture builds to GitHub Pages using native GitHub Pages deployment (no gh-pages branch needed)'
 author: 'QuantEcon'
 
 inputs:
   build-dir:
     description: 'Directory containing built site'
     required: true
-  github-token:
-    description: 'GitHub token for deployment (use secrets.GITHUB_TOKEN)'
-    required: true
-  target-branch:
-    description: 'Branch to deploy to'
-    required: false
-    default: 'gh-pages'
   cname:
-    description: 'Custom domain for GitHub Pages'
+    description: 'Custom domain for GitHub Pages (added as CNAME file)'
     required: false
     default: ''
-  force-orphan:
-    description: 'Force orphan branch (no history)'
-    required: false
-    default: 'true'
-  commit-message:
-    description: 'Commit message for deployment'
-    required: false
-    default: 'Deploy to GitHub Pages'
 
 outputs:
   page-url:
     description: 'URL of the deployed GitHub Pages site'
-    value: ${{ steps.deploy.outputs.page-url }}
+    value: ${{ steps.deployment.outputs.page_url }}
 
 runs:
   using: "composite"
@@ -62,42 +47,27 @@ runs:
         
         echo "✅ Preparation complete"
 
-    - name: Deploy to GitHub Pages
-      id: deploy
-      uses: peaceiris/actions-gh-pages@v4
-      with:
-        github_token: ${{ inputs.github-token }}
-        publish_dir: ${{ inputs.build-dir }}
-        publish_branch: ${{ inputs.target-branch }}
-        force_orphan: ${{ inputs.force-orphan }}
-        commit_message: ${{ inputs.commit-message }}
-        user_name: 'github-actions[bot]'
-        user_email: 'github-actions[bot]@users.noreply.github.com'
+    - name: Setup Pages
+      uses: actions/configure-pages@v4
 
-    - name: Generate Page URL
-      id: page-url
-      shell: bash
-      run: |
-        if [ -n "${{ inputs.cname }}" ]; then
-          PAGE_URL="https://${{ inputs.cname }}"
-        else
-          REPO_NAME="${GITHUB_REPOSITORY#*/}"
-          OWNER_NAME="${GITHUB_REPOSITORY%/*}"
-          PAGE_URL="https://${OWNER_NAME}.github.io/${REPO_NAME}"
-        fi
-        
-        echo "page-url=$PAGE_URL" >> $GITHUB_OUTPUT
-        echo "✅ Deployment successful!"
-        echo "📍 Page URL: $PAGE_URL"
+    - name: Upload Pages artifact
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: ${{ inputs.build-dir }}
+
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4
 
     - name: Display Deployment Info
       shell: bash
       run: |
         echo "::group::Deployment Summary"
-        echo "Target branch: ${{ inputs.target-branch }}"
-        echo "Custom domain: ${{ inputs.cname || 'None' }}"
-        echo "Force orphan: ${{ inputs.force-orphan }}"
-        echo "Page URL: ${{ steps.page-url.outputs.page-url }}"
+        echo "✅ Deployment successful!"
+        echo "📍 Page URL: ${{ steps.deployment.outputs.page_url }}"
+        if [ -n "${{ inputs.cname }}" ]; then
+          echo "🌐 Custom domain: ${{ inputs.cname }}"
+        fi
         echo "::endgroup::"
 
 branding:
