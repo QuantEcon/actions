@@ -154,6 +154,7 @@ jobs:
           source-dir: 'lectures'
           builder: 'html'
           use-build-cache: true  # Restore from main's cache
+          upload-reports-on-failure: true  # Upload reports if build fails
       
       # Deploy preview
       - uses: quantecon/actions/deploy-netlify@v1
@@ -167,6 +168,7 @@ jobs:
 - Replaced ~60 lines with ~10 lines
 - Added caching automatically
 - `use-build-cache: true` restores from main's cache for fast PR builds
+- `upload-reports-on-failure: true` uploads debugging artifacts on failure
 - Unified error handling
 - Clearer intent with named actions
 
@@ -304,12 +306,21 @@ on:
       - 'publish*'
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
 
 jobs:
   publish:
     if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags')
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page-url }}
     steps:
       - uses: actions/checkout@v4
       
@@ -318,32 +329,40 @@ jobs:
           install-latex: 'true'
           install-ml-libs: 'false'  # Adjust per repo
       
+      # Build PDF
+      - uses: quantecon/actions/build-lectures@v1
+        with:
+          builder: 'pdflatex'
+          upload-reports-on-failure: true
+      
+      # Build notebooks
+      - uses: quantecon/actions/build-lectures@v1
+        with:
+          builder: 'jupyter'
+          upload-reports-on-failure: true
+      
+      # Build HTML and assemble all assets
       - uses: quantecon/actions/build-lectures@v1
         id: build
-          branch: main
-          name: build-cache
-          path: _build
-      
-      - uses: quantecon/actions/build-lectures@v1
         with:
-          build-html: 'true'
-          build-pdf: 'true'
-          build-notebooks: 'true'
+          builder: 'html'
+          html-copy-pdf: true
+          html-copy-notebooks: true
+          upload-reports-on-failure: true
       
-      # Repository-specific: Notebook sync
-      - name: Sync notebooks to separate repo
-        shell: bash -l {0}
-        env:
-          QE_SERVICES_PAT: ${{ secrets.QUANTECON_SERVICES_PAT }}
-        run: |
-          # Your custom notebook sync logic here
-          # (This varies by repository)
-      
+      # Deploy to GitHub Pages
       - uses: quantecon/actions/publish-gh-pages@v1
+        id: deploy
         with:
-          build-dir: '_build/html/'
+          build-dir: ${{ steps.build.outputs.build-path }}
           cname: 'python.quantecon.org'  # Adjust per repo
 ```
+
+**Key Changes:**
+- Uses native GitHub Pages deployment (requires `pages: write` and `id-token: write` permissions)
+- Builds PDF, notebooks, then HTML with asset assembly
+- `html-copy-pdf` and `html-copy-notebooks` assemble all formats into HTML folder
+- `upload-reports-on-failure` helps debug build failures
 
 ### Step 7: Repository-Specific Adjustments
 
