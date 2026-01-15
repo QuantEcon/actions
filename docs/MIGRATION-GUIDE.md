@@ -21,8 +21,6 @@ This guide provides step-by-step instructions for migrating a QuantEcon lecture 
 
 Before starting migration:
 
-- [ ] Read [TESTING.md](./TESTING.md) for testing strategy
-- [ ] Read [NEXT-STEPS.md](./NEXT-STEPS.md) for current status and future plans
 - [ ] Ensure `quantecon/actions` repository is published
 - [ ] Have a test branch ready in target repository
 - [ ] Know which features your repo uses (ML libs, LaTeX, etc.)
@@ -359,7 +357,7 @@ This workflow uses a different container and may need custom handling:
 
 ### Step 8: Testing
 
-Follow the testing guide in [TESTING.md](./TESTING.md):
+Test your migrated workflows:
 
 1. **Create test workflow** (don't modify existing yet):
    ```bash
@@ -568,9 +566,8 @@ git push origin main
 
 If you encounter issues during migration:
 
-1. Check [TESTING.md](./TESTING.md) for debugging tips
-2. Review action README files for configuration options
-3. Open an issue in `quantecon/actions` with:
+1. Review action README files for configuration options
+2. Open an issue in `quantecon/actions` with:
    - Repository name
    - Workflow file
    - Error logs
@@ -608,7 +605,7 @@ Copy this for each repository:
 ## Migration: [Repository Name]
 
 ### Preparation
-- [ ] Read TESTING.md
+- [ ] Review action README files
 - [ ] Identify repo type (ML libs? LaTeX? etc.)
 - [ ] Create test branch
 - [ ] Backup workflows

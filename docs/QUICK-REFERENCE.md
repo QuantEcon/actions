@@ -239,9 +239,10 @@ permissions:
 ## 📚 Full Documentation
 
 - **README.md** - Repository overview
-- **TESTING.md** - Testing strategy
+- **ARCHITECTURE.md** - Architecture overview
+- **CONTAINER-GUIDE.md** - Container usage guide
 - **MIGRATION-GUIDE.md** - Migration steps
-- **CHANGELOG.md** - Version history
+- **FUTURE-DEVELOPMENT.md** - Future plans
 - **{action}/README.md** - Detailed action docs
 
 ## 🎓 Repository-Specific Notes
