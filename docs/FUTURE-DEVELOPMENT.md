@@ -29,7 +29,7 @@ GPU lectures continue using existing approach:
 ```yaml
 runs-on: [runs-on, gpu=1, image=your-ami]
 steps:
-  - uses: quantecon/actions/setup-environment@main
+  - uses: quantecon/actions/setup-environment@v1
     with:
       install-ml-libs: 'true'
 ```

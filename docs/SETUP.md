@@ -31,10 +31,9 @@ git add .
 # Initial commit
 git commit -m "Initial commit: QuantEcon Actions v1.0.0
 
-- setup-lecture-env: Conda environment with ML libraries
-- setup-latex: LaTeX package installation  
+- setup-environment: Flexible environment with Conda, LaTeX, ML libs
 - build-lectures: Jupyter Book builds with caching
-- deploy-netlify: Netlify deployment with PR comments
+- deploy-netlify: Netlify PR preview deployment
 - publish-gh-pages: GitHub Pages publishing
 
 Includes comprehensive documentation, testing strategy, and migration guide."
@@ -75,17 +74,16 @@ git push origin v1
    
    ## 🎯 Actions Included
    
-   - **setup-lecture-env** - Conda environment setup with intelligent caching
-   - **setup-latex** - LaTeX package installation with workflow-based caching
+   - **setup-environment** - Flexible Conda/LaTeX/ML environment setup with caching
    - **build-lectures** - Jupyter Book builds with execution caching
-   - **deploy-netlify** - Netlify deployment with automatic PR comments
+   - **deploy-netlify** - Netlify PR preview deployment with smart comments
    - **publish-gh-pages** - GitHub Pages publishing
    
    ## 📊 Performance Improvements
    
-   - **Conda setup:** 3-5 min → 30 sec (with cache)
-   - **LaTeX install:** 2-3 min → 10 sec (with cache)
-   - **Total savings:** 8-12 minutes per workflow
+   - **Conda setup:** ~5-6 min saved (with cache)
+   - **Container setup:** ~2 min total (vs 7-8 min without)
+   - **Total savings:** 5-6 minutes per workflow
    
    ## 📚 Documentation
    
@@ -177,18 +175,25 @@ After setup, structure should be:
 
 ```
 quantecon/actions/
+├── .github/
+│   └── workflows/
+│       └── build-containers.yml
 ├── .gitignore
 ├── LICENSE
 ├── README.md
 ├── CHANGELOG.md
 ├── CONTRIBUTING.md
-├── MIGRATION-GUIDE.md
 ├── TESTING.md
-├── QUICK-REFERENCE.md
-├── setup-lecture-env/
-│   ├── action.yml
-│   └── README.md
-├── setup-latex/
+├── containers/
+│   └── quantecon/
+│       ├── Dockerfile
+│       └── README.md
+├── docs/
+│   ├── ARCHITECTURE.md
+│   ├── CONTAINER-GUIDE.md
+│   ├── MIGRATION-GUIDE.md
+│   └── QUICK-REFERENCE.md
+├── setup-environment/
 │   ├── action.yml
 │   └── README.md
 ├── build-lectures/
@@ -264,5 +269,6 @@ Setup is successful when:
 ---
 
 **Created:** November 2024  
+**Updated:** January 2026  
 **Version:** 1.0.0  
 **Maintainer:** QuantEcon Team

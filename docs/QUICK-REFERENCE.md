@@ -6,11 +6,10 @@ A cheat sheet for using QuantEcon composite actions in your workflows.
 
 | Action | Purpose | Time Savings |
 |--------|---------|--------------|
-| `setup-lecture-env` | Conda + Python + ML libs | 3-5 min → 30 sec |
-| `setup-latex` | LaTeX packages | 2-3 min → 10 sec |
-| `build-lectures` | Jupyter Book builds | 45-60 min (cached) |
-| `deploy-netlify` | Netlify deployment | ~1 min |
-| `publish-gh-pages` | GitHub Pages | ~30 sec |
+| `setup-environment` | Conda + Python + LaTeX + ML libs | ~5-6 min (cached) |
+| `build-lectures` | Jupyter Book builds | Varies (cached execution) |
+| `deploy-netlify` | PR preview deployment | ~1 min |
+| `publish-gh-pages` | GitHub Pages deployment | ~30 sec |
 
 ## 🚀 Quick Start
 
@@ -25,7 +24,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: quantecon/actions/setup-lecture-env@v1
+        with:
+          fetch-depth: 0
+      - uses: quantecon/actions/setup-environment@v1
+        with:
+          install-latex: 'true'
       - uses: quantecon/actions/build-lectures@v1
         id: build
       - uses: quantecon/actions/deploy-netlify@v1
@@ -51,7 +54,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: quantecon/actions/setup-lecture-env@v1
+      - uses: quantecon/actions/setup-environment@v1
+        with:
+          install-latex: 'true'
       - uses: quantecon/actions/build-lectures@v1
         id: build
       - uses: quantecon/actions/publish-gh-pages@v1
@@ -66,7 +71,7 @@ jobs:
 ### Add ML Libraries (JAX/PyTorch)
 
 ```yaml
-- uses: quantecon/actions/setup-lecture-env@v1
+- uses: quantecon/actions/setup-environment@v1
   with:
     install-ml-libs: 'true'
 ```
@@ -74,7 +79,9 @@ jobs:
 ### Build PDF
 
 ```yaml
-- uses: quantecon/actions/setup-latex@v1
+- uses: quantecon/actions/setup-environment@v1
+  with:
+    install-latex: 'true'
 
 - uses: quantecon/actions/build-lectures@v1
   with:
@@ -103,7 +110,7 @@ jobs:
 ### Force Cache Rebuild
 
 ```yaml
-- uses: quantecon/actions/setup-lecture-env@v1
+- uses: quantecon/actions/setup-environment@v1
   with:
     cache-version: 'v2'  # Bump from v1
 ```
@@ -112,28 +119,22 @@ jobs:
 
 | Action | Cache Key | Invalidates On |
 |--------|-----------|----------------|
-| `setup-lecture-env` | `conda-{OS}-{hash(env.yml)}-{version}` | env.yml changes, manual bump |
-| `setup-latex` | `latex-{OS}-{hash(workflow)}-{version}` | workflow changes, manual bump |
+| `setup-environment` | `conda-{OS}-{hash(env.yml)}-{version}` | env.yml changes, manual bump |
 | `build-lectures` | `jupyter-cache-{OS}-{hash(lectures)}-{sha}` | lecture changes, new commit |
 
 ## 🎯 Inputs Quick Reference
 
-### setup-lecture-env
+### setup-environment
 
 ```yaml
 python-version: '3.13'           # Python version
 environment-file: 'environment.yml'  # Conda env file
+environment-name: 'quantecon'    # Conda env name
 cache-version: 'v1'              # Manual cache control
+install-latex: 'false'           # Install LaTeX packages
+latex-requirements-file: 'latex-requirements.txt'  # LaTeX packages list
 install-ml-libs: 'false'         # JAX/PyTorch/CUDA
 ml-libs-version: 'jax062-...'    # ML cache key
-```
-
-### setup-latex
-
-```yaml
-cache-version: 'v1'              # Manual cache control
-workflow-file: '.github/workflows/ci.yml'  # Cache key source
-packages: 'texlive-latex-extra ...'  # Space-separated list
 ```
 
 ### build-lectures
@@ -248,8 +249,9 @@ permissions:
 ### lecture-python.myst (GPU)
 
 ```yaml
-- uses: quantecon/actions/setup-lecture-env@v1
+- uses: quantecon/actions/setup-environment@v1
   with:
+    install-latex: 'true'
     install-ml-libs: 'true'  # JAX + PyTorch
 ```
 
@@ -257,7 +259,9 @@ permissions:
 
 ```yaml
 # Standard setup (no ML libs)
-- uses: quantecon/actions/setup-lecture-env@v1
+- uses: quantecon/actions/setup-environment@v1
+  with:
+    install-latex: 'true'
 ```
 
 ### lecture-python-intro
@@ -271,7 +275,9 @@ permissions:
 
 ```yaml
 # Same as programming (standard setup)
-- uses: quantecon/actions/setup-lecture-env@v1
+- uses: quantecon/actions/setup-environment@v1
+  with:
+    install-latex: 'true'
 ```
 
 ## 🔗 Links

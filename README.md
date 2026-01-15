@@ -29,18 +29,14 @@ Builds Jupyter Book lectures (HTML, PDF, notebooks) with unified error handling.
 **Features:** Cached builds, execution reports, multi-format support
 
 ### 🌐 [`deploy-netlify`](./deploy-netlify)
-Deploys preview builds to Netlify for pull requests.
+Deploys preview builds to Netlify for pull requests with smart PR comments.
+
+**Features:** Automatic changed-file detection, PR preview URLs, security-aware (skips forks)
 
 ### 🚀 [`publish-gh-pages`](./publish-gh-pages)
-Publishes production builds to GitHub Pages with release asset creation.
+Publishes production builds to GitHub Pages.
 
----
-
-### Deprecated Actions
-
-The following actions have been replaced by `setup-environment`:
-- ~~`setup-lecture-env`~~ - Use `setup-environment` instead
-- ~~`setup-latex`~~ - Use `setup-environment` instead
+**Features:** Custom domain support, orphan branch deployment, automated CNAME
 
 ## Quick Start
 
@@ -54,10 +50,12 @@ jobs:
   preview:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for deploy-netlify change detection
       
       # Flexible environment setup
-      - uses: quantecon/actions/setup-environment@main
+      - uses: quantecon/actions/setup-environment@v1
         with:
           python-version: '3.13'
           environment-file: 'environment.yml'
@@ -65,12 +63,12 @@ jobs:
           latex-requirements-file: 'latex-requirements.txt'
           environment-name: 'quantecon'
       
-      - uses: quantecon/actions/build-lectures@main
+      - uses: quantecon/actions/build-lectures@v1
         with:
           builder: 'html'
           source-dir: 'lectures'
       
-      - uses: quantecon/actions/deploy-netlify@main
+      - uses: quantecon/actions/deploy-netlify@v1
         with:
           netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}

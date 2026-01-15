@@ -225,7 +225,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - uses: quantecon/actions/setup-lecture-env@v1
+      - uses: quantecon/actions/setup-environment@v1
+        with:
+          install-latex: 'true'
       
       - uses: quantecon/actions/build-lectures@v1
         id: build
@@ -282,4 +284,4 @@ Deploy only on main branch:
     github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-See [MIGRATION-GUIDE.md](../MIGRATION-GUIDE.md) for complete workflow examples.
+See [docs/MIGRATION-GUIDE.md](../docs/MIGRATION-GUIDE.md) for complete workflow examples.

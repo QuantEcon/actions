@@ -87,7 +87,7 @@ jobs:
       - uses: actions/checkout@v4
       
       # 7-8 minutes: Setup environment + LaTeX
-      - uses: quantecon/actions/setup-environment@main
+      - uses: quantecon/actions/setup-environment@v1
         with:
           install-latex: 'true'
       
@@ -101,7 +101,7 @@ jobs:
       - run: jupyter-book build lectures/
       
       # Manual deployment
-      - uses: quantecon/actions/deploy-netlify@main
+      - uses: quantecon/actions/deploy-netlify@v1
         with:
           # ... many configuration options
 ```
@@ -122,26 +122,23 @@ jobs:
         run: conda env update -f environment.yml
       
       # Build with automatic caching (3-5 min)
-      - uses: quantecon/actions/build-lectures@main
+      - uses: quantecon/actions/build-lectures@v1
         id: build
       
       # Deploy preview (PR only)
-      - uses: quantecon/actions/deploy-netlify@main
+      - uses: quantecon/actions/deploy-netlify@v1
         if: github.event_name == 'pull_request'
         with:
-          site-id: ${{ vars.NETLIFY_SITE_ID }}
-          auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          publish-dir: ${{ steps.build.outputs.build-path }}
-          alias: pr-${{ github.event.number }}
+          netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
+          build-dir: ${{ steps.build.outputs.build-path }}
       
       # Deploy production (main branch)
-      - uses: quantecon/actions/deploy-netlify@main
+      - uses: quantecon/actions/publish-gh-pages@v1
         if: github.ref == 'refs/heads/main'
         with:
-          site-id: ${{ vars.NETLIFY_SITE_ID }}
-          auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          publish-dir: ${{ steps.build.outputs.build-path }}
-          production: true
+          build-dir: ${{ steps.build.outputs.build-path }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 **Improvements:**
