@@ -20,7 +20,15 @@ Deploys QuantEcon lecture builds to Netlify for PR previews with smart comments 
     build-dir: _build/html
 ```
 
-That's it! Changed lecture detection works automatically for files in the `lectures/` directory, as long as your workflow checks out the repository with full history (for example, using `actions/checkout@v4` with `fetch-depth: 0`).
+That's it! Changed lecture detection works automatically for files in the `lectures/` directory.
+
+> **Note:** For changed lecture detection to work, your workflow must check out the repository with full git history using `actions/checkout@v4` with `fetch-depth: 0`. Without this, only the preview URL will be shown (no direct links to changed pages).
+
+## Requirements
+
+- **GitHub Actions runner:** `ubuntu-latest` (includes `jq` and `npm`)
+- **Git history:** Use `fetch-depth: 0` in checkout for change detection
+- **Netlify secrets:** `NETLIFY_AUTH_TOKEN` and `NETLIFY_SITE_ID`
 
 ## Inputs
 

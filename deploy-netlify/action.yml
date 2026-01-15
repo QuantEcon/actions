@@ -102,7 +102,7 @@ runs:
 
     - name: Deploy to Netlify
       id: deploy
-      if: steps.check-trust.outputs.skip != 'true'
+      if: steps.check-trust.outputs.skip != 'true' && github.event_name == 'pull_request'
       shell: bash
       run: |
         PR_NUMBER="${{ github.event.pull_request.number }}"
@@ -126,6 +126,14 @@ runs:
         # Extract URL from JSON output
         DEPLOY_URL=$(echo "$DEPLOY_OUTPUT" | jq -r '.deploy_url // .url // empty')
         
+        # Validate deployment URL
+        if [ -z "$DEPLOY_URL" ]; then
+          echo "❌ Error: Failed to extract deployment URL from Netlify response"
+          echo "Raw output was:"
+          echo "$DEPLOY_OUTPUT"
+          exit 1
+        fi
+        
         echo "deploy-url=$DEPLOY_URL" >> $GITHUB_OUTPUT
         
         echo "✅ Deployment successful!"
@@ -135,6 +143,7 @@ runs:
       if: steps.check-trust.outputs.skip != 'true' && github.event_name == 'pull_request' && steps.deploy.outputs.deploy-url != ''
       uses: actions/github-script@v7
       with:
+        github-token: ${{ github.token }}
         script: |
           const deployUrl = '${{ steps.deploy.outputs.deploy-url }}';
           const changedFiles = `${{ steps.detect-changes.outputs.changed-files }}`;
