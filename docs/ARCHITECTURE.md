@@ -287,8 +287,7 @@ quantecon/actions/
     ├── FUTURE-DEVELOPMENT.md      # Future enhancement plans
     ├── MIGRATION-GUIDE.md         # How to migrate lecture repos
     ├── QUICK-REFERENCE.md         # Quick reference for all actions
-    ├── README.md                  # Documentation index
-    └── SETUP.md                   # Initial setup instructions
+    └── README.md                  # Documentation index
 ```
 
 ### Lecture Repos (Simplified)

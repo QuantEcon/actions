@@ -96,8 +96,7 @@ quantecon/actions/
 │   ├── ARCHITECTURE.md            # System design
 │   ├── MIGRATION-GUIDE.md         # Migration steps
 │   ├── FUTURE-DEVELOPMENT.md      # GPU roadmap
-│   ├── QUICK-REFERENCE.md
-│   └── SETUP.md
+│   └── QUICK-REFERENCE.md
 ├── README.md
 ├── TESTING.md
 ├── CHANGELOG.md

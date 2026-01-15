@@ -112,9 +112,6 @@ runs:
           echo "build-path=${{ inputs.output-dir }}/_build" >> $GITHUB_OUTPUT
         fi
         
-        # Store exit code for later steps
-        echo "exit-code=$BUILD_EXIT_CODE" >> $GITHUB_OUTPUT
-        
         # Exit with build exit code
         exit $BUILD_EXIT_CODE
 
@@ -148,7 +145,7 @@ runs:
         
         if [ -d "$NB_SOURCE" ]; then
           mkdir -p "$NB_DEST"
-          # Copy all notebooks preserving directory structure
+          # Copy all notebooks to flat directory
           find "$NB_SOURCE" -name "*.ipynb" -exec cp {} "$NB_DEST/" \;
           echo "Copied notebooks to $NB_DEST:"
           ls -lh "$NB_DEST" | head -20 || echo "No notebooks found"
