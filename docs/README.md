@@ -19,5 +19,6 @@ Action inputs, outputs, and usage examples
 ### [FUTURE-DEVELOPMENT.md](./FUTURE-DEVELOPMENT.md)
 Planned enhancements: GPU support, build optimizations, monitoring
 
-### [SETUP.md](./SETUP.md)
-Initial repository setup and configuration
+## Contributing
+
+See [CONTRIBUTING.md](../CONTRIBUTING.md) for development workflow and release process.

@@ -7,6 +7,8 @@ Builds QuantEcon lectures using Jupyter Book with intelligent notebook execution
 - 📚 **Multi-builder support** (HTML, PDF, Jupyter notebooks)
 - 💾 **Execution caching** for faster incremental builds
 - 🚀 **Build cache restore** from GitHub cache for fast PR builds
+- 📦 **Asset assembly** - copy PDFs and notebooks into HTML build
+- 🔍 **Execution reports** - upload reports on build failure
 - ⚙️ **Configurable build options** via extra arguments
 - 📊 **Build summary reporting** with artifact paths
 - 🎯 **Output path detection** based on builder type
@@ -21,6 +23,9 @@ Builds QuantEcon lectures using Jupyter Book with intelligent notebook execution
 | `extra-args` | Extra jupyter-book build arguments | No | `-W --keep-going` |
 | `cache-notebook-execution` | Enable execution caching | No | `true` |
 | `use-build-cache` | Restore `_build` from GitHub cache | No | `false` |
+| `html-copy-pdf` | Copy PDFs to `_build/html/_pdf/` (HTML only) | No | `false` |
+| `html-copy-notebooks` | Copy notebooks to `_build/html/_notebooks/` (HTML only) | No | `false` |
+| `upload-failure-reports` | Upload execution reports on failure | No | `false` |
 
 ## Outputs
 
@@ -90,6 +95,55 @@ Builds QuantEcon lectures using Jupyter Book with intelligent notebook execution
     name: html-build
     path: ${{ steps.build.outputs.build-path }}
 ```
+
+### Multi-Format Build with Asset Assembly
+
+Build PDF and notebooks first, then HTML with asset assembly:
+
+```yaml
+# Build PDF
+- uses: quantecon/actions/build-lectures@v1
+  with:
+    builder: 'pdflatex'
+
+# Build notebooks  
+- uses: quantecon/actions/build-lectures@v1
+  with:
+    builder: 'jupyter'
+
+# Build HTML and assemble all assets
+- uses: quantecon/actions/build-lectures@v1
+  id: build
+  with:
+    builder: 'html'
+    html-copy-pdf: true
+    html-copy-notebooks: true
+```
+
+Result:
+```
+_build/html/
+├── index.html
+├── _pdf/
+│   └── quantecon-lectures.pdf
+└── _notebooks/
+    ├── intro.ipynb
+    └── ...
+```
+
+### Upload Reports on Build Failure
+
+```yaml
+- uses: quantecon/actions/build-lectures@v1
+  with:
+    upload-failure-reports: true
+```
+
+On failure, uploads:
+- `_build/*/reports/` - Jupyter Book execution reports
+- `_build/.jupyter_cache/` - Cache state for debugging
+
+Artifact name: `execution-reports-{builder}`
 
 ## Execution Caching
 

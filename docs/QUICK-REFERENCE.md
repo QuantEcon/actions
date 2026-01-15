@@ -166,6 +166,9 @@ output-dir: './'                 # Output base
 extra-args: '-W --keep-going'    # JB arguments
 cache-notebook-execution: 'true' # Enable exec cache
 use-build-cache: 'false'         # Restore _build from GitHub cache
+html-copy-pdf: 'false'           # Copy PDFs to _build/html/_pdf/
+html-copy-notebooks: 'false'     # Copy notebooks to _build/html/_notebooks/
+upload-failure-reports: 'false'  # Upload reports on failure
 ```
 
 ### deploy-netlify
