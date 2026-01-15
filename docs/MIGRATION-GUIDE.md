@@ -154,7 +154,7 @@ jobs:
           source-dir: 'lectures'
           builder: 'html'
           use-build-cache: true  # Restore from main's cache
-          upload-reports-on-failure: true  # Upload reports if build fails
+          upload-failure-reports: true  # Upload reports if build fails
       
       # Deploy preview
       - uses: quantecon/actions/deploy-netlify@v1
@@ -168,7 +168,7 @@ jobs:
 - Replaced ~60 lines with ~10 lines
 - Added caching automatically
 - `use-build-cache: true` restores from main's cache for fast PR builds
-- `upload-reports-on-failure: true` uploads debugging artifacts on failure
+- `upload-failure-reports: true` uploads debugging artifacts on failure
 - Unified error handling
 - Clearer intent with named actions
 
@@ -333,13 +333,13 @@ jobs:
       - uses: quantecon/actions/build-lectures@v1
         with:
           builder: 'pdflatex'
-          upload-reports-on-failure: true
+          upload-failure-reports: true
       
       # Build notebooks
       - uses: quantecon/actions/build-lectures@v1
         with:
           builder: 'jupyter'
-          upload-reports-on-failure: true
+          upload-failure-reports: true
       
       # Build HTML and assemble all assets
       - uses: quantecon/actions/build-lectures@v1
@@ -348,7 +348,7 @@ jobs:
           builder: 'html'
           html-copy-pdf: true
           html-copy-notebooks: true
-          upload-reports-on-failure: true
+          upload-failure-reports: true
       
       # Deploy to GitHub Pages
       - uses: quantecon/actions/publish-gh-pages@v1
@@ -362,7 +362,7 @@ jobs:
 - Uses native GitHub Pages deployment (requires `pages: write` and `id-token: write` permissions)
 - Builds PDF, notebooks, then HTML with asset assembly
 - `html-copy-pdf` and `html-copy-notebooks` assemble all formats into HTML folder
-- `upload-reports-on-failure` helps debug build failures
+- `upload-failure-reports` helps debug build failures
 
 ### Step 7: Repository-Specific Adjustments
 

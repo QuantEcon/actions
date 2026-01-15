@@ -25,7 +25,7 @@ Builds QuantEcon lectures using Jupyter Book with intelligent notebook execution
 | `use-build-cache` | Restore `_build` from GitHub cache | No | `false` |
 | `html-copy-pdf` | Copy PDFs to `_build/html/_pdf/` (HTML only) | No | `false` |
 | `html-copy-notebooks` | Copy notebooks to `_build/html/_notebooks/` (HTML only) | No | `false` |
-| `upload-reports-on-failure` | Upload execution reports on failure | No | `false` |
+| `upload-failure-reports` | Upload execution reports on failure | No | `false` |
 
 ## Outputs
 
@@ -136,7 +136,7 @@ _build/html/
 ```yaml
 - uses: quantecon/actions/build-lectures@v1
   with:
-    upload-reports-on-failure: true
+    upload-failure-reports: true
 ```
 
 On failure, uploads:

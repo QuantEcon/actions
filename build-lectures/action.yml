@@ -35,7 +35,7 @@ inputs:
     description: 'Copy notebooks from _build/jupyter/ to _build/html/_notebooks/ (HTML builder only, requires prior jupyter build)'
     required: false
     default: 'false'
-  upload-reports-on-failure:
+  upload-failure-reports:
     description: 'Upload execution reports as artifacts when build fails'
     required: false
     default: 'false'
@@ -161,7 +161,7 @@ runs:
         echo "::endgroup::"
 
     - name: Upload execution reports on failure
-      if: inputs.upload-reports-on-failure == 'true' && failure()
+      if: inputs.upload-failure-reports == 'true' && failure()
       uses: actions/upload-artifact@v4
       with:
         name: execution-reports-${{ inputs.builder }}

@@ -27,7 +27,7 @@ All high priority items completed! ✅
 ### Completed ✅
 
 - [x] **Execution Reports on Failure** (`build-lectures`)
-  - `upload-reports-on-failure: 'true'` uploads reports and cache on failure
+  - `upload-failure-reports: 'true'` uploads reports and cache on failure
   - Artifact name: `execution-reports-{builder}`
   - Includes `_build/*/reports/` and `_build/.jupyter_cache/`
 - [x] **Asset Assembly** (`build-lectures`)
