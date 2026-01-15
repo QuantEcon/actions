@@ -314,11 +314,8 @@ jobs:
       
       - uses: quantecon/actions/publish-gh-pages@v1
         with:
-          html-dir: '_build/html/'
+          build-dir: '_build/html/'
           cname: 'python.quantecon.org'  # Adjust per repo
-          create-release-assets: 'true'
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          tag-name: ${{ github.ref_name }}
 ```
 
 ### Step 7: Repository-Specific Adjustments
