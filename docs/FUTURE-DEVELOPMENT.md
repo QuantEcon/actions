@@ -25,11 +25,6 @@ Features needed to fully replace current `lecture-python.myst` workflows:
   - Add `create-notebooks-zip: 'true'` to `build-lectures`
   - Or add `notebooks-zip` option to `publish-gh-pages` release assets
 
-- [ ] **Artifact-based Build Cache** (alternative to GitHub cache)
-  - Document pattern for using `dawidd6/action-download-artifact`
-  - Works better for large `_build/` directories
-  - Add example to MIGRATION-GUIDE.md
-
 ### Low Priority (Repo-Specific)
 
 - [ ] **Notebook Repository Sync**
@@ -39,6 +34,12 @@ Features needed to fully replace current `lecture-python.myst` workflows:
 
 ### Completed ✅
 
+- [x] **Build Cache for Fast PR Builds** (`build-lectures`)
+  - Uses GitHub native cache (faster than artifact-based)
+  - Cache key: `build-${{ hashFiles('environment.yml') }}`
+  - Auto-invalidates when environment changes
+  - Documented `cache.yml` pattern for cache generation
+  - Weekly scheduled + push trigger on env changes
 - [x] Native GitHub Pages deployment (no gh-pages branch)
 - [x] Release assets (tarball, checksum, manifest)
 - [x] Auto-generated asset names from repo

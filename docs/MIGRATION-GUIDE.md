@@ -147,12 +147,13 @@ jobs:
           install-latex: 'true'
           install-ml-libs: 'false'  # Set to 'true' for lecture-python.myst
       
-      # Build lectures
+      # Build lectures (with cache restore for fast incremental builds)
       - uses: quantecon/actions/build-lectures@v1
         id: build
         with:
           source-dir: 'lectures'
           builder: 'html'
+          use-build-cache: true  # Restore from main's cache
       
       # Deploy preview
       - uses: quantecon/actions/deploy-netlify@v1
@@ -165,6 +166,7 @@ jobs:
 **Key Changes:**
 - Replaced ~60 lines with ~10 lines
 - Added caching automatically
+- `use-build-cache: true` restores from main's cache for fast PR builds
 - Unified error handling
 - Clearer intent with named actions
 
@@ -203,14 +205,19 @@ jobs:
           path: _build
 ```
 
-#### After:
+#### After (Recommended: GitHub Native Cache):
 
 ```yaml
-name: Build Cache [using jupyter-book]
+name: Build Cache
 on:
   schedule:
-    - cron: '0 3 * * 1'
-  workflow_dispatch:
+    - cron: '0 0 * * 0'  # Weekly Sunday midnight UTC
+  workflow_dispatch:      # Manual trigger
+  push:
+    branches:
+      - main
+    paths:
+      - 'environment.yml'  # Auto-rebuild when env changes
 
 jobs:
   cache:
@@ -218,22 +225,42 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      # Clear old cache to ensure fresh build
+      - name: Clear existing cache
+        run: gh cache delete "build-*" --repo ${{ github.repository }} || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
       - uses: quantecon/actions/setup-environment@v1
         with:
           install-latex: 'true'
           install-ml-libs: 'false'  # Adjust per repo
       
+      # Fresh build (no cache restore)
       - uses: quantecon/actions/build-lectures@v1
+        id: build
         with:
           builder: 'html'
       
-      - name: Upload "_build" folder (cache)
-        uses: actions/upload-artifact@v5
+      # Save to GitHub cache (fast restore for PRs)
+      - uses: actions/cache/save@v4
         with:
-          name: build-cache
           path: _build
-          include-hidden-files: true
+          key: build-${{ hashFiles('environment.yml') }}
+      
+      # Upload artifact for inspection/reference
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-cache-${{ hashFiles('environment.yml') }}
+          path: _build
+          retention-days: 90
 ```
+
+**Key Changes:**
+- Uses GitHub native cache (faster restore than artifacts)
+- Cache key based on `environment.yml` hash (auto-invalidates on env change)
+- Push trigger rebuilds cache when `environment.yml` changes on main
+- Artifact uploaded for inspection/debugging
 
 ### Step 6: Update `publish.yml`
 
