@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Container Infrastructure** (`ghcr.io/quantecon/quantecon:latest`)
   - Ubuntu 24.04 LTS + TexLive (latest) + Miniconda + Python 3.13
-  - Anaconda 2025.06 metapackage (numpy, scipy, pandas, matplotlib, jupyter)
+  - Anaconda 2025.12 metapackage (numpy, scipy, pandas, matplotlib, jupyter)
   - Jupyter Book 1.0.4post1 + sphinx extensions
   - Weekly automated builds (Monday 2am UTC)
   - CPU-focused for initial rollout
