@@ -83,14 +83,21 @@ Create downloadable archives attached to GitHub releases:
     build-dir: '_build/html'
     cname: 'python.quantecon.org'
     create-release-assets: 'true'
-    asset-name: 'lecture-python-html'
     github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 This creates and uploads to the release:
-- `lecture-python-html-<tag>.tar.gz` - Complete site archive
-- `lecture-python-html-checksum.txt` - SHA256 checksum
-- `lecture-python-html-manifest.json` - Metadata (commit, timestamp, size)
+- `<repo>-html-<tag>.tar.gz` - Complete site archive
+- `<repo>-html-checksum.txt` - SHA256 checksum
+- `<repo>-html-manifest.json` - Metadata (commit, timestamp, size)
+
+The asset name defaults to `<repo>-html` (e.g., `lecture-python.myst-html`). Override with `asset-name` if needed:
+
+```yaml
+create-release-assets: 'true'
+asset-name: 'lecture-python-html'  # Custom name without .myst
+github-token: ${{ secrets.GITHUB_TOKEN }}
+```
 
 **Note:** Requires `contents: write` permission for release uploads.
 
