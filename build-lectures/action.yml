@@ -157,6 +157,34 @@ runs:
         fi
         echo "::endgroup::"
 
+    - name: Report build failure
+      if: failure()
+      shell: bash
+      run: |
+        echo ""
+        echo "::error::❌ BUILD FAILED - Jupyter Book build encountered errors"
+        echo ""
+        echo "┌─────────────────────────────────────────────────────────────┐"
+        echo "│                    BUILD FAILURE SUMMARY                      │"
+        echo "├─────────────────────────────────────────────────────────────┤"
+        echo "│  Builder:     ${{ inputs.builder }}"
+        echo "│  Source:      ${{ inputs.source-dir }}"
+        echo "│  Output:      ${{ inputs.output-dir }}/_build"
+        echo "└─────────────────────────────────────────────────────────────┘"
+        echo ""
+        if [ "${{ inputs.upload-failure-reports }}" = "true" ]; then
+          echo "📦 Execution reports will be uploaded as artifact: execution-reports-${{ inputs.builder }}"
+          echo ""
+          echo "To debug this failure:"
+          echo "  1. Download the 'execution-reports-${{ inputs.builder }}' artifact from this workflow run"
+          echo "  2. Check _build/${{ inputs.builder }}/reports/ for notebook execution logs"
+          echo "  3. Check _build/.jupyter_cache/ for cached notebook states"
+          echo ""
+        else
+          echo "💡 Tip: Enable 'upload-failure-reports: true' to get execution reports for debugging"
+          echo ""
+        fi
+
     - name: Upload execution reports on failure
       if: inputs.upload-failure-reports == 'true' && failure()
       uses: actions/upload-artifact@v4
