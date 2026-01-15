@@ -221,7 +221,24 @@ The test script will:
 
 - `tests/test-xelatex.tex` - Minimal XeLaTeX document testing fonts and unicode
 - `tests/minimal-jupyter-book/` - Minimal Jupyter Book project for build testing
-- `tests/test-container.sh` - Automated test script
+- `tests/test-container.sh` - Automated test script for Docker container
+- `tests/run-local-tests.sh` - Local test script for macOS development
+
+### Local Testing (macOS)
+
+For development on macOS without Docker:
+
+```bash
+cd containers/quantecon/tests
+./run-local-tests.sh
+```
+
+**Prerequisites:**
+- MacTeX (for xelatex)
+- jupyter-book (`pip install jupyter-book`)
+- FreeSerif fonts (`brew install --cask font-freeserif`)
+
+The script runs the same tests as the container test suite locally.
 
 ### Manual Testing
 
