@@ -1,313 +1,124 @@
-# Deploy to Netlify Action
+# Deploy Netlify Preview Action
 
-Deploys QuantEcon lecture builds to Netlify for preview or production deployments with automatic PR comments.
+Deploys QuantEcon lecture builds to Netlify for PR previews with smart comments showing direct links to changed pages.
 
 ## Features
 
-- 🚀 **Production & preview deployments**
-- 💬 **Automatic PR comments** with preview URLs
-- 🔗 **Custom aliases** for predictable preview URLs
-- 📊 **Deployment logging** with URL outputs
-- ⚡ **Fast deployments** using Netlify CLI
+- 🔍 **PR preview deployments** with predictable URLs (`pr-{number}`)
+- 📚 **Changed lecture detection** - Direct links to modified pages in PR comments
+- 💬 **Smart PR comments** - Updates existing comment instead of creating duplicates
+- 🔒 **Security-aware** - Skips deployment for forks and dependabot
+- ⚡ **Reliable** - Uses JSON output for accurate URL extraction
+
+## Usage
+
+```yaml
+- uses: quantecon/actions/deploy-netlify@v1
+  with:
+    netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+    netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
+    build-dir: _build/html
+```
+
+That's it! Changed lecture detection works automatically for files in the `lectures/` directory.
 
 ## Inputs
 
 | Input | Description | Required | Default |
 |-------|-------------|----------|---------|
-| `netlify-auth-token` | Netlify auth token (from secrets) | Yes | - |
-| `netlify-site-id` | Netlify site ID (from secrets) | Yes | - |
+| `netlify-auth-token` | Netlify auth token | Yes | - |
+| `netlify-site-id` | Netlify site ID | Yes | - |
 | `build-dir` | Directory with built site | Yes | - |
-| `production` | Deploy to production (true/false) | No | `false` |
-| `alias` | Deploy alias for previews | No | - |
-| `message` | Deployment message | No | `Deployed via GitHub Actions` |
+| `lectures-dir` | Lectures directory for change detection | No | `lectures` |
+
+To disable changed file detection, set `lectures-dir: ''`.
 
 ## Outputs
 
 | Output | Description |
 |--------|-------------|
-| `deploy-url` | URL of deployed site |
-| `logs-url` | URL to Netlify deployment logs |
+| `deploy-url` | URL of deployed preview |
+| `changed-files` | List of changed lecture files |
 
-## Usage
+## Example PR Comment
 
-### Preview Deployment (Pull Requests)
+When a PR modifies lecture files, the action posts a comment like:
 
-```yaml
-- uses: quantecon/actions/deploy-netlify@v1
-  with:
-    netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-    netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
-    build-dir: '_build/html'
-```
+> ## 📖 Netlify Preview Ready!
+>
+> **Preview URL:** https://pr-5--site.netlify.app
+>
+> **Commit:** [`abc1234`](https://github.com/...)
+>
+> ### 📚 Changed Lectures
+>
+> - [aiyagari](https://pr-5--site.netlify.app/aiyagari.html)
+> - [mccall_model](https://pr-5--site.netlify.app/mccall_model.html)
+>
+> ---
+> <details><summary>Build Info</summary>
+>
+> - **Workflow:** [Build Preview](...)
+> </details>
 
-### Production Deployment
-
-```yaml
-- uses: quantecon/actions/deploy-netlify@v1
-  with:
-    netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-    netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
-    build-dir: '_build/html'
-    production: 'true'
-    message: 'Production deployment v1.2.3'
-```
-
-### Preview with Custom Alias
+## Complete Workflow Example
 
 ```yaml
-- uses: quantecon/actions/deploy-netlify@v1
-  with:
-    netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-    netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
-    build-dir: '_build/html'
-    alias: 'pr-${{ github.event.pull_request.number }}'
-```
-
-### Using Deployment URL
-
-```yaml
-- uses: quantecon/actions/deploy-netlify@v1
-  id: netlify
-  with:
-    netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-    netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
-    build-dir: '_build/html'
-
-- name: Run tests against deployment
-  run: |
-    curl -f ${{ steps.netlify.outputs.deploy-url }}
-    # Or use playwright, cypress, etc.
-```
-
-## Setup Requirements
-
-### Netlify Secrets
-
-Add these secrets to your GitHub repository:
-
-1. **NETLIFY_AUTH_TOKEN**
-   - Go to Netlify → User Settings → Applications
-   - Create new access token
-   - Add to GitHub: Settings → Secrets → New repository secret
-
-2. **NETLIFY_SITE_ID**
-   - Go to Netlify → Site Settings → General
-   - Copy "Site ID" under Site information
-   - Add to GitHub: Settings → Secrets → New repository secret
-
-### Netlify Site Setup
-
-1. Create site on Netlify (or use existing)
-2. Configure build settings (optional - we build in Actions)
-3. Set custom domain (for production)
-4. Enable branch deploys (for previews)
-
-## Deployment Types
-
-### Production Deployment
-
-**Triggered by:** Main branch commits, releases
-
-**URL:** Custom domain (e.g., `python.quantecon.org`)
-
-**Characteristics:**
-- Permanent
-- Indexed by search engines
-- No automatic deletion
-
-**Example:**
-```yaml
-on:
-  push:
-    branches: [main]
-    
-jobs:
-  deploy:
-    steps:
-      - uses: quantecon/actions/deploy-netlify@v1
-        with:
-          production: 'true'
-```
-
-### Preview Deployment
-
-**Triggered by:** Pull requests, feature branches
-
-**URL:** Random subdomain (e.g., `5f3a8b2c--site.netlify.app`)
-
-**Characteristics:**
-- Temporary
-- Not indexed
-- Auto-deleted after inactivity
-
-**Example:**
-```yaml
+name: Build Preview
 on:
   pull_request:
-    
+
 jobs:
   preview:
-    steps:
-      - uses: quantecon/actions/deploy-netlify@v1
-        # production defaults to 'false'
-```
-
-### Aliased Preview
-
-**Triggered by:** Pull requests with custom alias
-
-**URL:** Predictable subdomain (e.g., `pr-123--site.netlify.app`)
-
-**Characteristics:**
-- Temporary
-- Predictable URL
-- Easier for review
-
-**Example:**
-```yaml
-- uses: quantecon/actions/deploy-netlify@v1
-  with:
-    alias: 'pr-${{ github.event.pull_request.number }}'
-```
-
-## PR Comment Format
-
-For pull request previews, the action automatically comments:
-
-```markdown
-## 🔍 Preview Deployment
-
-✅ **Deployed successfully!**
-
-🔗 **Preview URL:** https://5f3a8b2c--site.netlify.app
-📊 **Logs:** https://app.netlify.com/sites/site/deploys/5f3a8b2c
-
----
-
-**Build Info:**
-- Commit: `a7f3b2c`
-- Branch: `refs/heads/feature-branch`
-- Workflow: [CI](https://github.com/org/repo/actions/runs/123456)
-```
-
-## Troubleshooting
-
-### Authentication Errors
-
-**Symptom:** `Error: Authentication failed`
-
-**Solutions:**
-1. Verify `NETLIFY_AUTH_TOKEN` secret exists
-2. Check token hasn't expired
-3. Regenerate token in Netlify settings
-4. Ensure token has correct permissions
-
-### Site Not Found
-
-**Symptom:** `Error: Site not found`
-
-**Solutions:**
-1. Verify `NETLIFY_SITE_ID` secret exists
-2. Check site ID matches Netlify dashboard
-3. Ensure token has access to this site
-4. Verify site hasn't been deleted
-
-### Build Directory Empty
-
-**Symptom:** `Error: No files to deploy`
-
-**Solutions:**
-1. Verify `build-dir` path is correct
-2. Check build step completed successfully
-3. Ensure build artifacts exist: `ls -la _build/html`
-4. Use absolute path if needed
-
-### Deployment Timeout
-
-**Symptom:** Deployment hangs or times out
-
-**Solutions:**
-1. Check build directory size (should be <1GB)
-2. Verify network connectivity
-3. Check Netlify status page
-4. Retry deployment
-
-### PR Comment Not Posted
-
-**Symptom:** Preview deployed but no PR comment
-
-**Solutions:**
-1. Verify workflow runs on `pull_request` event
-2. Check GitHub token permissions
-3. Ensure `actions/github-script@v7` has access
-4. Check if comment already exists
-
-## Performance
-
-| Step | Time |
-|------|------|
-| Install Netlify CLI | ~10 seconds |
-| Deploy (preview) | ~30-60 seconds |
-| Deploy (production) | ~30-60 seconds |
-| Post PR comment | ~2 seconds |
-| **Total** | **~45-75 seconds** |
-
-## Examples
-
-### Complete CI Workflow with Preview
-
-```yaml
-name: CI
-
-on:
-  pull_request:
-
-jobs:
-  build-and-preview:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
-      - uses: quantecon/actions/setup-lecture-env@v1
-      
-      - uses: quantecon/actions/build-lectures@v1
-        id: build
-      
-      - uses: quantecon/actions/deploy-netlify@v1
+        with:
+          fetch-depth: 0
+
+      - name: Setup Environment
+        uses: quantecon/actions/setup-environment@v1
+        with:
+          environment-file: environment.yml
+
+      - name: Build Lectures
+        run: jb build lectures --path-output ./
+
+      - name: Deploy Preview
+        uses: quantecon/actions/deploy-netlify@v1
         with:
           netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
-          build-dir: ${{ steps.build.outputs.build-path }}
-          alias: 'pr-${{ github.event.pull_request.number }}'
+          build-dir: _build/html
 ```
 
-### Publish Workflow with Production
+## Setup
 
-```yaml
-name: Publish
+### 1. Create Netlify Site
 
-on:
-  push:
-    tags: ['publish-*']
+1. Go to [Netlify](https://app.netlify.com) and create a new site
+2. You can create an empty site - we deploy via CLI, not Netlify's build
 
-jobs:
-  deploy-production:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - uses: quantecon/actions/setup-lecture-env@v1
-      
-      - uses: quantecon/actions/build-lectures@v1
-        id: build
-      
-      - uses: quantecon/actions/deploy-netlify@v1
-        with:
-          netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
-          build-dir: ${{ steps.build.outputs.build-path }}
-          production: 'true'
-          message: 'Production deployment ${{ github.ref_name }}'
-```
+### 2. Get Credentials
 
-See [MIGRATION-GUIDE.md](../MIGRATION-GUIDE.md) for complete workflow examples.
+**NETLIFY_AUTH_TOKEN:**
+1. Netlify → User Settings → Applications → Personal access tokens
+2. Create new token, copy it
+
+**NETLIFY_SITE_ID:**
+1. Netlify → Your Site → Site configuration → General → Site ID
+2. Copy the site ID
+
+### 3. Add GitHub Secrets
+
+In your repository: Settings → Secrets and variables → Actions → New repository secret
+
+Add both `NETLIFY_AUTH_TOKEN` and `NETLIFY_SITE_ID`.
+
+## Security
+
+This action automatically skips deployment for:
+- **Dependabot PRs** - Can't access secrets
+- **Fork PRs** - Can't access secrets
+
+A notification is logged when deployment is skipped.
