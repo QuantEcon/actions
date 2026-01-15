@@ -14,6 +14,12 @@
 test-*/
 examples-*/
 
+# Test build artifacts
+containers/quantecon/tests/minimal-jupyter-book/_build/
+containers/quantecon/tests/*.aux
+containers/quantecon/tests/*.pdf
+containers/quantecon/tests/*.synctex.gz
+
 # Node modules (if testing locally)
 node_modules/
 
