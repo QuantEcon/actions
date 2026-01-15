@@ -20,7 +20,7 @@ Deploys QuantEcon lecture builds to Netlify for PR previews with smart comments 
     build-dir: _build/html
 ```
 
-That's it! Changed lecture detection works automatically for files in the `lectures/` directory.
+That's it! Changed lecture detection works automatically for files in the `lectures/` directory, as long as your workflow checks out the repository with full history (for example, using `actions/checkout@v4` with `fetch-depth: 0`).
 
 ## Inputs
 
