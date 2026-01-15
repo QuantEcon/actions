@@ -74,7 +74,7 @@ jobs:
         with:
           netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          build-dir: _build/html
 ```
 
 ## Expected Time Savings

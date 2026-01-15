@@ -129,19 +129,16 @@ jobs:
       - uses: quantecon/actions/deploy-netlify@main
         if: github.event_name == 'pull_request'
         with:
-          site-id: ${{ vars.NETLIFY_SITE_ID }}
-          auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          publish-dir: ${{ steps.build.outputs.build-path }}
-          alias: pr-${{ github.event.number }}
+          netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          netlify-site-id: ${{ vars.NETLIFY_SITE_ID }}
+          build-dir: ${{ steps.build.outputs.build-path }}
       
-      # Deploy production (main branch)
-      - uses: quantecon/actions/deploy-netlify@main
+      # Deploy production (main branch) - use publish-gh-pages
+      - uses: quantecon/actions/publish-gh-pages@main
         if: github.ref == 'refs/heads/main'
         with:
-          site-id: ${{ vars.NETLIFY_SITE_ID }}
-          auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          publish-dir: ${{ steps.build.outputs.build-path }}
-          production: true
+          build-dir: ${{ steps.build.outputs.build-path }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 **Improvements:**
