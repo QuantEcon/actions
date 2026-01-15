@@ -236,7 +236,7 @@ cd containers/quantecon/tests
 **Prerequisites:**
 - MacTeX (for xelatex)
 - jupyter-book (`pip install jupyter-book`)
-- FreeSerif fonts (`brew install --cask font-freeserif`)
+- DejaVu Serif fonts (`brew install --cask font-dejavu`)
 
 The script runs the same tests as the container test suite locally.
 

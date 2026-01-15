@@ -5,7 +5,7 @@
 set -e
 
 echo "=============================================="
-echo "LOCAL FONT TEST SUITE"
+echo "LOCAL TEST SUITE"
 echo "=============================================="
 echo ""
 
@@ -19,23 +19,21 @@ echo "✓ xelatex found: $(xelatex --version | head -1)"
 echo "✓ jupyter-book found: $(jupyter-book --version)"
 echo ""
 
-# Check for FreeSerif fonts
-echo "Checking for FreeSerif fonts..."
-if fc-list 2>/dev/null | grep -i freeserif >/dev/null; then
-    echo "✓ FreeSerif fonts found:"
-    fc-list | grep -i freeserif
+# Check for DejaVu Serif fonts (used by test-xelatex.tex)
+echo "Checking for DejaVu Serif fonts..."
+if fc-list 2>/dev/null | grep -i "dejavu serif" >/dev/null; then
+    echo "✓ DejaVu Serif fonts found"
 else
-    echo "⚠ FreeSerif fonts NOT found. Install with: brew install --cask font-freeserif"
-    echo "  Or download from: https://www.gnu.org/software/freefont/"
+    echo "⚠ DejaVu Serif fonts NOT found. Install with: brew install --cask font-dejavu"
 fi
 echo ""
 
-# Test 1: Standalone XeLaTeX with explicit FreeSerif
-echo "=============================================="
-echo "TEST 1: Standalone XeLaTeX with FreeSerif"
-echo "=============================================="
+# Test 1: Standalone XeLaTeX with DejaVu Serif
+echo "============================================="
+echo "TEST 1: Standalone XeLaTeX Compilation"
+echo "============================================="
 cd "$(dirname "$0")"
-rm -f test-xelatex.pdf test-xelatex.log test-xelatex.aux
+rm -f test-xelatex.{pdf,log,aux,synctex.gz}
 
 if xelatex test-xelatex.tex 2>&1 | tee /tmp/local-xelatex-test.log; then
     if [ -f test-xelatex.pdf ]; then
