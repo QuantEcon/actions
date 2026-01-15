@@ -87,8 +87,8 @@ git push origin v1
    
    ## 📚 Documentation
    
-   - [README.md](README.md) - Getting started guide
-   - [TESTING.md](TESTING.md) - Comprehensive testing strategy
+   - [README.md](README.md) - Documentation index
+   - [ARCHITECTURE.md](ARCHITECTURE.md) - Architecture overview
    - [MIGRATION-GUIDE.md](MIGRATION-GUIDE.md) - Step-by-step migration
    - [QUICK-REFERENCE.md](QUICK-REFERENCE.md) - Cheat sheet
    - Individual action READMEs with detailed usage
@@ -103,10 +103,6 @@ git push origin v1
    - lecture-python-programming.myst  
    - lecture-python-intro
    - lecture-python-advanced.myst
-   
-   ## 📝 Changelog
-   
-   See [CHANGELOG.md](CHANGELOG.md) for detailed changes.
    ```
 
 3. **Publish release**
@@ -181,12 +177,10 @@ quantecon/actions/
 ├── .gitignore
 ├── LICENSE
 ├── README.md
-├── CHANGELOG.md
-├── CONTRIBUTING.md
-├── TESTING.md
 ├── containers/
 │   └── quantecon/
 │       ├── Dockerfile
+│       ├── environment.yml
 │       └── README.md
 ├── docs/
 │   ├── ARCHITECTURE.md
@@ -210,7 +204,6 @@ quantecon/actions/
 ## 🔄 Next Steps
 
 1. **Test in lecture repositories:**
-   - Follow [TESTING.md](TESTING.md) Phase 1-3
    - Start with `lecture-python-programming.myst` (simplest)
    - Validate caching behavior
    - Measure performance improvements

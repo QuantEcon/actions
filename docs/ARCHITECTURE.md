@@ -1,12 +1,5 @@
 # QuantEcon Actions: Finalized Architecture
 
-**Date:** 19 November 2025  
-**Status:** ✅ Finalized and Ready for Implementation
-
-> **Note:** Detailed analysis documents (container options, UV comparison, action design philosophy) have been archived in `docs/archive/` for reference. This document focuses on the finalized implementation plan.
-
----
-
 ## The Three-Pillar Approach
 
 Our next-generation CI/CD system combines three complementary elements:
@@ -46,8 +39,6 @@ publish-gh-pages/    → Deploy to GitHub Pages
 - ✅ Better error messages (know which step failed)
 - ✅ Independent versioning and updates
 - ✅ Follows GitHub Actions ecosystem standards
-
-**See:** `ACTION-DESIGN-PHILOSOPHY.md` for detailed analysis
 
 ### 3. 💾 Two-Layer Caching
 
@@ -193,8 +184,6 @@ jobs:
 - Clear failure messages
 - Mix and match per lecture needs
 
-**See:** `ACTION-DESIGN-PHILOSOPHY.md` for complete analysis
-
 ### Why Two-Layer Caching?
 
 **Why not just container?**
@@ -294,13 +283,13 @@ quantecon/actions/
 │   └── build-containers.yml       # Weekly automated builds
 │
 └── docs/
-    ├── CONTAINER-ARCHITECTURE.md      # Complete design spec
-    ├── UV-VS-CONDA-ANALYSIS.md        # Why containers over UV
-    ├── ACTION-DESIGN-PHILOSOPHY.md    # Why modular over monolithic
-    ├── ARCHITECTURE-SUMMARY.md        # This file
-    ├── NEXT-STEPS-CONTAINERS.md       # Implementation roadmap
-    └── workflows/
-        └── standard-ci.yml            # Template workflow
+    ├── ARCHITECTURE.md           # This file (architecture overview)
+    ├── CONTAINER-GUIDE.md         # Container build and usage guide
+    ├── FUTURE-DEVELOPMENT.md      # Future enhancement plans
+    ├── MIGRATION-GUIDE.md         # How to migrate lecture repos
+    ├── QUICK-REFERENCE.md         # Quick reference for all actions
+    ├── README.md                  # Documentation index
+    └── SETUP.md                   # Initial setup instructions
 ```
 
 ### Lecture Repos (Simplified)
@@ -373,8 +362,6 @@ lecture-python-intro/
 - Migrate remaining lectures (~10 repos)
 - Monitor and adjust
 - Deprecate old approach
-
-**See:** `NEXT-STEPS-CONTAINERS.md` for detailed week-by-week plan
 
 ---
 
@@ -450,34 +437,13 @@ lecture-python-intro/
 
 ---
 
-## Next Actions
-
-**Tomorrow:**
-1. Review this architecture summary
-2. Collect current lecture requirements
-3. Start Week 1 implementation
-
-**This Week:**
-1. Create container infrastructure
-2. Build first images
-3. Create modular actions
-4. Test locally
-
-**See:** `NEXT-STEPS-CONTAINERS.md` for detailed implementation plan
-
----
-
 ## Related Documentation
 
-**Implementation:**
-- `NEXT-STEPS-CONTAINERS.md` - Week-by-week implementation roadmap (start here)
-- `ARCHITECTURE-SUMMARY.md` - This file (overview and rationale)
-
-**Archived Analysis:**
-- `archive/CONTAINER-ARCHITECTURE.md` - Detailed technical design specification
-- `archive/UV-VS-CONDA-ANALYSIS.md` - Why we chose containers over UV
-- `archive/ACTION-DESIGN-PHILOSOPHY.md` - Why we chose modular over monolithic actions
+- [CONTAINER-GUIDE.md](CONTAINER-GUIDE.md) - Container build and usage guide
+- [MIGRATION-GUIDE.md](MIGRATION-GUIDE.md) - How to migrate lecture repos
+- [QUICK-REFERENCE.md](QUICK-REFERENCE.md) - Quick reference for all actions
+- [FUTURE-DEVELOPMENT.md](FUTURE-DEVELOPMENT.md) - Future enhancement plans
 
 ---
 
-**This architecture is finalized and ready for implementation. 🚀**
+**This architecture is implemented and in production. 🚀**

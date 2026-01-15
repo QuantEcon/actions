@@ -21,9 +21,3 @@ Planned enhancements: GPU support, build optimizations, monitoring
 
 ### [SETUP.md](./SETUP.md)
 Initial repository setup and configuration
-
----
-
-## Archive
-
-[archive/](./archive/) - Design analysis: container options, UV comparison, action design philosophy
