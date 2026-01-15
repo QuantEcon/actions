@@ -105,6 +105,16 @@ jobs:
     builder: 'jupyter'
 ```
 
+### Fast PR Builds (with Build Cache)
+
+```yaml
+- uses: quantecon/actions/build-lectures@v1
+  with:
+    use-build-cache: true  # Restore from main's cache
+```
+
+**Note:** Requires a `cache.yml` workflow to generate the cache. See [MIGRATION-GUIDE.md](MIGRATION-GUIDE.md#step-5-update-cacheyml).
+
 ### Preview with Custom URL
 
 ```yaml
@@ -129,7 +139,8 @@ jobs:
 | Action | Cache Key | Invalidates On |
 |--------|-----------|----------------|
 | `setup-environment` | `conda-{OS}-{hash(env.yml)}-{version}` | env.yml changes, manual bump |
-| `build-lectures` | `jupyter-cache-{OS}-{hash(lectures)}-{sha}` | lecture changes, new commit |
+| `build-lectures` (exec) | `jupyter-cache-{OS}-{hash(lectures)}-{sha}` | lecture changes, new commit |
+| `build-lectures` (build) | `build-{hash(environment.yml)}` | environment.yml changes |
 
 ## 🎯 Inputs Quick Reference
 
@@ -154,6 +165,7 @@ source-dir: 'lectures'           # Source directory
 output-dir: './'                 # Output base
 extra-args: '-W --keep-going'    # JB arguments
 cache-notebook-execution: 'true' # Enable exec cache
+use-build-cache: 'false'         # Restore _build from GitHub cache
 ```
 
 ### deploy-netlify

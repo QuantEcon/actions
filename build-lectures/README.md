@@ -6,6 +6,7 @@ Builds QuantEcon lectures using Jupyter Book with intelligent notebook execution
 
 - 📚 **Multi-builder support** (HTML, PDF, Jupyter notebooks)
 - 💾 **Execution caching** for faster incremental builds
+- 🚀 **Build cache restore** from GitHub cache for fast PR builds
 - ⚙️ **Configurable build options** via extra arguments
 - 📊 **Build summary reporting** with artifact paths
 - 🎯 **Output path detection** based on builder type
@@ -19,12 +20,14 @@ Builds QuantEcon lectures using Jupyter Book with intelligent notebook execution
 | `output-dir` | Base output directory | No | `./` |
 | `extra-args` | Extra jupyter-book build arguments | No | `-W --keep-going` |
 | `cache-notebook-execution` | Enable execution caching | No | `true` |
+| `use-build-cache` | Restore `_build` from GitHub cache | No | `false` |
 
 ## Outputs
 
 | Output | Description |
 |--------|-------------|
 | `build-path` | Full path to build artifacts |
+| `build-cache-hit` | Whether build cache was restored |
 
 ## Usage
 
@@ -65,6 +68,14 @@ Builds QuantEcon lectures using Jupyter Book with intelligent notebook execution
 - uses: quantecon/actions/build-lectures@v1
   with:
     cache-notebook-execution: 'false'
+```
+
+### Fast PR Builds (with Build Cache)
+
+```yaml
+- uses: quantecon/actions/build-lectures@v1
+  with:
+    use-build-cache: true
 ```
 
 ### Using Build Output
@@ -117,6 +128,138 @@ The action caches notebook execution results to avoid re-running unchanged noteb
 ❌ **Fresh branches** - No previous cache to restore
 ❌ **Complete rewrites** - All notebooks need re-execution
 ❌ **Environment changes** - May need clean execution
+
+## Build Cache (Fast PR Builds)
+
+The `use-build-cache` option enables fast incremental builds for PRs by restoring the entire `_build` directory from GitHub's cache.
+
+### How It Works
+
+**Cache Key:** `build-${{ hashFiles('environment.yml') }}`
+
+This means:
+- Cache auto-invalidates when `environment.yml` changes
+- PRs without env changes get fast incremental builds
+- PRs with env changes trigger full rebuilds (tests new dependencies)
+
+### Setting Up Build Cache
+
+To use build caching, your repository needs a **cache generation workflow** that creates the cache for PRs to restore.
+
+#### Step 1: Create Cache Workflow
+
+Create `.github/workflows/cache.yml`:
+
+```yaml
+name: Build Cache
+on:
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly Sunday midnight UTC
+  workflow_dispatch:      # Manual trigger
+  push:
+    branches:
+      - main
+    paths:
+      - 'environment.yml'  # Auto-rebuild when env changes
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      # Clear old cache to ensure fresh build
+      - name: Clear existing cache
+        run: gh cache delete "build-*" --repo ${{ github.repository }} || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - uses: quantecon/actions/setup-environment@v1
+      
+      # Fresh build (no cache restore)
+      - uses: quantecon/actions/build-lectures@v1
+        id: build
+      
+      # Save to GitHub cache
+      - uses: actions/cache/save@v4
+        with:
+          path: _build
+          key: build-${{ hashFiles('environment.yml') }}
+      
+      # Upload artifact for inspection/reference
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-cache-${{ hashFiles('environment.yml') }}
+          path: _build
+          retention-days: 90
+```
+
+#### Step 2: Use Cache in PR Workflow
+
+In your CI workflow (e.g., `.github/workflows/ci.yml`):
+
+```yaml
+name: CI
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: quantecon/actions/setup-environment@v1
+      
+      - uses: quantecon/actions/build-lectures@v1
+        with:
+          use-build-cache: true  # Restore from main's cache
+```
+
+### Cache Generation Triggers
+
+| Trigger | When | Purpose |
+|---------|------|---------|
+| `schedule` | Weekly (Sunday midnight) | Fresh build with latest dependencies |
+| `workflow_dispatch` | Manual | On-demand rebuild |
+| `push` (paths: environment.yml) | Env change merged to main | Update cache with new env |
+
+### Cache Behavior
+
+| Scenario | Cache Key Match | Result |
+|----------|-----------------|--------|
+| PR (no env change) | ✅ Exact match | Fast incremental build |
+| PR (changes env) | ❌ Miss | Full rebuild (tests new deps) |
+| After env merge | New key | Cache rebuilt automatically |
+
+### Build Cache vs Execution Cache
+
+| Feature | Build Cache | Execution Cache |
+|---------|-------------|-----------------|
+| What's cached | Entire `_build/` (~150 MB) | Just `.jupyter_cache` |
+| Restore speed | Very fast (content-addressable) | Fast |
+| Invalidation | `environment.yml` hash | Lecture content hash |
+| PR support | ✅ Cross-branch restore | ⚠️ Same branch only |
+| Use case | Fast PR previews | Same-branch rebuilds |
+
+**Recommendation:** Use `use-build-cache: true` for PR workflows, which automatically disables execution caching to avoid conflicts.
+
+### Inspecting the Cache
+
+GitHub cache is not directly downloadable, but the cache workflow uploads an artifact for inspection:
+
+**List caches:**
+```bash
+gh cache list --repo your-org/your-repo
+```
+
+**Delete caches:**
+```bash
+gh cache delete "build-*" --repo your-org/your-repo
+```
+
+**Download artifact:** Go to Actions → Cache workflow → Download artifact
 
 ## Builder Types
 
