@@ -238,7 +238,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - uses: quantecon/actions/setup-lecture-env@v1
+      - uses: quantecon/actions/setup-environment@v1
+        with:
+          install-latex: 'true'
       
       - uses: quantecon/actions/build-lectures@v1
         id: build
@@ -257,7 +259,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: quantecon/actions/setup-lecture-env@v1
+      - uses: quantecon/actions/setup-environment@v1
       - uses: quantecon/actions/build-lectures@v1
         with:
           builder: 'html'
@@ -266,11 +268,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: quantecon/actions/setup-lecture-env@v1
-      - uses: quantecon/actions/setup-latex@v1
+      - uses: quantecon/actions/setup-environment@v1
+        with:
+          install-latex: 'true'
       - uses: quantecon/actions/build-lectures@v1
         with:
           builder: 'pdflatex'
 ```
 
-See [MIGRATION-GUIDE.md](../MIGRATION-GUIDE.md) for complete workflow examples.
+See [docs/MIGRATION-GUIDE.md](../docs/MIGRATION-GUIDE.md) for complete workflow examples.

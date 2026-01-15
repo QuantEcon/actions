@@ -29,23 +29,28 @@ Before starting migration:
 
 ---
 
-## Quick Migration: Unified Action Approach
+## Quick Migration: Using setup-environment
 
-**Use this for new migrations (recommended as of 2025-11-07):**
+**Recommended approach:**
 
-### Before (Old Approach)
+### Before (Manual Setup)
 ```yaml
-- uses: quantecon/actions/setup-lecture-env@main
+- name: Setup Anaconda
+  uses: conda-incubator/setup-miniconda@v3
   with:
-    python-version: '3.13'
-    environment-file: 'environment.yml'
-    
-- uses: quantecon/actions/setup-latex@main
+    python-version: "3.13"
+    environment-file: environment.yml
+    activate-environment: quantecon
+
+- name: Install LaTeX
+  run: |
+    sudo apt-get update
+    sudo apt-get install -y texlive-latex-extra ...
 ```
 
 ### After (Unified Action)
 ```yaml
-- uses: quantecon/actions/setup-environment@main
+- uses: quantecon/actions/setup-environment@v1
   with:
     python-version: '3.13'
     environment-file: 'environment.yml'
@@ -54,7 +59,7 @@ Before starting migration:
     environment-name: 'quantecon'
 ```
 
-**Benefits:** Simpler configuration, single cache, unified setup.
+**Benefits:** Simpler configuration, Conda caching (~5-6 min saved), unified setup.
 
 ---
 
@@ -96,7 +101,7 @@ jobs:
   preview:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
       
       - name: Setup Anaconda
         uses: conda-incubator/setup-miniconda@v3
@@ -131,47 +136,32 @@ jobs:
   preview:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       
       # Setup environment with caching
-      - uses: quantecon/actions/setup-lecture-env@v1
+      - uses: quantecon/actions/setup-environment@v1
         with:
           python-version: '3.13'
           environment-file: 'environment.yml'
+          environment-name: 'quantecon'
+          install-latex: 'true'
           install-ml-libs: 'false'  # Set to 'true' for lecture-python.myst
-          cache-version: 'v1'
-      
-      # Setup LaTeX with caching
-      - uses: quantecon/actions/setup-latex@v1
-        with:
-          cache-version: 'v1'
-      
-      # Download cached build
-      - name: Download "build" folder (cache)
-        uses: dawidd6/action-download-artifact@v11
-        with:
-          workflow: cache.yml
-          branch: main
-          name: build-cache
-          path: _build
       
       # Build lectures
       - uses: quantecon/actions/build-lectures@v1
+        id: build
         with:
           source-dir: 'lectures'
-          build-html: 'true'
-          build-pdf: 'true'
-          build-notebooks: 'true'
-          cache-workflow: 'cache.yml'
-          cache-branch: 'main'
+          builder: 'html'
       
       # Deploy preview
       - uses: quantecon/actions/deploy-netlify@v1
-        if: github.event_name == 'pull_request'
         with:
           netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
-          build-dir: '_build/html'
+          build-dir: ${{ steps.build.outputs.build-path }}
 ```
 
 **Key Changes:**
@@ -228,18 +218,16 @@ jobs:
   cache:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
       
-      - uses: quantecon/actions/setup-lecture-env@v1
+      - uses: quantecon/actions/setup-environment@v1
         with:
+          install-latex: 'true'
           install-ml-libs: 'false'  # Adjust per repo
-      
-      - uses: quantecon/actions/setup-latex@v1
       
       - uses: quantecon/actions/build-lectures@v1
         with:
-          build-html: 'true'
-          cache-workflow: ''  # Don't download cache in cache workflow
+          builder: 'html'
       
       - name: Upload "_build" folder (cache)
         uses: actions/upload-artifact@v5
@@ -290,24 +278,23 @@ on:
     tags:
       - 'publish*'
 
+permissions:
+  contents: write
+
 jobs:
   publish:
     if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags')
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v4
       
-      - uses: quantecon/actions/setup-lecture-env@v1
+      - uses: quantecon/actions/setup-environment@v1
         with:
+          install-latex: 'true'
           install-ml-libs: 'false'  # Adjust per repo
       
-      - uses: quantecon/actions/setup-latex@v1
-      
-      - name: Download "build" folder (cache)
-        uses: dawidd6/action-download-artifact@v11
-        with:
-          workflow: cache.yml
+      - uses: quantecon/actions/build-lectures@v1
+        id: build
           branch: main
           name: build-cache
           path: _build
@@ -342,8 +329,9 @@ jobs:
 
 ```yaml
 # In ci.yml, cache.yml, publish.yml:
-- uses: quantecon/actions/setup-lecture-env@v1
+- uses: quantecon/actions/setup-environment@v1
   with:
+    install-latex: 'true'
     install-ml-libs: 'true'  # Enable ML libraries
     ml-libs-version: 'jax062-torch-nightly-cuda12'  # For cache key
 
@@ -464,10 +452,11 @@ jobs:
   preview:
     runs-on: "runs-on=${{ github.run_id }}/family=g4dn.2xlarge/image=quantecon_ubuntu2404/disk=large"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
       
-      - uses: quantecon/actions/setup-lecture-env@v1
+      - uses: quantecon/actions/setup-environment@v1
         with:
+          install-latex: 'true'
           install-ml-libs: 'true'
           ml-libs-version: 'jax062-torch-nightly-cuda12'
 ```
@@ -482,11 +471,11 @@ jobs:
   preview:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
       
-      - uses: quantecon/actions/setup-lecture-env@v1
+      - uses: quantecon/actions/setup-environment@v1
         with:
-          install-ml-libs: 'false'
+          install-latex: 'true'
 ```
 
 ### lecture-python-intro
@@ -565,7 +554,7 @@ git push origin main
 ```yaml
 # In affected workflow file, comment out action and restore original:
 
-# - uses: quantecon/actions/setup-lecture-env@v1
+# - uses: quantecon/actions/setup-environment@v1
 
 - name: Setup Anaconda
   uses: conda-incubator/setup-miniconda@v3

@@ -1,23 +1,44 @@
 # Testing Strategy
 
-## Current Status (2025-11-20)
+## Current Status (2026-01-15)
 
-**Container infrastructure complete.** Ready for testing with `test-lecture-python-intro`.
+**Container infrastructure complete.** Ready for production use.
 
-**Test Repository:** `QuantEcon/test-lecture-python-intro`
-- Clone of `lecture-python-intro` for testing
-- Will test container-based workflow
-- Validates build output, timing, and deployment
+---
+
+## Local Test Fixtures
+
+### `test-lecture-python-intro/` (git-ignored)
+
+A local clone of `lecture-python-intro` used for testing workflows locally. This directory is excluded from version control via the `.gitignore` pattern `test-*/`.
+
+**Purpose:**
+- Test container builds locally
+- Validate action changes before pushing
+- Debug workflow issues
+
+**Setup:**
+```bash
+# Clone test fixture (from actions repo root)
+git clone https://github.com/QuantEcon/lecture-python-intro.git test-lecture-python-intro
+```
+
+**Usage with local scripts:**
+```bash
+# Test container builds
+cd containers/quantecon/tests
+./run-local-tests.sh
+```
 
 ---
 
 ## Approach
 
-**Test in isolation** using `test-lecture-python-intro` before production rollout.
+**Test in isolation** using test fixtures before production rollout.
 
 ### Testing Principles
 
-1. **Isolated testing** - Use test repository, not production
+1. **Isolated testing** - Use test directories, not production repos
 2. **Compare outputs** - Build artifacts must match current approach
 3. **Measure performance** - Document actual vs expected timing
 4. **Validate deployment** - Test Netlify and build artifacts
