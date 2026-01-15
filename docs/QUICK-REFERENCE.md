@@ -249,8 +249,9 @@ permissions:
 ### lecture-python.myst (GPU)
 
 ```yaml
-- uses: quantecon/actions/setup-lecture-env@v1
+- uses: quantecon/actions/setup-environment@v1
   with:
+    install-latex: 'true'
     install-ml-libs: 'true'  # JAX + PyTorch
 ```
 
@@ -258,7 +259,9 @@ permissions:
 
 ```yaml
 # Standard setup (no ML libs)
-- uses: quantecon/actions/setup-lecture-env@v1
+- uses: quantecon/actions/setup-environment@v1
+  with:
+    install-latex: 'true'
 ```
 
 ### lecture-python-intro
@@ -272,7 +275,9 @@ permissions:
 
 ```yaml
 # Same as programming (standard setup)
-- uses: quantecon/actions/setup-lecture-env@v1
+- uses: quantecon/actions/setup-environment@v1
+  with:
+    install-latex: 'true'
 ```
 
 ## 🔗 Links
