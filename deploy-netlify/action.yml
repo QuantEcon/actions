@@ -1,5 +1,5 @@
-name: 'Deploy to Netlify'
-description: 'Deploys lecture builds to Netlify for preview or production'
+name: 'Deploy Netlify Preview'
+description: 'Deploys lecture builds to Netlify for PR previews with smart comments showing changed pages'
 author: 'QuantEcon'
 
 inputs:
@@ -12,110 +12,210 @@ inputs:
   build-dir:
     description: 'Directory containing built site'
     required: true
-  production:
-    description: 'Deploy to production (true) or preview (false)'
+  lectures-dir:
+    description: 'Directory containing lecture .md files for change detection. Set to empty string to disable.'
     required: false
-    default: 'false'
-  alias:
-    description: 'Deploy alias for preview deployments'
-    required: false
-    default: ''
-  message:
-    description: 'Deployment message'
-    required: false
-    default: 'Deployed via GitHub Actions'
+    default: 'lectures'
 
 outputs:
   deploy-url:
-    description: 'URL of the deployed site'
+    description: 'URL of the deployed preview site'
     value: ${{ steps.deploy.outputs.deploy-url }}
-  logs-url:
-    description: 'URL to deployment logs'
-    value: ${{ steps.deploy.outputs.logs-url }}
+  changed-files:
+    description: 'List of changed lecture files'
+    value: ${{ steps.detect-changes.outputs.changed-files }}
 
 runs:
   using: "composite"
   steps:
-    - name: Install Netlify CLI
+    - name: Check for trusted actor
+      id: check-trust
       shell: bash
       run: |
-        npm install -g netlify-cli@latest
+        # Skip for dependabot and fork PRs (they can't access secrets)
+        if [ "${{ github.actor }}" = "dependabot[bot]" ]; then
+          echo "skip=true" >> $GITHUB_OUTPUT
+          echo "⚠️ Skipping Netlify deploy for dependabot"
+        elif [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
+          echo "skip=true" >> $GITHUB_OUTPUT
+          echo "⚠️ Skipping Netlify deploy for fork PR"
+        else
+          echo "skip=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Detect Changed Lecture Files
+      id: detect-changes
+      if: steps.check-trust.outputs.skip != 'true' && inputs.lectures-dir != '' && github.event_name == 'pull_request'
+      shell: bash
+      run: |
+        echo "Detecting changed lecture files in ${{ inputs.lectures-dir }}..."
         
+        # Fetch base and head commits
+        git fetch origin ${{ github.event.pull_request.base.sha }}:refs/remotes/origin/pr-base 2>/dev/null || true
+        git fetch origin ${{ github.event.pull_request.head.sha }}:refs/remotes/origin/pr-head 2>/dev/null || true
+        
+        # Get changed files
+        all_changed=$(git diff --name-status ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }} 2>/dev/null || echo "")
+        
+        if [ -z "$all_changed" ]; then
+          echo "No changes detected"
+          echo "changed-files=" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        
+        # Filter for lecture files (Added or Modified, not Deleted)
+        lectures_dir="${{ inputs.lectures-dir }}"
+        changed_lecture_files=""
+        
+        while IFS=$'\t' read -r status file; do
+          [ -z "$status" ] && continue
+          
+          # Only include Added (A) or Modified (M) files in lectures dir
+          if [[ "$status" =~ ^[AM] ]] && [[ "$file" =~ ^${lectures_dir}/.*\.md$ ]] && [[ ! "$file" =~ ^${lectures_dir}/_ ]] && [[ "$file" != "${lectures_dir}/intro.md" ]]; then
+            if [ -f "$file" ]; then
+              # Verify actual content changes
+              content_diff=$(git diff ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }} -- "$file" | grep -E '^[+-]' | grep -v '^[+-]{3}' | wc -l)
+              if [ "$content_diff" -gt 0 ]; then
+                echo "✓ Changed: $file"
+                if [ -z "$changed_lecture_files" ]; then
+                  changed_lecture_files="$file"
+                else
+                  changed_lecture_files="$changed_lecture_files"$'\n'"$file"
+                fi
+              fi
+            fi
+          fi
+        done <<< "$all_changed"
+        
+        if [ -n "$changed_lecture_files" ]; then
+          echo "changed-files<<EOF" >> $GITHUB_OUTPUT
+          echo "$changed_lecture_files" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        else
+          echo "changed-files=" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Install Netlify CLI
+      if: steps.check-trust.outputs.skip != 'true'
+      shell: bash
+      run: npm install -g netlify-cli@latest
+
     - name: Deploy to Netlify
       id: deploy
+      if: steps.check-trust.outputs.skip != 'true' && github.event_name == 'pull_request'
       shell: bash
       run: |
-        if [ "${{ inputs.production }}" = "true" ]; then
-          echo "🚀 Deploying to production..."
-          DEPLOY_OUTPUT=$(netlify deploy \
-            --dir="${{ inputs.build-dir }}" \
-            --site="${{ inputs.netlify-site-id }}" \
-            --auth="${{ inputs.netlify-auth-token }}" \
-            --prod \
-            --message="${{ inputs.message }}")
-        else
-          echo "🔍 Deploying preview..."
-          if [ -n "${{ inputs.alias }}" ]; then
-            DEPLOY_OUTPUT=$(netlify deploy \
-              --dir="${{ inputs.build-dir }}" \
-              --site="${{ inputs.netlify-site-id }}" \
-              --auth="${{ inputs.netlify-auth-token }}" \
-              --alias="${{ inputs.alias }}" \
-              --message="${{ inputs.message }}")
-          else
-            DEPLOY_OUTPUT=$(netlify deploy \
-              --dir="${{ inputs.build-dir }}" \
-              --site="${{ inputs.netlify-site-id }}" \
-              --auth="${{ inputs.netlify-auth-token }}" \
-              --message="${{ inputs.message }}")
-          fi
-        fi
+        PR_NUMBER="${{ github.event.pull_request.number }}"
+        COMMIT_SHA="${{ github.event.pull_request.head.sha }}"
+        SHORT_SHA="${COMMIT_SHA:0:7}"
+        
+        echo "🔍 Deploying preview for PR #${PR_NUMBER}..."
+        
+        DEPLOY_OUTPUT=$(netlify deploy \
+          --dir="${{ inputs.build-dir }}" \
+          --site="${{ inputs.netlify-site-id }}" \
+          --auth="${{ inputs.netlify-auth-token }}" \
+          --alias="pr-${PR_NUMBER}" \
+          --message="PR #${PR_NUMBER} (${SHORT_SHA})" \
+          --json)
         
         echo "::group::Deployment Output"
         echo "$DEPLOY_OUTPUT"
         echo "::endgroup::"
         
-        # Extract URLs from output
-        DEPLOY_URL=$(echo "$DEPLOY_OUTPUT" | grep -o 'https://[^ ]*' | head -1)
-        LOGS_URL=$(echo "$DEPLOY_OUTPUT" | grep -o 'https://app.netlify.com/[^ ]*' | head -1)
+        # Extract URL from JSON output
+        DEPLOY_URL=$(echo "$DEPLOY_OUTPUT" | jq -r '.deploy_url // .url // empty')
+        
+        # Validate deployment URL
+        if [ -z "$DEPLOY_URL" ]; then
+          echo "❌ Error: Failed to extract deployment URL from Netlify response"
+          echo "Raw output was:"
+          echo "$DEPLOY_OUTPUT"
+          exit 1
+        fi
         
         echo "deploy-url=$DEPLOY_URL" >> $GITHUB_OUTPUT
-        echo "logs-url=$LOGS_URL" >> $GITHUB_OUTPUT
         
         echo "✅ Deployment successful!"
         echo "📍 URL: $DEPLOY_URL"
-        echo "📊 Logs: $LOGS_URL"
 
-    - name: Comment on PR (Preview Only)
-      if: inputs.production != 'true' && github.event_name == 'pull_request'
+    - name: Comment on PR
+      if: steps.check-trust.outputs.skip != 'true' && github.event_name == 'pull_request' && steps.deploy.outputs.deploy-url != ''
       uses: actions/github-script@v7
       with:
+        github-token: ${{ github.token }}
         script: |
           const deployUrl = '${{ steps.deploy.outputs.deploy-url }}';
-          const logsUrl = '${{ steps.deploy.outputs.logs-url }}';
+          const changedFiles = `${{ steps.detect-changes.outputs.changed-files }}`;
+          const lecturesDir = '${{ inputs.lectures-dir }}';
+          const prNumber = context.issue.number;
+          const commitSha = '${{ github.event.pull_request.head.sha }}';
+          const shortSha = commitSha.substring(0, 7);
+          const commitUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/commit/${commitSha}`;
           
-          const comment = `## 🔍 Preview Deployment
+          // Build the comment body
+          let comment = `## 📖 Netlify Preview Ready!\n\n`;
+          comment += `**Preview URL:** ${deployUrl}\n\n`;
+          comment += `**Commit:** [\`${shortSha}\`](${commitUrl})\n\n`;
           
-          ✅ **Deployed successfully!**
+          // Add direct links to changed lecture pages
+          if (changedFiles && changedFiles.trim() && lecturesDir) {
+            const files = changedFiles.split('\n').filter(f => f.trim());
+            if (files.length > 0) {
+              comment += `### 📚 Changed Lectures\n\n`;
+              for (const file of files) {
+                const cleanFile = file.trim();
+                if (cleanFile) {
+                  const fileName = cleanFile.replace(`${lecturesDir}/`, '').replace('.md', '');
+                  const pageUrl = `${deployUrl}/${fileName}.html`;
+                  comment += `- [${fileName}](${pageUrl})\n`;
+                }
+              }
+              comment += '\n';
+            }
+          }
           
-          🔗 **Preview URL:** ${deployUrl}
-          📊 **Logs:** ${logsUrl}
+          // Add build info
+          comment += `---\n`;
+          comment += `<details><summary>Build Info</summary>\n\n`;
+          comment += `- **Workflow:** [${context.workflow}](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})\n`;
+          comment += `</details>\n`;
           
-          ---
-          
-          **Build Info:**
-          - Commit: \`${context.sha.substring(0, 7)}\`
-          - Branch: \`${context.ref}\`
-          - Workflow: [${context.workflow}](${context.payload.repository.html_url}/actions/runs/${context.runId})
-          `;
-          
-          github.rest.issues.createComment({
-            issue_number: context.issue.number,
+          // Check for existing preview comment and update it
+          const comments = await github.rest.issues.listComments({
+            issue_number: prNumber,
             owner: context.repo.owner,
             repo: context.repo.repo,
-            body: comment
           });
+          
+          const marker = '## 📖 Netlify Preview Ready!';
+          const existingComment = comments.data.find(c => c.body.includes(marker));
+          
+          if (existingComment) {
+            await github.rest.issues.updateComment({
+              comment_id: existingComment.id,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+            console.log(`Updated existing comment ${existingComment.id}`);
+          } else {
+            await github.rest.issues.createComment({
+              issue_number: prNumber,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+            console.log('Created new comment');
+          }
+
+    - name: Skip notification
+      if: steps.check-trust.outputs.skip == 'true'
+      shell: bash
+      run: |
+        echo "⚠️ Netlify deployment skipped (untrusted actor or fork PR)"
+        echo "This is expected for dependabot PRs and PRs from forks."
 
 branding:
   icon: 'upload-cloud'
-  color: 'orange'
+  color: 'blue'

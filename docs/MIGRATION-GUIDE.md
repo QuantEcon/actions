@@ -169,11 +169,9 @@ jobs:
       - uses: quantecon/actions/deploy-netlify@v1
         if: github.event_name == 'pull_request'
         with:
-          publish-dir: '_build/html/'
-          production-branch: 'main'
-          github-token: ${{ secrets.GITHUB_TOKEN }}
           netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
+          build-dir: '_build/html'
 ```
 
 **Key Changes:**

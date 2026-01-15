@@ -152,9 +152,7 @@ cache-notebook-execution: 'true' # Enable exec cache
 netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}  # Required
 netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}        # Required
 build-dir: '_build/html'         # Required
-production: 'false'              # true for prod
-alias: ''                        # Custom preview URL
-message: 'Deployed via GHA'      # Commit message
+lectures-dir: 'lectures'         # For change detection (default)
 ```
 
 ### publish-gh-pages
@@ -187,7 +185,7 @@ commit-message: 'Deploy to GH Pages'  # Commit msg
 
 # Access:
 # - ${{ steps.netlify.outputs.deploy-url }}
-# - ${{ steps.netlify.outputs.logs-url }}
+# - ${{ steps.netlify.outputs.changed-files }}
 ```
 
 ### publish-gh-pages
