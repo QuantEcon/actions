@@ -6,7 +6,8 @@ Publishes QuantEcon lecture builds to GitHub Pages using native GitHub Pages dep
 
 - 📄 **Native GitHub Pages deployment** - No gh-pages branch needed
 - 🌐 **Custom domain support** via CNAME file
-- 📊 **Deployment statistics** (file count, size)
+- � **Release assets** - Optional HTML archive, checksum, and manifest
+- �📊 **Deployment statistics** (file count, size)
 - 🔗 **Automatic URL generation** from GitHub
 - ⚡ **No repo bloat** - Eliminates gh-pages branch history issues
 
@@ -27,14 +28,18 @@ This action uses GitHub's native Pages deployment (via artifacts) instead of pus
 |-------|-------------|----------|---------|
 | `build-dir` | Directory with built site | Yes | - |
 | `cname` | Custom domain | No | - |
+| `create-release-assets` | Create and upload release assets | No | `false` |
+| `asset-name` | Base name for assets (e.g., "lecture-python-html") | No | `<repo>-html` |
+| `github-token` | Token for uploading release assets | If creating assets | - |
 
-**Note:** `github-token` is no longer needed - native deployment uses OIDC.
+**Note:** `github-token` is only needed when `create-release-assets: 'true'`.
 
 ## Outputs
 
 | Output | Description |
 |--------|-------------|
 | `page-url` | URL of deployed site |
+| `asset-url` | URL of uploaded release asset (if created) |
 
 ## Usage
 
@@ -68,6 +73,27 @@ This action uses GitHub's native Pages deployment (via artifacts) instead of pus
     echo "Site deployed to: ${{ steps.pages.outputs.page-url }}"
 ```
 
+### With Release Assets
+
+Create downloadable archives attached to GitHub releases:
+
+```yaml
+- uses: quantecon/actions/publish-gh-pages@v1
+  with:
+    build-dir: '_build/html'
+    cname: 'python.quantecon.org'
+    create-release-assets: 'true'
+    asset-name: 'lecture-python-html'
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+```
+
+This creates and uploads to the release:
+- `lecture-python-html-<tag>.tar.gz` - Complete site archive
+- `lecture-python-html-checksum.txt` - SHA256 checksum
+- `lecture-python-html-manifest.json` - Metadata (commit, timestamp, size)
+
+**Note:** Requires `contents: write` permission for release uploads.
+
 ## Setup Requirements
 
 ### Required Workflow Permissions
@@ -76,7 +102,7 @@ The workflow must have these permissions:
 
 ```yaml
 permissions:
-  contents: read
+  contents: write  # For release assets (read is enough without assets)
   pages: write
   id-token: write
 ```
@@ -164,7 +190,7 @@ on:
     tags: ['publish-*']
 
 permissions:
-  contents: read
+  contents: write  # For release assets
   pages: write
   id-token: write
 
@@ -193,6 +219,9 @@ jobs:
         with:
           build-dir: ${{ steps.build.outputs.build-path }}
           cname: 'python.quantecon.org'
+          create-release-assets: 'true'
+          asset-name: 'lecture-python-html'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 ### Conditional Deployment

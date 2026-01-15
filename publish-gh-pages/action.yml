@@ -10,11 +10,26 @@ inputs:
     description: 'Custom domain for GitHub Pages (added as CNAME file)'
     required: false
     default: ''
+  create-release-assets:
+    description: 'Create and upload release assets (HTML archive, checksum, manifest)'
+    required: false
+    default: 'false'
+  asset-name:
+    description: 'Base name for release assets (e.g., "lecture-python-html")'
+    required: false
+    default: ''
+  github-token:
+    description: 'GitHub token for uploading release assets (only needed if create-release-assets is true)'
+    required: false
+    default: ''
 
 outputs:
   page-url:
     description: 'URL of the deployed GitHub Pages site'
     value: ${{ steps.deployment.outputs.page_url }}
+  asset-url:
+    description: 'URL of the uploaded release asset (if created)'
+    value: ${{ steps.upload-release.outputs.asset-url }}
 
 runs:
   using: "composite"
@@ -34,10 +49,13 @@ runs:
         # Count files
         FILE_COUNT=$(find "${{ inputs.build-dir }}" -type f | wc -l)
         echo "📊 Files to deploy: $FILE_COUNT"
+        echo "file-count=$FILE_COUNT" >> $GITHUB_OUTPUT
         
         # Calculate size
         SIZE=$(du -sh "${{ inputs.build-dir }}" | cut -f1)
+        SIZE_MB=$(du -sm "${{ inputs.build-dir }}" | cut -f1)
         echo "💾 Total size: $SIZE"
+        echo "size-mb=$SIZE_MB" >> $GITHUB_OUTPUT
         
         # Add CNAME file if specified
         if [ -n "${{ inputs.cname }}" ]; then
@@ -59,6 +77,60 @@ runs:
       id: deployment
       uses: actions/deploy-pages@v4
 
+    - name: Create release assets
+      id: create-assets
+      if: inputs.create-release-assets == 'true'
+      shell: bash
+      run: |
+        # Determine asset name
+        ASSET_NAME="${{ inputs.asset-name }}"
+        if [ -z "$ASSET_NAME" ]; then
+          # Default to repo name
+          ASSET_NAME="${GITHUB_REPOSITORY#*/}-html"
+        fi
+        
+        TAG_NAME="${GITHUB_REF_NAME}"
+        ARCHIVE_NAME="${ASSET_NAME}-${TAG_NAME}.tar.gz"
+        
+        echo "📦 Creating release assets..."
+        echo "   Archive: $ARCHIVE_NAME"
+        
+        # Create tarball
+        tar -czf "$ARCHIVE_NAME" -C "${{ inputs.build-dir }}" .
+        
+        # Create checksum
+        sha256sum "$ARCHIVE_NAME" > "${ASSET_NAME}-checksum.txt"
+        
+        # Create manifest
+        cat > "${ASSET_NAME}-manifest.json" << EOF
+        {
+          "name": "$ASSET_NAME",
+          "tag": "$TAG_NAME",
+          "commit": "$GITHUB_SHA",
+          "timestamp": "$(date -Iseconds)",
+          "size_mb": ${{ steps.prepare.outputs.size-mb }},
+          "file_count": ${{ steps.prepare.outputs.file-count }},
+          "repository": "$GITHUB_REPOSITORY"
+        }
+        EOF
+        
+        echo "archive-name=$ARCHIVE_NAME" >> $GITHUB_OUTPUT
+        echo "checksum-name=${ASSET_NAME}-checksum.txt" >> $GITHUB_OUTPUT
+        echo "manifest-name=${ASSET_NAME}-manifest.json" >> $GITHUB_OUTPUT
+        echo "✅ Release assets created"
+
+    - name: Upload release assets
+      id: upload-release
+      if: inputs.create-release-assets == 'true'
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          ${{ steps.create-assets.outputs.archive-name }}
+          ${{ steps.create-assets.outputs.checksum-name }}
+          ${{ steps.create-assets.outputs.manifest-name }}
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+
     - name: Display Deployment Info
       shell: bash
       run: |
@@ -67,6 +139,9 @@ runs:
         echo "📍 Page URL: ${{ steps.deployment.outputs.page_url }}"
         if [ -n "${{ inputs.cname }}" ]; then
           echo "🌐 Custom domain: ${{ inputs.cname }}"
+        fi
+        if [ "${{ inputs.create-release-assets }}" == "true" ]; then
+          echo "📦 Release assets uploaded to: https://github.com/$GITHUB_REPOSITORY/releases/tag/$GITHUB_REF_NAME"
         fi
         echo "::endgroup::"
 
