@@ -10,7 +10,7 @@ Quick guide for using QuantEcon container infrastructure.
 - Ubuntu 24.04 LTS
 - TexLive (latest from Ubuntu repos)
 - Miniconda + Python 3.13
-- Anaconda 2025.06 (numpy, scipy, pandas, matplotlib, jupyter)
+- Anaconda 2025.12 (numpy, scipy, pandas, matplotlib, jupyter)
 - Jupyter Book 1.0.4post1 + extensions
 
 **Updates:** Weekly automated builds (Monday 2am UTC)

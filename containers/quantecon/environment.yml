@@ -3,7 +3,7 @@ channels:
   - defaults
 dependencies:
   - python=3.13
-  - anaconda=2025.06  # Includes: numpy, scipy, pandas, matplotlib, seaborn, sympy, jupyter, jupyterlab, ipywidgets, networkx
+  - anaconda=2025.12  # Includes: numpy, scipy, pandas, matplotlib, seaborn, sympy, jupyter, jupyterlab, ipywidgets, networkx
   - pip
   - pip:
     # Jupyter Book build tools

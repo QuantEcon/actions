@@ -12,7 +12,7 @@ ghcr.io/quantecon/quantecon:latest
 - Ubuntu 24.04 LTS
 - TexLive (latest from Ubuntu 24.04 repos)
 - Miniconda with Python 3.13
-- Anaconda 2025.06 (numpy, scipy, pandas, matplotlib, jupyter, etc.)
+- Anaconda 2025.12 (numpy, scipy, pandas, matplotlib, jupyter, etc.)
 - Jupyter Book build tools
 - LaTeX build tools (latexmk, xindy, dvipng)
 
@@ -104,7 +104,7 @@ conda list        # See all packages
 
 ### Installed Packages
 
-**Base Environment (Anaconda 2025.06):**
+**Base Environment (Anaconda 2025.12):**
 - NumPy, SciPy, Pandas - Scientific computing
 - Matplotlib, Seaborn - Visualization
 - NetworkX - Network analysis

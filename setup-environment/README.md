@@ -40,7 +40,7 @@ steps:
     run: conda env update -f environment.yml
 ```
 
-**Note:** When using `ghcr.io/quantecon/quantecon:latest` container, the `setup-environment` action is not needed. The container includes LaTeX, Miniconda, and Anaconda 2025.06 base packages. Only lecture-specific packages need installation.
+**Note:** When using `ghcr.io/quantecon/quantecon:latest` container, the `setup-environment` action is not needed. The container includes LaTeX, Miniconda, and Anaconda 2025.12 base packages. Only lecture-specific packages need installation.
 
 ## Inputs
 

@@ -16,7 +16,7 @@ This repository contains **reusable GitHub Actions composite actions** for build
 **✅ COMPLETED (November 20, 2025):**
 - Container infrastructure (`ghcr.io/quantecon/quantecon:latest`)
   - Ubuntu 24.04 LTS + TexLive + Miniconda + Python 3.13
-  - Anaconda 2025.06 metapackage (base scientific stack)
+  - Anaconda 2025.12 metapackage (base scientific stack)
   - Jupyter Book 1.0.4post1 + extensions
   - Weekly automated builds (Monday 2am UTC)
 - Composite actions:
@@ -115,7 +115,7 @@ quantecon/actions/
 - Ubuntu 24.04 LTS base
 - TexLive (latest from Ubuntu repos)
 - Miniconda + Python 3.13
-- Anaconda 2025.06 (numpy, scipy, pandas, matplotlib, jupyter)
+- Anaconda 2025.12 (numpy, scipy, pandas, matplotlib, jupyter)
 - Jupyter Book 1.0.4post1 + extensions
 
 **Usage in workflows:**
@@ -260,7 +260,7 @@ Single container for all CPU lectures:
 
 ### Why Anaconda Metapackage?
 
-Anaconda 2025.06 includes most common packages:
+Anaconda 2025.12 includes most common packages:
 - numpy, scipy, pandas, matplotlib, jupyter
 - Eliminates explicit dependencies
 - Faster conda solve times
