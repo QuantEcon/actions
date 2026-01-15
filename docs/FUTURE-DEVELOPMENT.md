@@ -2,6 +2,55 @@
 
 Planned enhancements for QuantEcon Actions.
 
+## Feature Parity Checklist
+
+Features needed to fully replace current `lecture-python.myst` workflows:
+
+### High Priority
+
+- [ ] **Execution Reports on Failure** (`build-lectures`)
+  - Upload `_build/*/reports` as artifacts when build fails
+  - Add `upload-reports-on-failure: 'true'` input
+  - Separate report names per builder (html, latex, jupyter)
+
+- [ ] **Asset Assembly** (`build-lectures` or new action)
+  - Copy PDFs to `_build/html/_pdf/`
+  - Copy notebooks to `_build/html/_notebooks/`
+  - Add `copy-pdf-to-html: 'true'` and `copy-notebooks-to-html: 'true'` inputs
+
+### Medium Priority
+
+- [ ] **Download Notebooks Artifact**
+  - Create zip of built notebooks for download
+  - Add `create-notebooks-zip: 'true'` to `build-lectures`
+  - Or add `notebooks-zip` option to `publish-gh-pages` release assets
+
+- [ ] **Artifact-based Build Cache** (alternative to GitHub cache)
+  - Document pattern for using `dawidd6/action-download-artifact`
+  - Works better for large `_build/` directories
+  - Add example to MIGRATION-GUIDE.md
+
+### Low Priority (Repo-Specific)
+
+- [ ] **Notebook Repository Sync**
+  - Sync notebooks to separate `.notebooks` repo
+  - Too repo-specific for generic action
+  - Document as manual workflow steps
+
+### Completed ✅
+
+- [x] Native GitHub Pages deployment (no gh-pages branch)
+- [x] Release assets (tarball, checksum, manifest)
+- [x] Auto-generated asset names from repo
+- [x] Netlify PR preview deployment
+- [x] Changed file detection for PR comments
+- [x] Conda environment caching
+- [x] LaTeX installation
+- [x] JAX/PyTorch ML libs installation
+- [x] Multi-builder support (html, pdflatex, jupyter)
+
+---
+
 ## GPU Support
 
 ### Options Under Consideration
