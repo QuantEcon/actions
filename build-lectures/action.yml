@@ -27,6 +27,18 @@ inputs:
     description: 'Restore _build directory from GitHub cache before building (for fast incremental PR builds)'
     required: false
     default: 'false'
+  html-copy-pdf:
+    description: 'Copy PDF from _build/latex/ to _build/html/_pdf/ (HTML builder only, requires prior pdflatex build)'
+    required: false
+    default: 'false'
+  html-copy-notebooks:
+    description: 'Copy notebooks from _build/jupyter/ to _build/html/_notebooks/ (HTML builder only, requires prior jupyter build)'
+    required: false
+    default: 'false'
+  upload-reports-on-failure:
+    description: 'Upload execution reports as artifacts when build fails'
+    required: false
+    default: 'false'
 
 outputs:
   build-path:
@@ -83,10 +95,13 @@ runs:
         echo "$BUILD_CMD"
         echo "::endgroup::"
         
-        # Execute build
+        # Execute build and capture exit code
+        set +e
         eval $BUILD_CMD
+        BUILD_EXIT_CODE=$?
+        set -e
         
-        # Set output
+        # Set output paths regardless of success/failure
         if [ "${{ inputs.builder }}" = "html" ]; then
           echo "build-path=${{ inputs.output-dir }}/_build/html" >> $GITHUB_OUTPUT
         elif [ "${{ inputs.builder }}" = "pdflatex" ]; then
@@ -96,8 +111,70 @@ runs:
         else
           echo "build-path=${{ inputs.output-dir }}/_build" >> $GITHUB_OUTPUT
         fi
+        
+        # Store exit code for later steps
+        echo "exit-code=$BUILD_EXIT_CODE" >> $GITHUB_OUTPUT
+        
+        # Exit with build exit code
+        exit $BUILD_EXIT_CODE
+
+    - name: Copy PDF to HTML
+      if: inputs.builder == 'html' && inputs.html-copy-pdf == 'true' && success()
+      shell: bash
+      run: |
+        echo "::group::Copy PDF to HTML"
+        PDF_SOURCE="${{ inputs.output-dir }}/_build/latex"
+        PDF_DEST="${{ inputs.output-dir }}/_build/html/_pdf"
+        
+        if [ -d "$PDF_SOURCE" ]; then
+          mkdir -p "$PDF_DEST"
+          # Copy all PDFs
+          find "$PDF_SOURCE" -name "*.pdf" -exec cp {} "$PDF_DEST/" \;
+          echo "Copied PDFs to $PDF_DEST:"
+          ls -lh "$PDF_DEST" || echo "No PDFs found"
+        else
+          echo "::warning::PDF source directory not found: $PDF_SOURCE"
+          echo "Run pdflatex builder before html builder with html-copy-pdf"
+        fi
+        echo "::endgroup::"
+
+    - name: Copy notebooks to HTML
+      if: inputs.builder == 'html' && inputs.html-copy-notebooks == 'true' && success()
+      shell: bash
+      run: |
+        echo "::group::Copy Notebooks to HTML"
+        NB_SOURCE="${{ inputs.output-dir }}/_build/jupyter"
+        NB_DEST="${{ inputs.output-dir }}/_build/html/_notebooks"
+        
+        if [ -d "$NB_SOURCE" ]; then
+          mkdir -p "$NB_DEST"
+          # Copy all notebooks preserving directory structure
+          find "$NB_SOURCE" -name "*.ipynb" -exec cp {} "$NB_DEST/" \;
+          echo "Copied notebooks to $NB_DEST:"
+          ls -lh "$NB_DEST" | head -20 || echo "No notebooks found"
+          NB_COUNT=$(find "$NB_DEST" -name "*.ipynb" | wc -l)
+          echo "Total notebooks: $NB_COUNT"
+        else
+          echo "::warning::Notebook source directory not found: $NB_SOURCE"
+          echo "Run jupyter builder before html builder with html-copy-notebooks"
+        fi
+        echo "::endgroup::"
+
+    - name: Upload execution reports on failure
+      if: inputs.upload-reports-on-failure == 'true' && failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: execution-reports-${{ inputs.builder }}
+        path: |
+          ${{ inputs.output-dir }}/_build/html/reports
+          ${{ inputs.output-dir }}/_build/latex/reports
+          ${{ inputs.output-dir }}/_build/jupyter/reports
+          ${{ inputs.output-dir }}/_build/.jupyter_cache
+        if-no-files-found: ignore
+        retention-days: 7
 
     - name: Display Build Info
+      if: success()
       shell: bash
       run: |
         echo "::group::Build Summary"
@@ -106,6 +183,10 @@ runs:
         echo "Output: ${{ steps.build.outputs.build-path }}"
         echo "Build cache hit: ${{ steps.build-cache.outputs.cache-hit || 'N/A' }}"
         echo "Jupyter cache hit: ${{ steps.jupyter-cache.outputs.cache-hit || 'N/A' }}"
+        if [ "${{ inputs.builder }}" = "html" ]; then
+          echo "PDF copied to HTML: ${{ inputs.html-copy-pdf }}"
+          echo "Notebooks copied to HTML: ${{ inputs.html-copy-notebooks }}"
+        fi
         echo "::endgroup::"
         
         echo "::group::Build Artifacts"

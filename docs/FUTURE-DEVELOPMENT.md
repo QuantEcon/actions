@@ -8,15 +8,7 @@ Features needed to fully replace current `lecture-python.myst` workflows:
 
 ### High Priority
 
-- [ ] **Execution Reports on Failure** (`build-lectures`)
-  - Upload `_build/*/reports` as artifacts when build fails
-  - Add `upload-reports-on-failure: 'true'` input
-  - Separate report names per builder (html, latex, jupyter)
-
-- [ ] **Asset Assembly** (`build-lectures` or new action)
-  - Copy PDFs to `_build/html/_pdf/`
-  - Copy notebooks to `_build/html/_notebooks/`
-  - Add `copy-pdf-to-html: 'true'` and `copy-notebooks-to-html: 'true'` inputs
+All high priority items completed! ✅
 
 ### Medium Priority
 
@@ -34,6 +26,14 @@ Features needed to fully replace current `lecture-python.myst` workflows:
 
 ### Completed ✅
 
+- [x] **Execution Reports on Failure** (`build-lectures`)
+  - `upload-reports-on-failure: 'true'` uploads reports and cache on failure
+  - Artifact name: `execution-reports-{builder}`
+  - Includes `_build/*/reports/` and `_build/.jupyter_cache/`
+- [x] **Asset Assembly** (`build-lectures`)
+  - `html-copy-pdf: 'true'` copies PDFs to `_build/html/_pdf/`
+  - `html-copy-notebooks: 'true'` copies notebooks to `_build/html/_notebooks/`
+  - HTML builder only, requires prior pdflatex/jupyter builds
 - [x] **Build Cache for Fast PR Builds** (`build-lectures`)
   - Uses GitHub native cache (faster than artifact-based)
   - Cache key: `build-${{ hashFiles('environment.yml') }}`
