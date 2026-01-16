@@ -26,7 +26,10 @@ That's it! Changed lecture detection works automatically for files in the `lectu
 
 ## Requirements
 
-- **GitHub Actions runner:** `ubuntu-latest` (includes `jq` and `npm`)
+- **Node.js/npm:** Required for `netlify-cli` installation
+  - The QuantEcon container (`ghcr.io/quantecon/quantecon:latest`) includes Node.js
+  - For other runners, use `actions/setup-node@v4` before this action
+- **jq:** For parsing Netlify JSON output (included in ubuntu-latest and QuantEcon container)
 - **Git history:** Use `fetch-depth: 0` in checkout for change detection
 - **Netlify secrets:** `NETLIFY_AUTH_TOKEN` and `NETLIFY_SITE_ID`
 
