@@ -24,7 +24,17 @@ RUN apt-get update && \
         git \
         curl \
         ca-certificates \
+        # FreeSerif fonts for PDF builds
+        fonts-freefont-ttf \
+        fontconfig \
         && rm -rf /var/lib/apt/lists/*
+
+# Copy FreeSerif fonts to TeX's font directory (fixes latexmk subprocess font access)
+# This ensures fonts are found even when latexmk spawns xelatex with different environment
+RUN mkdir -p /usr/local/share/texmf/fonts/truetype/freefont && \
+    cp /usr/share/fonts/truetype/freefont/*.ttf /usr/local/share/texmf/fonts/truetype/freefont/ && \
+    mktexlsr && \
+    fc-cache -fv
 
 # Install Miniconda
 ENV CONDA_DIR=/opt/conda
