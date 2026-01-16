@@ -184,19 +184,35 @@ Check the Actions tab in the repository for build status and logs.
 
 ## Performance
 
-### Comparison with Traditional Setup
+### Time Savings with Container
 
-| Method | Setup Time | Total Build Time |
-|--------|------------|------------------|
-| Traditional (setup-environment) | 7-8 min | 15-18 min |
-| Container (cold cache) | 10-20 sec | 9-11 min |
-| Container (warm cache) | 5 sec | 3-5 min |
+The container eliminates setup time by pre-installing Python/conda and LaTeX:
+
+| Component | Traditional Setup | Container |
+|-----------|-------------------|-----------|
+| Miniconda install | 2-3 min | Pre-installed |
+| Conda env create | 3-5 min | Pre-installed |
+| LaTeX install | 2-3 min | Pre-installed |
+| **Setup overhead** | **7-11 min** | **< 30 sec** |
+
+### Build Performance with Caching
+
+Combined with GitHub's cache for `_build/`, the container enables fast incremental builds:
+
+| Build Type | Description | Typical Time |
+|------------|-------------|--------------|
+| Full build (no cache) | First run, all notebooks execute | 30-90 min* |
+| PR build (with cache) | Cached `_build/` restored, only changed files re-execute | 5-15 min* |
+| HTML only (with cache) | Just HTML generation from cached execution | 2-5 min |
+
+*Varies significantly by lecture repository size and complexity
 
 **Benefits:**
-- ⚡ ~40% faster on average
+- ⚡ Setup overhead reduced from ~10 min to ~30 sec
 - 🎯 Consistent environment across all builds
-- 📦 LaTeX pre-installed (no wait time)
+- 📦 LaTeX pre-installed (no apt-get during builds)
 - 🔄 Simple workflow configuration
+- 💾 Works seamlessly with GitHub cache for `_build/` directory
 
 ## Testing
 
