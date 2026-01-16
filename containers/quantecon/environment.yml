@@ -5,7 +5,7 @@ channels:
 dependencies:
   - python=3.13
   - anaconda=2025.12  # Includes: numpy, scipy, pandas, matplotlib, seaborn, sympy, jupyter, jupyterlab, ipywidgets, networkx
-  - nodejs=22         # Required for netlify-cli in deploy-netlify action
+  - nodejs>=20,<21    # Required for netlify-cli in deploy-netlify action (matches jupyterlab requirement)
   - pip
   - pip:
     # Jupyter Book build tools
