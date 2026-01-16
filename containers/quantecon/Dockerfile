@@ -33,8 +33,17 @@ RUN apt-get update && \
 # This ensures fonts are found even when latexmk spawns xelatex with different environment
 RUN mkdir -p /usr/local/share/texmf/fonts/truetype/freefont && \
     cp /usr/share/fonts/truetype/freefont/*.ttf /usr/local/share/texmf/fonts/truetype/freefont/ && \
-    mktexlsr && \
-    fc-cache -fv
+    mktexlsr
+
+# Build system-wide fontconfig cache (not user-specific)
+# This is critical for latexmk subprocess which may run with different HOME
+RUN fc-cache -f -s -v && \
+    mkdir -p /var/cache/fontconfig && \
+    chmod 777 /var/cache/fontconfig
+
+# Set fontconfig environment to ensure fonts are found in any context
+ENV FONTCONFIG_PATH=/etc/fonts
+ENV FONTCONFIG_FILE=/etc/fonts/fonts.conf
 
 # Install Miniconda
 ENV CONDA_DIR=/opt/conda
