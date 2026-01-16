@@ -35,6 +35,15 @@ RUN mkdir -p /usr/local/share/texmf/fonts/truetype/freefont && \
     cp /usr/share/fonts/truetype/freefont/*.ttf /usr/local/share/texmf/fonts/truetype/freefont/ && \
     mktexlsr
 
+# Create OTF symlinks for FreeFont TTF files
+# Sphinx's default fontpkg for xelatex specifies Extension=.otf, but Ubuntu provides .ttf files
+# Creating .otf symlinks allows fontspec to find the fonts with Sphinx's default configuration
+RUN cd /usr/share/fonts/truetype/freefont && \
+    for ttf in *.ttf; do \
+        otf="${ttf%.ttf}.otf"; \
+        ln -sf "$ttf" "$otf"; \
+    done
+
 # Build system-wide fontconfig cache (not user-specific)
 # This is critical for latexmk subprocess which may run with different HOME
 RUN fc-cache -f -s -v && \
