@@ -1,0 +1,235 @@
+name: 'Preview Cloudflare'
+description: 'Deploys lecture builds to Cloudflare Pages for PR previews with smart comments showing changed pages'
+author: 'QuantEcon'
+
+inputs:
+  cloudflare-api-token:
+    description: 'Cloudflare API token (use secrets.CLOUDFLARE_API_TOKEN)'
+    required: true
+  cloudflare-account-id:
+    description: 'Cloudflare Account ID (use secrets.CLOUDFLARE_ACCOUNT_ID)'
+    required: true
+  project-name:
+    description: 'Cloudflare Pages project name'
+    required: true
+  build-dir:
+    description: 'Directory containing built site'
+    required: true
+  lectures-dir:
+    description: 'Directory containing lecture .md files for change detection. Set to empty string to disable.'
+    required: false
+    default: 'lectures'
+
+outputs:
+  deploy-url:
+    description: 'URL of the deployed preview site'
+    value: ${{ steps.deploy.outputs.deploy-url }}
+  changed-files:
+    description: 'List of changed lecture files'
+    value: ${{ steps.detect-changes.outputs.changed-files }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Check for trusted actor
+      id: check-trust
+      shell: bash
+      run: |
+        # Skip for dependabot and fork PRs (they can't access secrets)
+        if [ "${{ github.actor }}" = "dependabot[bot]" ]; then
+          echo "skip=true" >> $GITHUB_OUTPUT
+          echo "⚠️ Skipping Cloudflare deploy for dependabot"
+        elif [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
+          echo "skip=true" >> $GITHUB_OUTPUT
+          echo "⚠️ Skipping Cloudflare deploy for fork PR"
+        else
+          echo "skip=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Detect Changed Lecture Files
+      id: detect-changes
+      if: steps.check-trust.outputs.skip != 'true' && inputs.lectures-dir != '' && github.event_name == 'pull_request'
+      shell: bash
+      run: |
+        echo "Detecting changed lecture files in ${{ inputs.lectures-dir }}..."
+        
+        # Fetch base and head commits
+        git fetch origin ${{ github.event.pull_request.base.sha }}:refs/remotes/origin/pr-base 2>/dev/null || true
+        git fetch origin ${{ github.event.pull_request.head.sha }}:refs/remotes/origin/pr-head 2>/dev/null || true
+        
+        # Get changed files
+        all_changed=$(git diff --name-status ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }} 2>/dev/null || echo "")
+        
+        if [ -z "$all_changed" ]; then
+          echo "No changes detected"
+          echo "changed-files=" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        
+        # Filter for lecture files (Added or Modified, not Deleted)
+        lectures_dir="${{ inputs.lectures-dir }}"
+        changed_lecture_files=""
+        
+        while IFS=$'\t' read -r status file; do
+          [ -z "$status" ] && continue
+          
+          # Only include Added (A) or Modified (M) files in lectures dir
+          if [[ "$status" =~ ^[AM] ]] && [[ "$file" =~ ^${lectures_dir}/.*\.md$ ]] && [[ ! "$file" =~ ^${lectures_dir}/_ ]] && [[ "$file" != "${lectures_dir}/intro.md" ]]; then
+            if [ -f "$file" ]; then
+              # Verify actual content changes
+              content_diff=$(git diff ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }} -- "$file" | grep -E '^[+-]' | grep -v '^[+-]{3}' | wc -l)
+              if [ "$content_diff" -gt 0 ]; then
+                echo "✓ Changed: $file"
+                if [ -z "$changed_lecture_files" ]; then
+                  changed_lecture_files="$file"
+                else
+                  changed_lecture_files="$changed_lecture_files"$'\n'"$file"
+                fi
+              fi
+            fi
+          fi
+        done <<< "$all_changed"
+        
+        if [ -n "$changed_lecture_files" ]; then
+          echo "changed-files<<EOF" >> $GITHUB_OUTPUT
+          echo "$changed_lecture_files" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        else
+          echo "changed-files=" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Install Wrangler CLI
+      if: steps.check-trust.outputs.skip != 'true'
+      shell: bash
+      run: npm install -g wrangler@latest
+
+    - name: Deploy to Cloudflare Pages
+      id: deploy
+      if: steps.check-trust.outputs.skip != 'true' && github.event_name == 'pull_request'
+      shell: bash
+      env:
+        CLOUDFLARE_API_TOKEN: ${{ inputs.cloudflare-api-token }}
+        CLOUDFLARE_ACCOUNT_ID: ${{ inputs.cloudflare-account-id }}
+      run: |
+        PR_NUMBER="${{ github.event.pull_request.number }}"
+        COMMIT_SHA="${{ github.event.pull_request.head.sha }}"
+        SHORT_SHA="${COMMIT_SHA:0:7}"
+        PROJECT_NAME="${{ inputs.project-name }}"
+        BRANCH_ALIAS="pr-${PR_NUMBER}"
+        
+        echo "🔍 Deploying preview for PR #${PR_NUMBER} to Cloudflare Pages..."
+        
+        # Deploy to Cloudflare Pages with branch alias
+        DEPLOY_OUTPUT=$(wrangler pages deploy "${{ inputs.build-dir }}" \
+          --project-name="${PROJECT_NAME}" \
+          --branch="${BRANCH_ALIAS}" \
+          --commit-hash="${COMMIT_SHA}" \
+          --commit-message="PR #${PR_NUMBER} (${SHORT_SHA})" \
+          2>&1)
+        
+        DEPLOY_EXIT_CODE=$?
+        
+        echo "::group::Deployment Output"
+        echo "$DEPLOY_OUTPUT"
+        echo "::endgroup::"
+        
+        if [ $DEPLOY_EXIT_CODE -ne 0 ]; then
+          echo "❌ Error: Cloudflare Pages deployment failed"
+          exit 1
+        fi
+        
+        # Extract the deployment URL from wrangler output
+        # Wrangler outputs the URL in format: "Deployment complete! Take a peek over at https://..."
+        DEPLOY_URL=$(echo "$DEPLOY_OUTPUT" | grep -oE 'https://[a-zA-Z0-9.-]+\.pages\.dev' | head -1)
+        
+        # If no URL found, construct it from the branch alias
+        if [ -z "$DEPLOY_URL" ]; then
+          DEPLOY_URL="https://${BRANCH_ALIAS}.${PROJECT_NAME}.pages.dev"
+          echo "⚠️ Could not extract URL from output, using constructed URL: $DEPLOY_URL"
+        fi
+        
+        echo "deploy-url=$DEPLOY_URL" >> $GITHUB_OUTPUT
+        
+        echo "✅ Deployment successful!"
+        echo "📍 URL: $DEPLOY_URL"
+
+    - name: Comment on PR
+      if: steps.check-trust.outputs.skip != 'true' && github.event_name == 'pull_request' && steps.deploy.outputs.deploy-url != ''
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ github.token }}
+        script: |
+          const deployUrl = '${{ steps.deploy.outputs.deploy-url }}';
+          const changedFiles = `${{ steps.detect-changes.outputs.changed-files }}`;
+          const lecturesDir = '${{ inputs.lectures-dir }}';
+          const prNumber = context.issue.number;
+          const commitSha = '${{ github.event.pull_request.head.sha }}';
+          const shortSha = commitSha.substring(0, 7);
+          const commitUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/commit/${commitSha}`;
+          
+          // Build the comment body
+          let comment = `## ☁️ Cloudflare Preview Ready!\n\n`;
+          comment += `**Preview URL:** ${deployUrl}\n\n`;
+          comment += `**Commit:** [\`${shortSha}\`](${commitUrl})\n\n`;
+          
+          // Add direct links to changed lecture pages
+          if (changedFiles && changedFiles.trim() && lecturesDir) {
+            const files = changedFiles.split('\n').filter(f => f.trim());
+            if (files.length > 0) {
+              comment += `### 📚 Changed Lectures\n\n`;
+              for (const file of files) {
+                const cleanFile = file.trim();
+                if (cleanFile) {
+                  const fileName = cleanFile.replace(`${lecturesDir}/`, '').replace('.md', '');
+                  const pageUrl = `${deployUrl}/${fileName}.html`;
+                  comment += `- [${fileName}](${pageUrl})\n`;
+                }
+              }
+              comment += '\n';
+            }
+          }
+          
+          // Add build info
+          comment += `---\n`;
+          comment += `<details><summary>Build Info</summary>\n\n`;
+          comment += `- **Workflow:** [${context.workflow}](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})\n`;
+          comment += `</details>\n`;
+          
+          // Check for existing preview comment and update it
+          const comments = await github.rest.issues.listComments({
+            issue_number: prNumber,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+          });
+          
+          const marker = '## ☁️ Cloudflare Preview Ready!';
+          const existingComment = comments.data.find(c => c.body.includes(marker));
+          
+          if (existingComment) {
+            await github.rest.issues.updateComment({
+              comment_id: existingComment.id,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+            console.log(`Updated existing comment ${existingComment.id}`);
+          } else {
+            await github.rest.issues.createComment({
+              issue_number: prNumber,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+            console.log('Created new comment');
+          }
+
+    - name: Skip notification
+      if: steps.check-trust.outputs.skip == 'true'
+      shell: bash
+      run: |
+        echo "⚠️ Cloudflare deployment skipped (untrusted actor or fork PR)"
+        echo "This is expected for dependabot PRs and PRs from forks."
+
+branding:
+  icon: 'cloud'
+  color: 'orange'
