@@ -157,7 +157,7 @@ jobs:
           upload-failure-reports: true  # Upload reports if build fails
       
       # Deploy preview
-      - uses: quantecon/actions/deploy-netlify@v1
+      - uses: quantecon/actions/preview-netlify@v1
         with:
           netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}

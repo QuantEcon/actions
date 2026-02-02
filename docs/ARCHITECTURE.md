@@ -28,7 +28,7 @@ Our next-generation CI/CD system combines three complementary elements:
 
 ```
 build-lectures/      → Build Jupyter Book + handle caching
-deploy-netlify/      → Deploy to Netlify (preview + production)
+preview-netlify/     → Deploy to Netlify for PR previews
 publish-gh-pages/    → Deploy to GitHub Pages
 ```
 
@@ -92,7 +92,7 @@ jobs:
       - run: jupyter-book build lectures/
       
       # Manual deployment
-      - uses: quantecon/actions/deploy-netlify@v1
+      - uses: quantecon/actions/preview-netlify@v1
         with:
           # ... many configuration options
 ```
@@ -117,7 +117,7 @@ jobs:
         id: build
       
       # Deploy preview (PR only)
-      - uses: quantecon/actions/deploy-netlify@v1
+      - uses: quantecon/actions/preview-netlify@v1
         if: github.event_name == 'pull_request'
         with:
           netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
@@ -270,8 +270,8 @@ quantecon/actions/
 │   ├── action.yml                 # Build + automatic caching
 │   └── README.md
 │
-├── deploy-netlify/                # Modular action
-│   ├── action.yml                 # Netlify deployment
+├── preview-netlify/                # Modular action
+│   ├── action.yml                 # Netlify PR preview deployment
 │   └── README.md
 │
 ├── publish-gh-pages/              # Modular action

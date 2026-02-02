@@ -1,4 +1,4 @@
-name: 'Deploy Netlify Preview'
+name: 'Preview Netlify'
 description: 'Deploys lecture builds to Netlify for PR previews with smart comments showing changed pages'
 author: 'QuantEcon'
 

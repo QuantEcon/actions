@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **BREAKING**: Renamed `deploy-netlify` → `preview-netlify` to better reflect its purpose as a PR preview action (not production deployment)
+
 ### Added
 - **Container Infrastructure** (`ghcr.io/quantecon/quantecon:latest`)
   - Ubuntu 24.04 LTS + TexLive (latest) + Miniconda + Python 3.13
