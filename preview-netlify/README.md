@@ -1,4 +1,4 @@
-# Deploy Netlify Preview Action
+# Preview Netlify Action
 
 Deploys QuantEcon lecture builds to Netlify for PR previews with smart comments showing direct links to changed pages.
 
@@ -13,7 +13,7 @@ Deploys QuantEcon lecture builds to Netlify for PR previews with smart comments 
 ## Usage
 
 ```yaml
-- uses: quantecon/actions/deploy-netlify@v1
+- uses: quantecon/actions/preview-netlify@v1
   with:
     netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
     netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
@@ -96,7 +96,7 @@ jobs:
         run: jb build lectures --path-output ./
 
       - name: Deploy Preview
-        uses: quantecon/actions/deploy-netlify@v1
+        uses: quantecon/actions/preview-netlify@v1
         with:
           netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}

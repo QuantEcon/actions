@@ -8,7 +8,7 @@ A cheat sheet for using QuantEcon composite actions in your workflows.
 |--------|---------|--------------|
 | `setup-environment` | Conda + Python + LaTeX + ML libs | ~5-6 min (cached) |
 | `build-lectures` | Jupyter Book builds | Varies (cached execution) |
-| `deploy-netlify` | PR preview deployment | ~1 min |
+| `preview-netlify` | PR preview deployment | ~1 min |
 | `publish-gh-pages` | GitHub Pages deployment | ~30 sec |
 
 ## 🚀 Quick Start
@@ -31,7 +31,7 @@ jobs:
           install-latex: 'true'
       - uses: quantecon/actions/build-lectures@v1
         id: build
-      - uses: quantecon/actions/deploy-netlify@v1
+      - uses: quantecon/actions/preview-netlify@v1
         with:
           netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
@@ -118,7 +118,7 @@ jobs:
 ### Preview with Custom URL
 
 ```yaml
-- uses: quantecon/actions/deploy-netlify@v1
+- uses: quantecon/actions/preview-netlify@v1
   with:
     netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
     netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
@@ -171,7 +171,7 @@ html-copy-notebooks: 'false'     # Copy notebooks to _build/html/_notebooks/
 upload-failure-reports: 'false'  # Upload reports on failure
 ```
 
-### deploy-netlify
+### preview-netlify
 
 ```yaml
 netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}  # Required
@@ -205,11 +205,11 @@ permissions:
 # Access: ${{ steps.build.outputs.build-path }}
 ```
 
-### deploy-netlify
+### preview-netlify
 
 ```yaml
 - id: netlify
-  uses: quantecon/actions/deploy-netlify@v1
+  uses: quantecon/actions/preview-netlify@v1
 
 # Access:
 # - ${{ steps.netlify.outputs.deploy-url }}
@@ -296,7 +296,7 @@ permissions:
 
 ```yaml
 # Netlify only (no GH Pages)
-- uses: quantecon/actions/deploy-netlify@v1
+- uses: quantecon/actions/preview-netlify@v1
 ```
 
 ### lecture-python-advanced.myst

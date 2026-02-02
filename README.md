@@ -28,7 +28,7 @@ Builds Jupyter Book lectures (HTML, PDF, notebooks) with unified error handling.
 
 **Features:** Cached builds, execution reports, multi-format support
 
-### 🌐 [`deploy-netlify`](./deploy-netlify)
+### 🌐 [`preview-netlify`](./preview-netlify)
 Deploys preview builds to Netlify for pull requests with smart PR comments.
 
 **Features:** Automatic changed-file detection, PR preview URLs, security-aware (skips forks)
@@ -52,7 +52,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Required for deploy-netlify change detection
+          fetch-depth: 0  # Required for preview-netlify change detection
       
       # Flexible environment setup
       - uses: quantecon/actions/setup-environment@v1
@@ -68,7 +68,7 @@ jobs:
           builder: 'html'
           source-dir: 'lectures'
       
-      - uses: quantecon/actions/deploy-netlify@v1
+      - uses: quantecon/actions/preview-netlify@v1
         with:
           netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}

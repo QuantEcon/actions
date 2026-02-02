@@ -22,7 +22,7 @@ This repository contains **reusable GitHub Actions composite actions** for build
 - Composite actions:
   - `setup-environment` - Flexible environment setup with optional LaTeX
   - `build-lectures` - Jupyter Book builds
-  - `deploy-netlify` - Netlify deployment
+  - `preview-netlify` - Netlify PR previews
   - `publish-gh-pages` - GitHub Pages publishing
 - Documentation:
   - docs/CONTAINER-GUIDE.md - Container usage
@@ -85,7 +85,7 @@ quantecon/actions/
 ├── build-lectures/                # Jupyter Book builds
 │   ├── action.yml
 │   └── README.md
-├── deploy-netlify/                # Netlify deployment
+├── preview-netlify/                # Netlify PR previews
 │   ├── action.yml
 │   └── README.md
 ├── publish-gh-pages/              # GitHub Pages publishing
@@ -165,13 +165,13 @@ jobs:
     builder: 'html'
 ```
 
-### 3. deploy-netlify
+### 3. preview-netlify
 
-**Purpose:** Deploys to Netlify (preview + production)
+**Purpose:** Deploys to Netlify for PR previews
 
 **Usage:**
 ```yaml
-- uses: quantecon/actions/deploy-netlify@main
+- uses: quantecon/actions/preview-netlify@main
   with:
     netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
     netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
