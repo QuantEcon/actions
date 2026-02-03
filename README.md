@@ -33,6 +33,11 @@ Deploys preview builds to Netlify for pull requests with smart PR comments.
 
 **Features:** Automatic changed-file detection, PR preview URLs, security-aware (skips forks)
 
+### ☁️ [`preview-cloudflare`](./preview-cloudflare)
+Deploys preview builds to Cloudflare Pages for pull requests.
+
+**Features:** Free for public & private repos, predictable URLs (`pr-N.project.pages.dev`), changed lecture detection, smart PR comments
+
 ### 🚀 [`publish-gh-pages`](./publish-gh-pages)
 Publishes production builds to GitHub Pages.
 
@@ -55,7 +60,7 @@ jobs:
           fetch-depth: 0  # Required for preview-netlify change detection
       
       # Flexible environment setup
-      - uses: quantecon/actions/setup-environment@v1
+      - uses: quantecon/actions/setup-environment@main
         with:
           python-version: '3.13'
           environment-file: 'environment.yml'
@@ -63,12 +68,12 @@ jobs:
           latex-requirements-file: 'latex-requirements.txt'
           environment-name: 'quantecon'
       
-      - uses: quantecon/actions/build-lectures@v1
+      - uses: quantecon/actions/build-lectures@main
         with:
           builder: 'html'
           source-dir: 'lectures'
       
-      - uses: quantecon/actions/preview-netlify@v1
+      - uses: quantecon/actions/preview-netlify@main
         with:
           netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
