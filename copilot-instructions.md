@@ -322,7 +322,34 @@ docker run --rm \
 gh workflow run build-containers.yml
 ```
 
-### ⚠️ CRITICAL: GitHub CLI Output
+### ⚠️ CRITICAL: GitHub CLI Commands
+
+**ALWAYS use files in `/tmp` for multi-line content** - Shell escaping breaks with inline strings:
+
+```bash
+# ❌ WRONG - Escaping breaks with special characters, quotes, backticks
+gh pr edit 13 --body "Multi-line content with `backticks` and $variables"
+gh release create v1.0.0 --notes "Release notes with **markdown**"
+
+# ✅ CORRECT - Write content to a temp file first, then use --body-file or --notes-file
+cat > /tmp/pr-body.md << 'EOF'
+## Summary
+Multi-line content with `backticks` and $variables works fine here.
+EOF
+gh pr edit 13 --body-file /tmp/pr-body.md
+
+cat > /tmp/release-notes.md << 'EOF'
+## What's New
+Release notes with **markdown** and `code` work perfectly.
+EOF
+gh release create v1.0.0 --notes-file /tmp/release-notes.md
+```
+
+**This applies to:**
+- `gh pr create --body` → use `--body-file /tmp/pr-body.md`
+- `gh pr edit --body` → use `--body-file /tmp/pr-body.md`
+- `gh release create --notes` → use `--notes-file /tmp/release-notes.md`
+- `gh issue create --body` → use `--body-file /tmp/issue-body.md`
 
 **ALWAYS write `gh` command output to a file** - gh CLI is interactive and won't display in terminal:
 
