@@ -97,6 +97,16 @@ runs:
         else
           echo "changed-files=" >> $GITHUB_OUTPUT
         fi
+        
+        # Detect if _toc.yml is inside lectures-dir (strip dir from URL) or at root (keep dir)
+        # If _toc.yml is inside lectures-dir, Jupyter Book builds relative to that dir
+        if [ -f "${lectures_dir}/_toc.yml" ]; then
+          echo "strip-lectures-dir=true" >> $GITHUB_OUTPUT
+          echo "📁 _toc.yml found in ${lectures_dir}/ - will strip directory from URLs"
+        else
+          echo "strip-lectures-dir=false" >> $GITHUB_OUTPUT
+          echo "📁 _toc.yml not in ${lectures_dir}/ - will keep directory in URLs"
+        fi
 
     - name: Install Wrangler CLI
       if: steps.check-trust.outputs.skip != 'true'
@@ -162,6 +172,7 @@ runs:
           const deployUrl = '${{ steps.deploy.outputs.deploy-url }}';
           const changedFiles = `${{ steps.detect-changes.outputs.changed-files }}`;
           const lecturesDir = '${{ inputs.lectures-dir }}';
+          const stripLecturesDir = '${{ steps.detect-changes.outputs.strip-lectures-dir }}' === 'true';
           const prNumber = context.issue.number;
           const commitSha = '${{ github.event.pull_request.head.sha }}';
           const shortSha = commitSha.substring(0, 7);
@@ -180,9 +191,18 @@ runs:
               for (const file of files) {
                 const cleanFile = file.trim();
                 if (cleanFile) {
-                  const fileName = cleanFile.replace(`${lecturesDir}/`, '').replace('.md', '');
-                  const pageUrl = `${deployUrl}/${fileName}.html`;
-                  comment += `- [${fileName}](${pageUrl})\n`;
+                  // Determine URL path based on _toc.yml location
+                  // If _toc.yml is in lectures-dir, strip the dir (JB builds relative to it)
+                  // If _toc.yml is at root, keep the dir (JB preserves structure)
+                  let filePath;
+                  if (stripLecturesDir) {
+                    filePath = cleanFile.replace(`${lecturesDir}/`, '').replace('.md', '');
+                  } else {
+                    filePath = cleanFile.replace('.md', '');
+                  }
+                  const displayName = filePath.split('/').pop();  // Just filename for display
+                  const pageUrl = `${deployUrl}/${filePath}.html`;
+                  comment += `- [${displayName}](${pageUrl})\n`;
                 }
               }
               comment += '\n';
