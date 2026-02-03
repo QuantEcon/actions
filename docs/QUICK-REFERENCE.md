@@ -8,7 +8,8 @@ A cheat sheet for using QuantEcon composite actions in your workflows.
 |--------|---------|--------------|
 | `setup-environment` | Conda + Python + LaTeX + ML libs | ~5-6 min (cached) |
 | `build-lectures` | Jupyter Book builds | Varies (cached execution) |
-| `preview-netlify` | PR preview deployment | ~1 min |
+| `preview-netlify` | PR preview deployment (Netlify) | ~1 min |
+| `preview-cloudflare` | PR preview deployment (Cloudflare) | ~1 min |
 | `publish-gh-pages` | GitHub Pages deployment | ~30 sec |
 
 ## 🚀 Quick Start
@@ -176,6 +177,16 @@ upload-failure-reports: 'false'  # Upload reports on failure
 ```yaml
 netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}  # Required
 netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}        # Required
+build-dir: '_build/html'         # Required
+lectures-dir: 'lectures'         # For change detection (default)
+```
+
+### preview-cloudflare
+
+```yaml
+cloudflare-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}  # Required
+cloudflare-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}  # Required
+project-name: 'my-lectures'      # Required - Cloudflare Pages project name
 build-dir: '_build/html'         # Required
 lectures-dir: 'lectures'         # For change detection (default)
 ```

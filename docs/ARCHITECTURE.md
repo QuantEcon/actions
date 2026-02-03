@@ -29,6 +29,7 @@ Our next-generation CI/CD system combines three complementary elements:
 ```
 build-lectures/      → Build Jupyter Book + handle caching
 preview-netlify/     → Deploy to Netlify for PR previews
+preview-cloudflare/  → Deploy to Cloudflare Pages for PR previews
 publish-gh-pages/    → Deploy to GitHub Pages
 ```
 
