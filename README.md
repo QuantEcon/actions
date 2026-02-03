@@ -39,9 +39,9 @@ Deploys preview builds to Cloudflare Pages for pull requests.
 **Features:** Free for public & private repos, predictable URLs (`pr-N.project.pages.dev`), changed lecture detection, smart PR comments
 
 ### 🚀 [`publish-gh-pages`](./publish-gh-pages)
-Publishes production builds to GitHub Pages.
+Publishes production builds to GitHub Pages using native artifact-based deployment.
 
-**Features:** Custom domain support, orphan branch deployment, automated CNAME
+**Features:** Custom domain support, native GitHub Pages deployment (no gh-pages branch), optional release assets
 
 ## Quick Start
 
