@@ -77,8 +77,9 @@ runs:
         echo "::group::Installing lecture-specific packages"
         if [ -f "${{ inputs.environment-file }}" ]; then
           echo "Updating environment from ${{ inputs.environment-file }}"
-          # Use conda env update WITHOUT --prune (prune causes full env solve which is slow)
-          conda env update -n ${{ inputs.environment-name }} -f ${{ inputs.environment-file }}
+          # Let conda use the environment name from the file (more flexible than -n flag)
+          # This works regardless of what environment-name input is passed
+          conda env update -f ${{ inputs.environment-file }}
           echo "✅ Lecture packages installed"
         else
           echo "⚠️ Environment file not found: ${{ inputs.environment-file }}"
@@ -170,7 +171,9 @@ runs:
     # ============================================================
         
     - name: Display Environment Info
-      shell: bash -l {0}
+      # Use plain bash to avoid login shell PATH reset in containers
+      # (Ubuntu's /etc/profile can drop /opt/conda from PATH)
+      shell: bash
       run: |
         echo "::group::Environment Setup Summary"
         if [ "${{ steps.detect-container.outputs.container-mode }}" == "true" ]; then
