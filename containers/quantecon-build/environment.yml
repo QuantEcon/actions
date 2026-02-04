@@ -21,6 +21,10 @@ dependencies:
   - statsmodels
   - scikit-learn
   
+  # CPU acceleration (Intel MKL for optimized linear algebra)
+  - mkl
+  - mkl-service
+  
   # Jupyter ecosystem
   - jupyter
   - jupyterlab
