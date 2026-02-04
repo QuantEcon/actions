@@ -63,21 +63,24 @@ runs:
 
     # ============================================================
     # CONTAINER MODE: Only install delta packages from environment.yml
+    # Cache the full conda environment prefix to avoid inconsistent state
     # ============================================================
     
-    - name: Cache lecture-specific packages (container mode)
+    - name: Cache conda environment (container mode)
       if: steps.detect-container.outputs.container-mode == 'true' && inputs.environment-file != ''
       uses: actions/cache@v4
       id: container-pkg-cache
       with:
-        path: /opt/conda/envs/${{ inputs.environment-name }}/lib/python*/site-packages
-        key: container-pkgs-${{ hashFiles(inputs.environment-file) }}-${{ inputs.cache-version }}
+        path: |
+          /opt/conda/envs/${{ inputs.environment-name }}
+          /opt/conda/pkgs
+        key: container-env-${{ hashFiles(inputs.environment-file) }}-${{ inputs.cache-version }}
         restore-keys: |
-          container-pkgs-${{ hashFiles(inputs.environment-file) }}-
-          container-pkgs-
+          container-env-${{ hashFiles(inputs.environment-file) }}-
+          container-env-
 
     - name: Install lecture-specific packages (container mode)
-      if: steps.detect-container.outputs.container-mode == 'true' && inputs.environment-file != ''
+      if: steps.detect-container.outputs.container-mode == 'true' && inputs.environment-file != '' && steps.container-pkg-cache.outputs.cache-hit != 'true'
       shell: bash
       run: |
         echo "::group::Installing lecture-specific packages"
@@ -88,6 +91,8 @@ runs:
           echo "✅ Lecture packages installed"
         else
           echo "⚠️ Environment file not found: ${{ inputs.environment-file }}"
+          echo "::error::Environment file not found: ${{ inputs.environment-file }}"
+          exit 1
         fi
         echo "::endgroup::"
     
@@ -159,7 +164,7 @@ runs:
 
     - name: Install JAX, PyTorch, NumPyro, Pyro
       if: inputs.install-ml-libs == 'true'
-      shell: bash
+      shell: bash -l {0}
       run: |
         echo "Installing ML libraries with CUDA support..."
         pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu128
@@ -178,14 +183,27 @@ runs:
       run: |
         echo "::group::Environment Setup Summary"
         if [ "${{ steps.detect-container.outputs.container-mode }}" == "true" ]; then
-          echo "🐳 Mode: Container (ghcr.io/quantecon/quantecon)"
+          # Detect actual container image from marker file
+          if [ -f /etc/quantecon-container ]; then
+            CONTAINER_IMAGE=$(grep '^image=' /etc/quantecon-container | head -n 1 | cut -d'=' -f2-)
+            if [ -z "$CONTAINER_IMAGE" ]; then
+              CONTAINER_IMAGE="QuantEcon container"
+            fi
+          else
+            CONTAINER_IMAGE="QuantEcon container"
+          fi
+          echo "🐳 Mode: Container ($CONTAINER_IMAGE)"
           echo "   LaTeX: Pre-installed ✅"
           echo "   Python: Pre-installed ✅"
           echo "   Base packages: Pre-installed ✅"
-          if [ "${{ steps.container-pkg-cache.outputs.cache-hit }}" == "true" ]; then
-            echo "   Lecture packages: Restored from cache ✅"
+          if [ -n "${{ inputs.environment-file }}" ]; then
+            if [ "${{ steps.container-pkg-cache.outputs.cache-hit }}" == "true" ]; then
+              echo "   Lecture packages: Restored from cache ✅"
+            else
+              echo "   Lecture packages: Installed from environment.yml"
+            fi
           else
-            echo "   Lecture packages: Installed from environment.yml"
+            echo "   Lecture packages: Not requested (no environment file)"
           fi
         else
           echo "📦 Mode: Standard runner"

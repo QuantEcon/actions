@@ -56,7 +56,7 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Setup Environment
-        uses: quantecon/actions/setup-environment@v0
+        uses: quantecon/actions/setup-environment@main
         with:
           environment-file: 'environment.yml'  # Install lecture-specific packages
       

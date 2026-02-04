@@ -23,7 +23,7 @@ jobs:
   build-quantecon:
     name: Build quantecon (Full)
     runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.container == 'all' || github.event.inputs.container == 'quantecon' || github.event.inputs.container == '' }}
+    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.container == 'all' || github.event.inputs.container == 'quantecon' }}
     permissions:
       contents: read
       packages: write
@@ -64,7 +64,7 @@ jobs:
   build-quantecon-build:
     name: Build quantecon-build (Lean)
     runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.container == 'all' || github.event.inputs.container == 'quantecon-build' || github.event.inputs.container == '' }}
+    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.container == 'all' || github.event.inputs.container == 'quantecon-build' }}
     permissions:
       contents: read
       packages: write
