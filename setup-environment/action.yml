@@ -66,7 +66,7 @@ runs:
     # ============================================================
     
     - name: Cache lecture-specific packages (container mode)
-      if: steps.detect-container.outputs.container-mode == 'true'
+      if: steps.detect-container.outputs.container-mode == 'true' && inputs.environment-file != ''
       uses: actions/cache@v4
       id: container-pkg-cache
       with:
@@ -77,18 +77,42 @@ runs:
           container-pkgs-
 
     - name: Install lecture-specific packages (container mode)
-      if: steps.detect-container.outputs.container-mode == 'true'
+      if: steps.detect-container.outputs.container-mode == 'true' && inputs.environment-file != ''
       shell: bash
       run: |
         echo "::group::Installing lecture-specific packages"
         if [ -f "${{ inputs.environment-file }}" ]; then
           echo "Updating environment from ${{ inputs.environment-file }}"
-          conda env update -n ${{ inputs.environment-name }} -f ${{ inputs.environment-file }} --prune
+          # Use pip for faster installation when possible
+          # Extract pip dependencies and install directly
+          if grep -q "pip:" "${{ inputs.environment-file }}"; then
+            echo "Installing pip packages directly..."
+            # Extract pip packages from environment.yml and install
+            python -c "
+import yaml
+with open('${{ inputs.environment-file }}') as f:
+    env = yaml.safe_load(f)
+deps = env.get('dependencies', [])
+pip_pkgs = []
+for d in deps:
+    if isinstance(d, dict) and 'pip' in d:
+        pip_pkgs.extend(d['pip'])
+if pip_pkgs:
+    print('\n'.join(pip_pkgs))
+" | xargs -r pip install --quiet
+          fi
           echo "✅ Lecture packages installed"
         else
-          echo "No environment.yml found, using container defaults"
+          echo "⚠️ Environment file not found: ${{ inputs.environment-file }}"
         fi
         echo "::endgroup::"
+    
+    - name: Container mode - no packages needed
+      if: steps.detect-container.outputs.container-mode == 'true' && inputs.environment-file == ''
+      shell: bash
+      run: |
+        echo "🐳 Container mode with no environment file"
+        echo "✅ Using container's pre-installed packages (fastest path)"
 
     # ============================================================
     # NON-CONTAINER MODE: Full installation (existing behavior)
