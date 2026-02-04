@@ -26,6 +26,8 @@ RUN apt-get update && \
         ca-certificates \
         # FreeSerif fonts for PDF builds
         fonts-freefont-ttf \
+        # DejaVu fonts for XeLaTeX
+        fonts-dejavu \
         fontconfig \
         && rm -rf /var/lib/apt/lists/*
 
