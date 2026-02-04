@@ -19,6 +19,7 @@ dependencies:
   - numba
   - networkx
   - statsmodels
+  - scikit-learn
   
   # Jupyter ecosystem
   - jupyter
