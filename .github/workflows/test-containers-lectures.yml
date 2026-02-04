@@ -1,7 +1,10 @@
 name: Test Containers with Lectures
 
 # Validates containers by running full lecture builds against all QuantEcon lecture repositories.
-# This is a diagnostic workflow to ensure containers have all required dependencies.
+# This tests whether the container's built-in environment has all required dependencies.
+# 
+# NOTE: This workflow ignores each lecture repo's environment.yml and uses only the
+# container's pre-installed packages. This validates the container is self-sufficient.
 # 
 # Runs after container builds complete (informational, not blocking).
 # Can also be triggered manually for testing.
@@ -100,22 +103,21 @@ jobs:
           echo "Environment file:"
           cat environment.yml || echo "No environment.yml"
 
-      - name: Install lecture dependencies
+      - name: Show container environment
         shell: bash
         run: |
-          echo "Installing dependencies from environment.yml..."
+          echo "Using container's built-in environment (ignoring lecture repo's environment.yml)"
+          echo "This tests whether the container has all required dependencies pre-installed."
+          echo ""
           source /opt/conda/etc/profile.d/conda.sh
           conda activate quantecon
           
-          # Update environment with lecture-specific dependencies
-          if [ -f environment.yml ]; then
-            conda env update -f environment.yml --prune
-          fi
-          
-          # Show installed packages
-          echo ""
-          echo "Key packages installed:"
+          # Show key packages from container
+          echo "Key packages in container:"
           conda list | grep -E "^(jupyter-book|quantecon|numpy|scipy|pandas|matplotlib|jax)" || true
+          echo ""
+          echo "Python version:"
+          python --version
 
       - name: Build lectures (full execution)
         id: build
