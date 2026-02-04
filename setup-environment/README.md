@@ -4,7 +4,7 @@ Flexible, container-aware environment setup action for QuantEcon lectures. Auto-
 
 ## What it does
 
-**Container Mode** (when running in `ghcr.io/quantecon/quantecon`):
+**Container Mode** (when running in `ghcr.io/quantecon/quantecon` or `ghcr.io/quantecon/quantecon-build`):
 1. Detects container via `/etc/quantecon-container` marker
 2. Caches lecture-specific packages
 3. Runs `conda env update` to install only delta packages (~30 seconds)
@@ -28,21 +28,41 @@ Flexible, container-aware environment setup action for QuantEcon lectures. Auto-
 
 ### With Container (Recommended - Fastest)
 
+Two container variants are available:
+
+| Container | Image | Size | Best For |
+|-----------|-------|------|----------|
+| **Full** | `ghcr.io/quantecon/quantecon:latest` | ~8GB | Max compatibility |
+| **Lean** | `ghcr.io/quantecon/quantecon-build:latest` | ~3GB | CI builds (faster pull) |
+
 ```yaml
 jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/quantecon/quantecon:latest
+      image: ghcr.io/quantecon/quantecon-build:latest  # or quantecon:latest
     steps:
       - uses: actions/checkout@v4
       
       - uses: quantecon/actions/setup-environment@v1
         with:
-          environment-file: 'environment.yml'
+          environment-file: 'environment.yml'  # Optional - adds packages on top
         # Auto-detects container, installs only lecture-specific packages
       
       - uses: quantecon/actions/build-lectures@v1
+```
+
+### Container with No environment.yml (Fastest)
+
+If the container has all packages you need:
+
+```yaml
+container:
+  image: ghcr.io/quantecon/quantecon-build:latest
+steps:
+  - uses: quantecon/actions/setup-environment@v1
+    with:
+      environment-file: ''  # Skip package installation entirely
 ```
 
 ### Standard Build (ubuntu-latest)

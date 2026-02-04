@@ -54,19 +54,17 @@ on: [pull_request]
 jobs:
   preview:
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/quantecon/quantecon-build:latest  # Or quantecon:latest for full
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Required for preview-netlify change detection
       
-      # Flexible environment setup
+      # Container-aware environment setup (auto-detects container)
       - uses: quantecon/actions/setup-environment@main
         with:
-          python-version: '3.13'
-          environment-file: 'environment.yml'
-          install-latex: 'true'
-          latex-requirements-file: 'latex-requirements.txt'
-          environment-name: 'quantecon'
+          environment-file: 'environment.yml'  # Optional - adds packages on top
       
       - uses: quantecon/actions/build-lectures@main
         with:
@@ -78,6 +76,27 @@ jobs:
           netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
           build-dir: _build/html
+```
+
+### Example: Standard Mode (No Container)
+
+For projects with custom environment.yml that need full control:
+
+```yaml
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: quantecon/actions/setup-environment@main
+        with:
+          python-version: '3.13'
+          environment-file: 'environment.yml'  # Full installation from scratch
+          install-latex: 'true'
+          latex-requirements-file: 'latex-requirements.txt'
+      
+      - uses: quantecon/actions/build-lectures@main
 ```
 
 ## Expected Time Savings

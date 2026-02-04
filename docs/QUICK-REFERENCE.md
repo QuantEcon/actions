@@ -16,6 +16,10 @@ A cheat sheet for using QuantEcon composite actions in your workflows.
 
 ### Container CI Workflow (Recommended - Fastest)
 
+Two container options:
+- `ghcr.io/quantecon/quantecon:latest` (~8GB) - Full Anaconda, max compatibility
+- `ghcr.io/quantecon/quantecon-build:latest` (~3GB) - Lean, faster CI pulls
+
 ```yaml
 name: CI
 on: [pull_request]
@@ -24,12 +28,14 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/quantecon/quantecon:latest
+      image: ghcr.io/quantecon/quantecon-build:latest  # Lean container for CI
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: quantecon/actions/setup-environment@v1
+        with:
+          environment-file: 'environment.yml'  # Optional - adds packages on top
         # Auto-detects container, installs only lecture-specific packages
       - uses: quantecon/actions/build-lectures@v1
         id: build
