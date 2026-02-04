@@ -17,11 +17,12 @@ on:
   workflow_dispatch:
     inputs:
       container:
-        description: 'Container to test'
+        description: 'Container to test (or "all" to test all containers)'
         required: false
-        default: 'quantecon-build'
+        default: 'all'
         type: choice
         options:
+          - all
           - quantecon-build
           - quantecon
       repos:
@@ -30,52 +31,59 @@ on:
         default: 'all'
         type: string
 
+# Define available containers in one place for easy maintenance
+# To add a new container (e.g., GPU): add it to this list
+env:
+  ALL_CONTAINERS: '["quantecon-build","quantecon"]'
+  ALL_REPOS: '["lecture-python-programming.myst","lecture-python-intro","lecture-python-advanced.myst","lecture-python.myst"]'
+
 jobs:
-  # Determine which repos to test
+  # Determine which containers and repos to test
   setup:
     name: Setup Test Matrix
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
-      container: ${{ steps.set-container.outputs.container }}
     steps:
-      - name: Set container
-        id: set-container
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "container=${{ inputs.container }}" >> $GITHUB_OUTPUT
-          else
-            # Default to lean container for automated runs
-            echo "container=quantecon-build" >> $GITHUB_OUTPUT
-          fi
-
       - name: Set matrix
         id: set-matrix
         run: |
+          # Determine containers to test
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.container }}" != "all" ]; then
+            CONTAINERS='["${{ inputs.container }}"]'
+          else
+            # Test all containers for automated runs or when "all" selected
+            CONTAINERS='${{ env.ALL_CONTAINERS }}'
+          fi
+          
+          # Determine repos to test
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.repos }}" != "all" ]; then
             # Parse comma-separated repos
             REPOS='${{ inputs.repos }}'
-            JSON=$(echo "$REPOS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | jq -R -s -c 'split("\n") | map(select(. != ""))')
-            echo "matrix={\"repo\":$JSON}" >> $GITHUB_OUTPUT
+            REPOS_JSON=$(echo "$REPOS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | jq -R -s -c 'split("\n") | map(select(. != ""))')
           else
             # Test all lecture repositories
-            echo 'matrix={"repo":["lecture-python-programming.myst","lecture-python-intro","lecture-python-advanced.myst","lecture-python.myst"]}' >> $GITHUB_OUTPUT
+            REPOS_JSON='${{ env.ALL_REPOS }}'
           fi
+          
+          # Create combined matrix
+          echo "matrix={\"container\":$CONTAINERS,\"repo\":$REPOS_JSON}" >> $GITHUB_OUTPUT
+          echo "Matrix: {\"container\":$CONTAINERS,\"repo\":$REPOS_JSON}"
 
   test-lectures:
-    name: Test ${{ matrix.repo }}
+    name: Test ${{ matrix.repo }} (${{ matrix.container }})
     needs: setup
     runs-on: ubuntu-latest
     timeout-minutes: 120
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     container:
-      image: ghcr.io/quantecon/${{ needs.setup.outputs.container }}:latest
+      image: ghcr.io/quantecon/${{ matrix.container }}:latest
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     
     strategy:
-      fail-fast: false  # Continue testing other repos even if one fails
+      fail-fast: false  # Continue testing other combinations even if one fails
       matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
 
     steps:
@@ -83,7 +91,7 @@ jobs:
         run: |
           echo "=========================================="
           echo "Testing: ${{ matrix.repo }}"
-          echo "Container: ${{ needs.setup.outputs.container }}"
+          echo "Container: ${{ matrix.container }}"
           echo "=========================================="
           cat /etc/quantecon-container || echo "Container marker not found"
 
@@ -185,7 +193,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-${{ matrix.repo }}
+          name: build-${{ matrix.container }}-${{ matrix.repo }}
           path: |
             lectures/_build/html/
             build.log
@@ -195,7 +203,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: reports-${{ matrix.repo }}
+          name: reports-${{ matrix.container }}-${{ matrix.repo }}
           path: |
             lectures/_build/html/reports/
           retention-days: 14
@@ -211,23 +219,25 @@ jobs:
         run: |
           echo "# Lecture Validation Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Container:** \`${{ needs.setup.outputs.container }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Test Matrix" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Tests run for each combination of container × repository." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Containers tested:** \`${{ env.ALL_CONTAINERS }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Repositories tested:** \`${{ env.ALL_REPOS }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Repository | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|------------|--------|" >> $GITHUB_STEP_SUMMARY
-          
-          # Note: Individual job statuses would need to be passed through outputs
-          # For now, direct users to check individual job results
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "See individual job results above for detailed status of each repository." >> $GITHUB_STEP_SUMMARY
+          echo "See individual job results above for detailed status of each container/repository combination." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## Artifacts" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Build artifacts and execution reports (on failure) are available for download." >> $GITHUB_STEP_SUMMARY
-          echo "Artifacts are retained for 7 days (builds) or 14 days (failure reports)." >> $GITHUB_STEP_SUMMARY
+          echo "Build artifacts are named: \`build-{container}-{repo}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Build artifacts retained for 7 days" >> $GITHUB_STEP_SUMMARY
+          echo "- Failure reports retained for 14 days" >> $GITHUB_STEP_SUMMARY
 
       - name: Check overall status
         if: ${{ needs.test-lectures.result == 'failure' }}
