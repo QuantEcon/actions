@@ -14,7 +14,33 @@ A cheat sheet for using QuantEcon composite actions in your workflows.
 
 ## 🚀 Quick Start
 
-### Minimal CI Workflow
+### Container CI Workflow (Recommended - Fastest)
+
+```yaml
+name: CI
+on: [pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/quantecon/quantecon:latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: quantecon/actions/setup-environment@v1
+        # Auto-detects container, installs only lecture-specific packages
+      - uses: quantecon/actions/build-lectures@v1
+        id: build
+      - uses: quantecon/actions/preview-netlify@v1
+        with:
+          netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
+          build-dir: ${{ steps.build.outputs.build-path }}
+```
+
+### Standard CI Workflow (No Container)
 
 ```yaml
 name: CI
@@ -139,7 +165,8 @@ jobs:
 
 | Action | Cache Key | Invalidates On |
 |--------|-----------|----------------|
-| `setup-environment` | `conda-{OS}-{hash(env.yml)}-{version}` | env.yml changes, manual bump |
+| `setup-environment` (container) | `container-pkgs-{hash(env.yml)}-{version}` | env.yml changes, manual bump |
+| `setup-environment` (standard) | `conda-{OS}-{hash(env.yml)}-{version}` | env.yml changes, manual bump |
 | `build-lectures` (exec) | `jupyter-cache-{OS}-{hash(lectures)}-{sha}` | lecture changes, new commit |
 | `build-lectures` (build) | `build-{hash(environment.yml)}` | environment.yml changes |
 
@@ -148,15 +175,17 @@ jobs:
 ### setup-environment
 
 ```yaml
-python-version: '3.13'           # Python version
+python-version: '3.13'           # Python version (ignored in container mode)
 environment-file: 'environment.yml'  # Conda env file
 environment-name: 'quantecon'    # Conda env name
 cache-version: 'v1'              # Manual cache control
-install-latex: 'false'           # Install LaTeX packages
+install-latex: 'false'           # Install LaTeX (auto-disabled in container)
 latex-requirements-file: 'latex-requirements.txt'  # LaTeX packages list
 install-ml-libs: 'false'         # JAX/PyTorch/CUDA
 ml-libs-version: 'jax062-...'    # ML cache key
 ```
+
+**Outputs:** `container-mode`, `conda-cache-hit`
 
 ### build-lectures
 

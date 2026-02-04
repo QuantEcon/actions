@@ -74,6 +74,11 @@ RUN conda tos accept && \
 ENV PATH=/opt/conda/envs/quantecon/bin:$PATH
 ENV CONDA_DEFAULT_ENV=quantecon
 
+# Create marker file for container detection by setup-environment action
+RUN echo "quantecon-container" > /etc/quantecon-container && \
+    echo "image=ghcr.io/quantecon/quantecon" >> /etc/quantecon-container && \
+    echo "build_date=$(date -Iseconds)" >> /etc/quantecon-container
+
 # Set working directory
 WORKDIR /workspace
 

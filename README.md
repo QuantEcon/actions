@@ -15,13 +15,13 @@ This repository provides a set of composite actions that standardize and optimiz
 ### 🚀 [`setup-environment`](./setup-environment) **[Recommended]**
 **Flexible environment setup** with optional Conda, LaTeX, and ML libraries.
 
-**Time Savings:** ~5-6 minutes per run (via Conda caching)
+**Time Savings:** ~5-6 minutes per run (container mode or cached Conda)
 
 **Features:**
+- **Container-aware**: Auto-detects QuantEcon container and optimizes setup
 - Single action replaces both `setup-lecture-env` and `setup-latex`
 - Conda environment caching for fast restores
 - Simplified workflow configuration
-- Automatic environment activation
 
 ### 📚 [`build-lectures`](./build-lectures)
 Builds Jupyter Book lectures (HTML, PDF, notebooks) with unified error handling.
