@@ -83,24 +83,48 @@ runs:
         echo "::group::Installing lecture-specific packages"
         if [ -f "${{ inputs.environment-file }}" ]; then
           echo "Updating environment from ${{ inputs.environment-file }}"
-          # Use pip for faster installation when possible
-          # Extract pip dependencies and install directly
-          if grep -q "pip:" "${{ inputs.environment-file }}"; then
-            echo "Installing pip packages directly..."
-            # Extract pip packages from environment.yml and install
-            python -c "
+          
+          # Extract and install conda packages directly
+          echo "Extracting packages from environment file..."
+          python3 << 'EOF'
 import yaml
+import subprocess
+import sys
+
 with open('${{ inputs.environment-file }}') as f:
     env = yaml.safe_load(f)
+
 deps = env.get('dependencies', [])
+conda_pkgs = []
 pip_pkgs = []
+
 for d in deps:
-    if isinstance(d, dict) and 'pip' in d:
+    if isinstance(d, str) and d != 'pip':
+        conda_pkgs.append(d)
+    elif isinstance(d, dict) and 'pip' in d:
         pip_pkgs.extend(d['pip'])
+
+# Install conda packages
+if conda_pkgs:
+    print(f"Installing conda packages: {conda_pkgs}")
+    result = subprocess.run(['conda', 'install', '-y', '-q'] + conda_pkgs, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"Conda install failed: {result.stderr}", file=sys.stderr)
+        sys.exit(1)
+    print("✅ Conda packages installed")
+
+# Install pip packages
 if pip_pkgs:
-    print('\n'.join(pip_pkgs))
-" | xargs -r pip install --quiet
-          fi
+    print(f"Installing pip packages: {pip_pkgs}")
+    result = subprocess.run(['pip', 'install', '--quiet'] + pip_pkgs, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"Pip install failed: {result.stderr}", file=sys.stderr)
+        sys.exit(1)
+    print("✅ Pip packages installed")
+
+if not conda_pkgs and not pip_pkgs:
+    print("No additional packages to install")
+EOF
           echo "✅ Lecture packages installed"
         else
           echo "⚠️ Environment file not found: ${{ inputs.environment-file }}"
