@@ -22,7 +22,8 @@ RUN apt-get update && \
         git \
         curl \
         ca-certificates \
-        # Fonts for PDF builds
+        # Fonts for PDF builds (same as full container for consistency)
+        fonts-dejavu \
         fonts-freefont-ttf \
         fontconfig \
         # Graphviz for network diagrams

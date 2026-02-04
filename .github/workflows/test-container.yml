@@ -74,7 +74,7 @@ jobs:
 
       - name: Test XeLaTeX compilation
         run: |
-          cd containers/quantecon-build
+          cd containers/quantecon
           docker run --rm -v $(pwd):/workspace -w /workspace/tests \
             ghcr.io/quantecon/quantecon-build:latest \
             bash -c "xelatex test-xelatex.tex && ls -lh test-xelatex.pdf"
@@ -98,5 +98,5 @@ jobs:
         with:
           name: test-outputs-lean
           path: |
-            containers/quantecon-build/tests/test-xelatex.pdf
+            containers/quantecon/tests/test-xelatex.pdf
             containers/quantecon/tests/minimal-jupyter-book/_build/
