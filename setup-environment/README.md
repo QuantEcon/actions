@@ -6,9 +6,8 @@ Flexible, container-aware environment setup action for QuantEcon lectures. Auto-
 
 **Container Mode** (when running in `ghcr.io/quantecon/quantecon` or `ghcr.io/quantecon/quantecon-build`):
 1. Detects container via `/etc/quantecon-container` marker
-2. Caches lecture-specific packages
-3. Runs `conda env update` to install only delta packages (~30 seconds)
-4. Skips LaTeX (pre-installed in container)
+2. Runs `conda env update` to install only delta packages (~30-60 seconds)
+3. Skips LaTeX (pre-installed in container)
 
 **Standard Mode** (ubuntu-latest or other runners):
 1. Caches Conda environment based on `environment.yml` hash

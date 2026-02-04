@@ -63,7 +63,10 @@ runs:
 
     # ============================================================
     # CONTAINER MODE: Only install delta packages from environment.yml
-    # Note: Caching disabled - actions/cache runs on host, not in container
+    # Note: Conda environment caching is disabled in container mode because
+    #       the Conda env lives outside the workspace mount, so actions/cache
+    #       cannot persist it. Other host-mounted paths (e.g., pip cache) may
+    #       still be cached.
     # See: https://github.com/QuantEcon/actions/issues/18
     # ============================================================
 

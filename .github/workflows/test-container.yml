@@ -87,10 +87,9 @@ jobs:
             bash -c "cd minimal-jupyter-book && jb build . --builder html"
           ls -lh tests/minimal-jupyter-book/_build/html/
 
-      - name: Compare image sizes
+      - name: Show image size
         run: |
-          echo "=== Container Image Sizes ==="
-          docker images ghcr.io/quantecon/quantecon:latest --format "quantecon (full): {{.Size}}"
+          echo "=== Container Image Size ==="
           docker images ghcr.io/quantecon/quantecon-build:latest --format "quantecon-build (lean): {{.Size}}"
 
       - name: Upload test artifacts
