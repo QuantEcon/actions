@@ -7,8 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.0] - 2026-02-04
-
 ### Added
 - **Lean Container** (`ghcr.io/quantecon/quantecon-build:latest`)
   - Optimized for CI builds (~3GB vs ~8GB full container)
