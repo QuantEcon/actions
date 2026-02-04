@@ -4,7 +4,6 @@
 
 name: quantecon
 channels:
-  - conda-forge
   - defaults
 dependencies:
   # Python
