@@ -55,8 +55,8 @@ ENV FONTCONFIG_FILE=/etc/fonts/fonts.conf
 # Install Miniconda (smaller than Anaconda)
 # Pinned to specific version with SHA256 checksum for supply-chain security
 ENV CONDA_DIR=/opt/conda
-ENV MINICONDA_VERSION=py313_25.1.1-2
-ENV MINICONDA_SHA256=1b971dc4ab40108612ba35fbb6fbe6a8ae66b7ccaad4cbcf096c16c22a5d2fc5
+ENV MINICONDA_VERSION=py313_25.11.1-1
+ENV MINICONDA_SHA256=e0b10e050e8928e2eb9aad2c522ee3b5d31d30048b8a9997663a8a460d538cef
 RUN curl -L https://repo.anaconda.com/miniconda/Miniconda3-${MINICONDA_VERSION}-Linux-x86_64.sh -o /tmp/miniconda.sh && \
     echo "${MINICONDA_SHA256}  /tmp/miniconda.sh" | sha256sum -c - && \
     bash /tmp/miniconda.sh -b -p /opt/conda && \
