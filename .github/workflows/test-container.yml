@@ -74,7 +74,7 @@ jobs:
 
       - name: Test XeLaTeX compilation
         run: |
-          cd containers/quantecon
+          cd containers/quantecon-build
           docker run --rm -v $(pwd):/workspace -w /workspace/tests \
             ghcr.io/quantecon/quantecon-build:latest \
             bash -c "xelatex test-xelatex.tex && ls -lh test-xelatex.pdf"
@@ -85,7 +85,7 @@ jobs:
           docker run --rm -v $(pwd):/workspace -w /workspace/tests \
             ghcr.io/quantecon/quantecon-build:latest \
             bash -c "cd minimal-jupyter-book && jb build . --builder html"
-          ls -lh tests/minimal-jupyter-book/_build/html/
+          ls -lh containers/quantecon/tests/minimal-jupyter-book/_build/html/
 
       - name: Show image size
         run: |
@@ -96,7 +96,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: test-outputs
+          name: test-outputs-lean
           path: |
-            containers/quantecon/tests/test-xelatex.pdf
+            containers/quantecon-build/tests/test-xelatex.pdf
             containers/quantecon/tests/minimal-jupyter-book/_build/
