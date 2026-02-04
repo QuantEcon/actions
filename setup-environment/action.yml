@@ -41,7 +41,7 @@ outputs:
     description: 'Whether running in container mode'
     value: ${{ steps.detect-container.outputs.container-mode }}
   conda-cache-hit:
-    description: 'Whether conda cache was hit (non-container mode only)'
+    description: 'Whether conda cache was hit (standard mode only, always false in container mode)'
     value: ${{ steps.conda-cache.outputs.cache-hit }}
 
 runs:
@@ -63,24 +63,12 @@ runs:
 
     # ============================================================
     # CONTAINER MODE: Only install delta packages from environment.yml
-    # Cache the full conda environment prefix to avoid inconsistent state
+    # Note: Caching disabled - actions/cache runs on host, not in container
+    # See: https://github.com/QuantEcon/actions/issues/18
     # ============================================================
-    
-    - name: Cache conda environment (container mode)
-      if: steps.detect-container.outputs.container-mode == 'true' && inputs.environment-file != ''
-      uses: actions/cache@v4
-      id: container-pkg-cache
-      with:
-        path: |
-          /opt/conda/envs/${{ inputs.environment-name }}
-          /opt/conda/pkgs
-        key: container-env-${{ hashFiles(inputs.environment-file) }}-${{ inputs.cache-version }}
-        restore-keys: |
-          container-env-${{ hashFiles(inputs.environment-file) }}-
-          container-env-
 
     - name: Install lecture-specific packages (container mode)
-      if: steps.detect-container.outputs.container-mode == 'true' && inputs.environment-file != '' && steps.container-pkg-cache.outputs.cache-hit != 'true'
+      if: steps.detect-container.outputs.container-mode == 'true' && inputs.environment-file != ''
       shell: bash
       run: |
         echo "::group::Installing lecture-specific packages"
@@ -179,7 +167,7 @@ runs:
     # ============================================================
         
     - name: Display Environment Info
-      shell: bash
+      shell: bash -l {0}
       run: |
         echo "::group::Environment Setup Summary"
         if [ "${{ steps.detect-container.outputs.container-mode }}" == "true" ]; then
@@ -197,11 +185,7 @@ runs:
           echo "   Python: Pre-installed ✅"
           echo "   Base packages: Pre-installed ✅"
           if [ -n "${{ inputs.environment-file }}" ]; then
-            if [ "${{ steps.container-pkg-cache.outputs.cache-hit }}" == "true" ]; then
-              echo "   Lecture packages: Restored from cache ✅"
-            else
-              echo "   Lecture packages: Installed from environment.yml"
-            fi
+            echo "   Lecture packages: Installed from environment.yml"
           else
             echo "   Lecture packages: Not requested (no environment file)"
           fi

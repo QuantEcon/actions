@@ -118,9 +118,9 @@ steps:
 ## Cache Strategy
 
 ### Container Mode
-- **Key**: `container-pkgs-{hash(environment.yml)}-{version}`
-- **Path**: `/opt/conda/envs/{name}/lib/python*/site-packages`
-- **What's cached**: Lecture-specific packages only
+- **No caching** - `actions/cache` runs on the host runner, not inside the container
+- Packages installed fresh each run via `conda env update` (~30-60 seconds)
+- See [issue #18](https://github.com/QuantEcon/actions/issues/18) for future caching improvements
 
 ### Standard Mode
 - **Key**: `conda-{os}-{hash(environment.yml)}-{version}`

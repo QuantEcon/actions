@@ -171,7 +171,7 @@ jobs:
 
 | Action | Cache Key | Invalidates On |
 |--------|-----------|----------------|
-| `setup-environment` (container) | `container-pkgs-{hash(env.yml)}-{version}` | env.yml changes, manual bump |
+| `setup-environment` (container) | No caching* | N/A |
 | `setup-environment` (standard) | `conda-{OS}-{hash(env.yml)}-{version}` | env.yml changes, manual bump |
 | `build-lectures` (exec) | `jupyter-cache-{OS}-{hash(lectures)}-{sha}` | lecture changes, new commit |
 | `build-lectures` (build) | `build-{hash(environment.yml)}` | environment.yml changes |

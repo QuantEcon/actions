@@ -45,7 +45,7 @@ RUN cd /usr/share/fonts/truetype/freefont && \
 # Build fontconfig cache
 RUN fc-cache -f -s -v && \
     mkdir -p /var/cache/fontconfig && \
-    chmod 777 /var/cache/fontconfig
+    chmod 755 /var/cache/fontconfig
 
 # Set fontconfig environment
 ENV FONTCONFIG_PATH=/etc/fonts
