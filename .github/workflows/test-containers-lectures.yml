@@ -1,0 +1,236 @@
+name: Test Containers with Lectures
+
+# Validates containers by running full lecture builds against all QuantEcon lecture repositories.
+# This is a diagnostic workflow to ensure containers have all required dependencies.
+# 
+# Runs after container builds complete (informational, not blocking).
+# Can also be triggered manually for testing.
+
+on:
+  workflow_run:
+    workflows: ["Build QuantEcon Containers"]
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      container:
+        description: 'Container to test'
+        required: false
+        default: 'quantecon-build'
+        type: choice
+        options:
+          - quantecon-build
+          - quantecon
+      repos:
+        description: 'Repositories to test (comma-separated, or "all")'
+        required: false
+        default: 'all'
+        type: string
+
+jobs:
+  # Determine which repos to test
+  setup:
+    name: Setup Test Matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      container: ${{ steps.set-container.outputs.container }}
+    steps:
+      - name: Set container
+        id: set-container
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "container=${{ inputs.container }}" >> $GITHUB_OUTPUT
+          else
+            # Default to lean container for automated runs
+            echo "container=quantecon-build" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set matrix
+        id: set-matrix
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.repos }}" != "all" ]; then
+            # Parse comma-separated repos
+            REPOS='${{ inputs.repos }}'
+            JSON=$(echo "$REPOS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | jq -R -s -c 'split("\n") | map(select(. != ""))')
+            echo "matrix={\"repo\":$JSON}" >> $GITHUB_OUTPUT
+          else
+            # Test all lecture repositories
+            echo 'matrix={"repo":["lecture-python-programming.myst","lecture-python-intro","lecture-python-advanced.myst","lecture-python.myst"]}' >> $GITHUB_OUTPUT
+          fi
+
+  test-lectures:
+    name: Test ${{ matrix.repo }}
+    needs: setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    container:
+      image: ghcr.io/quantecon/${{ needs.setup.outputs.container }}:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    strategy:
+      fail-fast: false  # Continue testing other repos even if one fails
+      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
+
+    steps:
+      - name: Display test info
+        run: |
+          echo "=========================================="
+          echo "Testing: ${{ matrix.repo }}"
+          echo "Container: ${{ needs.setup.outputs.container }}"
+          echo "=========================================="
+          cat /etc/quantecon-container || echo "Container marker not found"
+
+      - name: Checkout lecture repository
+        uses: actions/checkout@v4
+        with:
+          repository: QuantEcon/${{ matrix.repo }}
+
+      - name: Display repository info
+        run: |
+          echo "Repository contents:"
+          ls -la
+          echo ""
+          echo "Lectures directory:"
+          ls -la lectures/ || echo "No lectures/ directory"
+          echo ""
+          echo "Environment file:"
+          cat environment.yml || echo "No environment.yml"
+
+      - name: Install lecture dependencies
+        shell: bash
+        run: |
+          echo "Installing dependencies from environment.yml..."
+          source /opt/conda/etc/profile.d/conda.sh
+          conda activate quantecon
+          
+          # Update environment with lecture-specific dependencies
+          if [ -f environment.yml ]; then
+            conda env update -f environment.yml --prune
+          fi
+          
+          # Show installed packages
+          echo ""
+          echo "Key packages installed:"
+          conda list | grep -E "^(jupyter-book|quantecon|numpy|scipy|pandas|matplotlib|jax)" || true
+
+      - name: Build lectures (full execution)
+        id: build
+        shell: bash
+        run: |
+          echo "Starting full lecture build with execution..."
+          echo "This may take 10-30+ minutes depending on the lecture series."
+          echo ""
+          
+          source /opt/conda/etc/profile.d/conda.sh
+          conda activate quantecon
+          
+          cd lectures
+          
+          # Record start time
+          START_TIME=$(date +%s)
+          
+          # Build with strict mode and execution
+          # -n: nitpicky mode (warn about all missing references)
+          # -W: turn warnings into errors
+          # --keep-going: continue building even if there are warnings
+          jb build . --builder html -n -W --keep-going 2>&1 | tee ../build.log
+          BUILD_STATUS=${PIPESTATUS[0]}
+          
+          # Record end time
+          END_TIME=$(date +%s)
+          DURATION=$((END_TIME - START_TIME))
+          MINUTES=$((DURATION / 60))
+          SECONDS=$((DURATION % 60))
+          
+          echo ""
+          echo "=========================================="
+          echo "Build completed in ${MINUTES}m ${SECONDS}s"
+          echo "Exit status: $BUILD_STATUS"
+          echo "=========================================="
+          
+          # Set output for summary
+          echo "duration=${MINUTES}m ${SECONDS}s" >> $GITHUB_OUTPUT
+          echo "status=$BUILD_STATUS" >> $GITHUB_OUTPUT
+          
+          exit $BUILD_STATUS
+
+      - name: Check build output
+        if: always()
+        run: |
+          echo "Build artifacts:"
+          ls -la lectures/_build/ 2>/dev/null || echo "No _build directory"
+          
+          if [ -d "lectures/_build/html" ]; then
+            echo ""
+            echo "HTML output:"
+            ls -la lectures/_build/html/ | head -20
+            
+            echo ""
+            echo "Total HTML files:"
+            find lectures/_build/html -name "*.html" | wc -l
+          fi
+          
+          if [ -f "lectures/_build/html/reports/index.html" ]; then
+            echo ""
+            echo "Execution reports available"
+          fi
+
+      - name: Upload build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.repo }}
+          path: |
+            lectures/_build/html/
+            build.log
+          retention-days: 7
+
+      - name: Upload execution reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports-${{ matrix.repo }}
+          path: |
+            lectures/_build/html/reports/
+          retention-days: 14
+
+  # Summary job that runs after all tests complete
+  summary:
+    name: Test Summary
+    needs: [setup, test-lectures]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Generate summary
+        run: |
+          echo "# Lecture Validation Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Container:** \`${{ needs.setup.outputs.container }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Repository | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|--------|" >> $GITHUB_STEP_SUMMARY
+          
+          # Note: Individual job statuses would need to be passed through outputs
+          # For now, direct users to check individual job results
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "See individual job results above for detailed status of each repository." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Build artifacts and execution reports (on failure) are available for download." >> $GITHUB_STEP_SUMMARY
+          echo "Artifacts are retained for 7 days (builds) or 14 days (failure reports)." >> $GITHUB_STEP_SUMMARY
+
+      - name: Check overall status
+        if: ${{ needs.test-lectures.result == 'failure' }}
+        run: |
+          echo "::warning::One or more lecture builds failed. Check artifacts for details."
+          echo ""
+          echo "This is informational - container has been published but may have issues"
+          echo "with specific lecture repositories."
