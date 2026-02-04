@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - XeLaTeX compilation tests
   - Jupyter Book HTML/PDF build tests
 
+- **Lecture Validation Tests** (`.github/workflows/test-containers-lectures.yml`)
+  - Full lecture builds against all 4 QuantEcon lecture repositories
+  - Tests container's built-in environment (ignores lecture repo's environment.yml)
+  - Matrix-based parallel testing across repositories
+  - Triggered automatically after container builds, or manually via workflow_dispatch
+  - 120-minute timeout per build, artifacts retained for debugging
+
 ### Changed
 - **`setup-environment`** - Now container-aware
   - Auto-detects QuantEcon containers via `/etc/quantecon-container` marker
