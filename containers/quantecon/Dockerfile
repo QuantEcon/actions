@@ -29,6 +29,19 @@ RUN apt-get update && \
         # DejaVu fonts for XeLaTeX
         fonts-dejavu \
         fontconfig \
+        # Chrome dependencies for kaleido (Plotly static image export)
+        libnss3 \
+        libatk-bridge2.0-0 \
+        libcups2 \
+        libxcomposite1 \
+        libxdamage1 \
+        libxfixes3 \
+        libxrandr2 \
+        libgbm1 \
+        libxkbcommon0 \
+        libpango-1.0-0 \
+        libcairo2 \
+        libasound2t64 \
         && rm -rf /var/lib/apt/lists/*
 
 # Copy FreeSerif fonts to TeX's font directory (fixes latexmk subprocess font access)
@@ -69,6 +82,8 @@ ENV PATH=$CONDA_DIR/bin:$PATH
 COPY environment.yml /tmp/environment.yml
 RUN conda tos accept && \
     conda env create -f /tmp/environment.yml && \
+    # Install Chrome for kaleido (Plotly static image export)
+    /opt/conda/envs/quantecon/bin/python -c "import kaleido; kaleido.get_chrome_sync()" && \
     conda clean -afy && \
     rm /tmp/environment.yml
 
