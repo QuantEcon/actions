@@ -1,0 +1,67 @@
+# Lean environment for QuantEcon lecture builds
+# Contains superset of packages used across all QuantEcon lecture series
+# Lecture-specific packages (quantecon, wbgapi, jax, etc.) installed from lecture's environment.yml
+
+name: quantecon
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  # Python
+  - python=3.13
+  
+  # Core scientific stack (used by most lectures)
+  - numpy
+  - scipy
+  - pandas
+  - matplotlib
+  - seaborn
+  - sympy
+  - numba
+  - networkx
+  - statsmodels
+  
+  # Jupyter ecosystem
+  - jupyter
+  - jupyterlab
+  - ipywidgets
+  - ipykernel
+  - notebook
+  
+  # Data handling
+  - xlrd
+  - openpyxl
+  - pytables
+  - h5py
+  
+  # Visualization
+  - plotly
+  - graphviz
+  - python-graphviz
+  
+  # Utilities
+  - requests
+  - beautifulsoup4
+  - lxml
+  - pyyaml
+  
+  # Build tools
+  - nodejs>=20,<21  # Required for some Jupyter extensions
+  
+  - pip
+  - pip:
+    # Jupyter Book build tools
+    - jupyter-book>=1.0.4post1,<2.0
+    - quantecon-book-theme>=0.10.1
+    - sphinx-tojupyter>=0.4.0
+    - sphinxext-rediraffe>=0.2.7
+    - sphinx-exercise>=1.2.0
+    - sphinx-proof>=0.2.0
+    - sphinxcontrib-youtube>=1.4.1
+    - sphinx-togglebutton>=0.3.2
+    - sphinx-reredirects>=0.1.4
+    - quantecon-book-networks
+    
+    # Additional build dependencies
+    - kaleido  # Plotly static image export
+    - prettytable

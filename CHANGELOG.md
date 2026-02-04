@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Lean Container** (`ghcr.io/quantecon/quantecon-build:latest`)
+  - Optimized for CI builds (~3GB vs ~8GB full container)
+  - Miniconda + Python 3.13 + Jupyter Book tooling
+  - XeLaTeX with essential packages (no full TexLive)
+  - Weekly automated builds alongside full container
+
+- **Container Test Workflow** (`.github/workflows/test-container.yml`)
+  - Automated validation of both containers after builds
+  - XeLaTeX compilation tests
+  - Jupyter Book HTML/PDF build tests
+
+### Changed
+- **`setup-environment`** - Now container-aware
+  - Auto-detects QuantEcon containers via `/etc/quantecon-container` marker
+  - Skips redundant LaTeX installation when running in container
+  - Activates pre-installed `quantecon` conda environment in containers
+  - Falls back to full setup on `ubuntu-latest` or other runners
+  - Added `skip-latex` input for manual control
+
+- **Container Infrastructure**
+  - Added DejaVu fonts to both containers for XeLaTeX compatibility
+  - Updated lean container to Miniconda py313_25.11.1-1
+
+### Documentation
+- Added container marker documentation
+- Updated setup-environment README with container detection details
+
 ## [0.2.0] - 2026-02-03
 
 ### Added

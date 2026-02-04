@@ -1,14 +1,14 @@
 name: 'Setup Environment'
-description: 'Flexible environment setup with optional Conda, LaTeX, and ML libraries'
+description: 'Flexible environment setup - auto-detects container or installs Conda, LaTeX, and ML libraries'
 author: 'QuantEcon'
 
 inputs:
   python-version:
-    description: 'Python version to use'
+    description: 'Python version to use (ignored in container mode)'
     required: false
     default: '3.13'
   environment-file:
-    description: 'Path to environment.yml'
+    description: 'Path to environment.yml for lecture-specific packages'
     required: false
     default: 'environment.yml'
   environment-name:
@@ -20,11 +20,11 @@ inputs:
     required: false
     default: 'v1'
   install-latex:
-    description: 'Whether to install LaTeX packages (set to false if using container or pre-installed)'
+    description: 'Whether to install LaTeX packages (auto-disabled in container mode)'
     required: false
     default: 'false'
   latex-requirements-file:
-    description: 'Path to latex-requirements.txt file listing packages to install (only used if install-latex is true)'
+    description: 'Path to latex-requirements.txt file listing packages to install'
     required: false
     default: 'latex-requirements.txt'
   install-ml-libs:
@@ -32,15 +32,75 @@ inputs:
     required: false
     default: 'false'
   ml-libs-version:
-    description: 'Version tag for ML libraries cache key (update when changing JAX/PyTorch versions)'
+    description: 'Version tag for ML libraries cache key'
     required: false
     default: 'jax062-torch-nightly-cuda12'
+
+outputs:
+  container-mode:
+    description: 'Whether running in container mode'
+    value: ${{ steps.detect-container.outputs.container-mode }}
+  conda-cache-hit:
+    description: 'Whether conda cache was hit (standard mode only, always false in container mode)'
+    value: ${{ steps.conda-cache.outputs.cache-hit }}
 
 runs:
   using: "composite"
   steps:
-    # Cache Conda environment
-    - name: Cache Conda Environment
+    # Detect if running inside QuantEcon container
+    - name: Detect container environment
+      id: detect-container
+      shell: bash
+      run: |
+        if [ -f "/etc/quantecon-container" ]; then
+          echo "🐳 Running inside QuantEcon container"
+          echo "container-mode=true" >> $GITHUB_OUTPUT
+          cat /etc/quantecon-container
+        else
+          echo "📦 Running on standard runner (non-container mode)"
+          echo "container-mode=false" >> $GITHUB_OUTPUT
+        fi
+
+    # ============================================================
+    # CONTAINER MODE: Only install delta packages from environment.yml
+    # Note: Conda environment caching is disabled in container mode because
+    #       the Conda env lives outside the workspace mount, so actions/cache
+    #       cannot persist it. Other host-mounted paths (e.g., pip cache) may
+    #       still be cached.
+    # See: https://github.com/QuantEcon/actions/issues/18
+    # ============================================================
+
+    - name: Install lecture-specific packages (container mode)
+      if: steps.detect-container.outputs.container-mode == 'true' && inputs.environment-file != ''
+      shell: bash
+      run: |
+        echo "::group::Installing lecture-specific packages"
+        if [ -f "${{ inputs.environment-file }}" ]; then
+          echo "Updating environment from ${{ inputs.environment-file }}"
+          # Let conda use the environment name from the file (more flexible than -n flag)
+          # This works regardless of what environment-name input is passed
+          conda env update -f ${{ inputs.environment-file }}
+          echo "✅ Lecture packages installed"
+        else
+          echo "⚠️ Environment file not found: ${{ inputs.environment-file }}"
+          echo "::error::Environment file not found: ${{ inputs.environment-file }}"
+          exit 1
+        fi
+        echo "::endgroup::"
+    
+    - name: Container mode - no packages needed
+      if: steps.detect-container.outputs.container-mode == 'true' && inputs.environment-file == ''
+      shell: bash
+      run: |
+        echo "🐳 Container mode with no environment file"
+        echo "✅ Using container's pre-installed packages (fastest path)"
+
+    # ============================================================
+    # NON-CONTAINER MODE: Full installation (existing behavior)
+    # ============================================================
+    
+    - name: Cache Conda Environment (non-container mode)
+      if: steps.detect-container.outputs.container-mode == 'false'
       uses: actions/cache@v4
       id: conda-cache
       with:
@@ -52,8 +112,8 @@ runs:
           conda-${{ runner.os }}-${{ hashFiles(inputs.environment-file) }}-
           conda-${{ runner.os }}-
     
-    # Always setup miniconda to activate the environment (even when restoring from cache)
-    - name: Setup Anaconda
+    - name: Setup Anaconda (non-container mode)
+      if: steps.detect-container.outputs.container-mode == 'false'
       uses: conda-incubator/setup-miniconda@v3
       with:
         auto-update-conda: true
@@ -64,8 +124,8 @@ runs:
         activate-environment: ${{ inputs.environment-name }}
         use-only-tar-bz2: true
 
-    - name: Install LaTeX packages
-      if: inputs.install-latex == 'true'
+    - name: Install LaTeX packages (non-container mode)
+      if: steps.detect-container.outputs.container-mode == 'false' && inputs.install-latex == 'true'
       shell: bash
       run: |
         if [ -f "${{ inputs.latex-requirements-file }}" ]; then
@@ -79,7 +139,11 @@ runs:
           echo "Skipping LaTeX installation"
         fi
 
-    - name: Cache pip packages
+    # ============================================================
+    # ML LIBRARIES: Same for both modes
+    # ============================================================
+    
+    - name: Cache pip packages (ML libs)
       uses: actions/cache@v4
       if: inputs.install-ml-libs == 'true'
       id: pip-cache
@@ -101,35 +165,59 @@ runs:
         pip install numpyro
         echo "Testing JAX installation..."
         python scripts/test-jax-install.py || echo "JAX test script not found or failed (non-fatal)"
+
+    # ============================================================
+    # SUMMARY: Display environment info
+    # ============================================================
         
     - name: Display Environment Info
-      shell: bash -l {0}
+      # Use plain bash to avoid login shell PATH reset in containers
+      # (Ubuntu's /etc/profile can drop /opt/conda from PATH)
+      shell: bash
       run: |
         echo "::group::Environment Setup Summary"
-        echo "Conda cache hit: ${{ steps.conda-cache.outputs.cache-hit }}"
-        if [ "${{ steps.conda-cache.outputs.cache-hit }}" == "true" ]; then
-          echo "✅ Conda environment restored from cache (saved ~5-6 minutes)"
+        if [ "${{ steps.detect-container.outputs.container-mode }}" == "true" ]; then
+          # Detect actual container image from marker file
+          if [ -f /etc/quantecon-container ]; then
+            CONTAINER_IMAGE=$(grep '^image=' /etc/quantecon-container | head -n 1 | cut -d'=' -f2-)
+            if [ -z "$CONTAINER_IMAGE" ]; then
+              CONTAINER_IMAGE="QuantEcon container"
+            fi
+          else
+            CONTAINER_IMAGE="QuantEcon container"
+          fi
+          echo "🐳 Mode: Container ($CONTAINER_IMAGE)"
+          echo "   LaTeX: Pre-installed ✅"
+          echo "   Python: Pre-installed ✅"
+          echo "   Base packages: Pre-installed ✅"
+          if [ -n "${{ inputs.environment-file }}" ]; then
+            echo "   Lecture packages: Installed from environment.yml"
+          else
+            echo "   Lecture packages: Not requested (no environment file)"
+          fi
         else
-          echo "❌ Conda environment installed fresh"
-        fi
-        echo ""
-        if [ "${{ inputs.install-latex }}" == "true" ]; then
-          echo "LaTeX: Installed (~2-3 minutes)"
-        else
-          echo "LaTeX: Skipped (pre-installed or not needed)"
+          echo "📦 Mode: Standard runner"
+          if [ "${{ steps.conda-cache.outputs.cache-hit }}" == "true" ]; then
+            echo "   Conda: Restored from cache ✅ (saved ~5-6 minutes)"
+          else
+            echo "   Conda: Installed fresh"
+          fi
+          if [ "${{ inputs.install-latex }}" == "true" ]; then
+            echo "   LaTeX: Installed"
+          else
+            echo "   LaTeX: Skipped"
+          fi
         fi
         if [ "${{ inputs.install-ml-libs }}" == "true" ]; then
-          echo "ML Libraries: Installed (JAX, PyTorch)"
+          echo "   ML Libraries: Installed (JAX, PyTorch)"
         fi
         echo "::endgroup::"
-        echo "::group::Conda packages"
-        conda list
+        
+        echo "::group::Python packages"
+        pip list 2>/dev/null || conda list
         echo "::endgroup::"
-        echo "::group::Pip packages"
-        pip list
-        echo "::endgroup::"
+        
         echo "::group::LaTeX version"
-        latex --version 2>/dev/null || echo "LaTeX not in PATH"
         pdflatex --version 2>/dev/null || echo "pdfLaTeX not in PATH"
         echo "::endgroup::"
 

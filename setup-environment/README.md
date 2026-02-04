@@ -1,26 +1,73 @@
 # Setup Environment
 
-Flexible environment setup action with optional Conda, LaTeX, and ML libraries for QuantEcon lectures.
+Flexible, container-aware environment setup action for QuantEcon lectures. Auto-detects if running inside the QuantEcon container and optimizes accordingly.
 
 ## What it does
 
-1. **Caches Conda environment** - Restores from cache based on `environment.yml` hash
-2. **Installs Conda** - Sets up and activates environment (uses cache if available)
-3. **Optional LaTeX** - Installs system packages via apt-get (when `install-latex: true`)
-4. **Optional ML libraries** - Installs JAX/PyTorch with CUDA support (when `install-ml-libs: true`)
+**Container Mode** (when running in `ghcr.io/quantecon/quantecon` or `ghcr.io/quantecon/quantecon-build`):
+1. Detects container via `/etc/quantecon-container` marker
+2. Runs `conda env update` to install only delta packages (~30-60 seconds)
+3. Skips LaTeX (pre-installed in container)
+
+**Standard Mode** (ubuntu-latest or other runners):
+1. Caches Conda environment based on `environment.yml` hash
+2. Installs full Conda environment
+3. Optional LaTeX installation via apt-get
+4. Optional ML libraries (JAX/PyTorch)
 
 ## Key Benefits
 
-- **~5-6 minutes saved** with Conda cache hit
+- **Auto-detection** - Automatically optimizes for container vs standard runner
+- **~5-6 minutes saved** with container mode (LaTeX + base packages pre-installed)
+- **~5-6 minutes saved** with Conda cache hit in standard mode
+- **Backwards compatible** - Works with existing workflows unchanged
 - **Flexible** - Choose which components to install
-- **Container-friendly** - Skip LaTeX when using pre-built containers (default)
-- **Environment-agnostic** - Works in containers, ubuntu-latest, or custom AMI
 
 ## Usage
 
-### Standard Build (ubuntu-latest, full setup)
+### With Container (Recommended - Fastest)
+
+Two container variants are available:
+
+| Container | Image | Size | Best For |
+|-----------|-------|------|----------|
+| **Full** | `ghcr.io/quantecon/quantecon:latest` | ~8GB | Max compatibility |
+| **Lean** | `ghcr.io/quantecon/quantecon-build:latest` | ~3GB | CI builds (faster pull) |
+
 ```yaml
-- uses: quantecon/actions/setup-environment@main
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/quantecon/quantecon-build:latest  # or quantecon:latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: quantecon/actions/setup-environment@v1
+        with:
+          environment-file: 'environment.yml'  # Optional - adds packages on top
+        # Auto-detects container, installs only lecture-specific packages
+      
+      - uses: quantecon/actions/build-lectures@v1
+```
+
+### Container with No environment.yml (Fastest)
+
+If the container has all packages you need:
+
+```yaml
+container:
+  image: ghcr.io/quantecon/quantecon-build:latest
+steps:
+  - uses: quantecon/actions/setup-environment@v1
+    with:
+      environment-file: ''  # Skip package installation entirely
+```
+
+### Standard Build (ubuntu-latest)
+
+```yaml
+- uses: quantecon/actions/setup-environment@v1
   with:
     python-version: '3.13'
     environment-file: 'environment.yml'
@@ -29,80 +76,92 @@ Flexible environment setup action with optional Conda, LaTeX, and ML libraries f
     environment-name: 'quantecon'
 ```
 
-### With Container (LaTeX already included)
-```yaml
-container:
-  image: ghcr.io/quantecon/quantecon:latest
-steps:
-  # Container already has LaTeX + Anaconda base packages
-  # Only install lecture-specific packages
-  - name: Install lecture dependencies
-    run: conda env update -f environment.yml
-```
+### With ML Libraries (GPU builds)
 
-**Note:** When using `ghcr.io/quantecon/quantecon:latest` container, the `setup-environment` action is not needed. The container includes LaTeX, Miniconda, and Anaconda 2025.12 base packages. Only lecture-specific packages need installation.
+```yaml
+- uses: quantecon/actions/setup-environment@v1
+  with:
+    install-latex: 'true'
+    install-ml-libs: 'true'
+```
 
 ## Inputs
 
 | Input | Description | Required | Default |
 |-------|-------------|----------|---------|
-| `python-version` | Python version to use | No | `3.13` |
+| `python-version` | Python version (ignored in container mode) | No | `3.13` |
 | `environment-file` | Path to environment.yml | No | `environment.yml` |
 | `environment-name` | Conda environment name | No | `quantecon` |
 | `cache-version` | Cache version for manual invalidation | No | `v1` |
-| `install-latex` | Install LaTeX packages | No | `false` |
-| `latex-requirements-file` | Path to latex-requirements.txt (only used if install-latex is true) | No | `latex-requirements.txt` |
+| `install-latex` | Install LaTeX packages (auto-disabled in container) | No | `false` |
+| `latex-requirements-file` | Path to latex-requirements.txt | No | `latex-requirements.txt` |
 | `install-ml-libs` | Install JAX/PyTorch with CUDA | No | `false` |
 | `ml-libs-version` | ML libraries version tag | No | `jax062-torch-nightly-cuda12` |
 
-## Cache Strategy
+## Outputs
 
-### Conda Cache
-- **Key**: `conda-{os}-{hash(environment.yml)}-{version}`
-- **Path**: `/home/runner/miniconda3/envs/{name}`, `/home/runner/conda_pkgs_dir`
-- **Invalidation**: Changes to `environment.yml` or manual `cache-version` bump
-- **Restore time**: ~30 seconds
-
-### LaTeX (when enabled)
-- **No caching** - System packages installed fresh each run (~2-3 minutes)
-- **Why**: Permission restrictions prevent caching apt archives or installed files
-- **Recommendation**: Use containers instead for ~2-3 min savings
+| Output | Description |
+|--------|-------------|
+| `container-mode` | `true` if running in QuantEcon container |
+| `conda-cache-hit` | `true` if Conda cache was restored (standard mode only) |
 
 ## Performance Comparison
 
-| Setup Method | Time | Best For |
-|--------------|------|----------|
-| Container (LaTeX pre-installed) | ~1 min | CPU lectures, standard builds |
-| setup-environment (Conda only) | ~6-7 min | GPU builds with custom AMI |
-| setup-environment (Conda + LaTeX) | ~8-9 min | Standard ubuntu-latest builds |
-| First run (no cache) | ~12 min | Initial setup |
+| Setup Method | Setup Time | Notes |
+|--------------|------------|-------|
+| **Container + setup-environment** | ~1-2 min | Recommended for all CPU builds |
+| Container (manual conda update) | ~1-2 min | Direct container usage |
+| setup-environment (cached) | ~3-4 min | Standard mode with cache hit |
+| setup-environment (no cache) | ~8-10 min | First run or cache miss |
 
-**Recommendation**: Use containers when possible for best performance.
+## Cache Strategy
 
-## Migration from separate actions
+### Container Mode
+- **No caching** - `actions/cache` runs on the host runner, not inside the container
+- Packages installed fresh each run via `conda env update` (~30-60 seconds)
+- See [issue #18](https://github.com/QuantEcon/actions/issues/18) for future caching improvements
 
-If you're currently using `setup-lecture-env` and `setup-latex` separately, you can replace both with this single action:
+### Standard Mode
+- **Key**: `conda-{os}-{hash(environment.yml)}-{version}`
+- **Path**: `/home/runner/miniconda3/envs/{name}`, `/home/runner/conda_pkgs_dir`
+- **What's cached**: Full Conda environment
 
-**Before:**
+## Lean environment.yml for Containers
+
+When using containers, your `environment.yml` should only list lecture-specific packages not included in the container's Anaconda base:
+
 ```yaml
-- uses: quantecon/actions/setup-lecture-env@main
-- uses: quantecon/actions/setup-latex@main
+# Lean environment.yml (for container builds)
+name: quantecon
+channels:
+  - conda-forge
+dependencies:
+  - quantecon        # Lecture-specific
+  - wbgapi           # World Bank API
+  - pip:
+    - quantecon-book-theme
 ```
 
-**After:**
-```yaml
-- uses: quantecon/actions/setup-environment@main
-  with:
-    install-latex: 'true'  # Enable LaTeX installation
-```
+The container already includes: numpy, scipy, pandas, matplotlib, jupyter, jupyter-book, and 300+ other Anaconda packages.
 
 ## When to use what
 
 | Scenario | Recommended Setup |
 |----------|------------------|
-| **Standard CPU lectures** | Use container (`ghcr.io/quantecon/quantecon:latest`) |
-| **GPU lectures (RunsOn + custom AMI)** | `setup-environment` with `install-ml-libs: true` |
-| **Local development** | Use container or `setup-environment` with full options |
+| **Standard CPU lectures** | Container + `setup-environment` |
+| **GPU lectures** | `setup-environment` with `install-ml-libs: true` |
+| **Local development** | Container or full `setup-environment` |
 | **Legacy workflows** | `setup-environment` with `install-latex: true` |
 
-**Future direction**: Containers are preferred for speed and consistency.
+## How Container Detection Works
+
+The action checks for `/etc/quantecon-container` marker file, which is created during container build:
+
+```
+quantecon-container
+image=ghcr.io/quantecon/quantecon
+build_date=2026-02-04T00:00:00+00:00
+```
+
+If found → Container mode (fast path)
+If not found → Standard mode (full installation)

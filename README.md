@@ -15,13 +15,13 @@ This repository provides a set of composite actions that standardize and optimiz
 ### 🚀 [`setup-environment`](./setup-environment) **[Recommended]**
 **Flexible environment setup** with optional Conda, LaTeX, and ML libraries.
 
-**Time Savings:** ~5-6 minutes per run (via Conda caching)
+**Time Savings:** ~5-6 minutes per run (container mode or cached Conda)
 
 **Features:**
+- **Container-aware**: Auto-detects QuantEcon container and optimizes setup
 - Single action replaces both `setup-lecture-env` and `setup-latex`
 - Conda environment caching for fast restores
 - Simplified workflow configuration
-- Automatic environment activation
 
 ### 📚 [`build-lectures`](./build-lectures)
 Builds Jupyter Book lectures (HTML, PDF, notebooks) with unified error handling.
@@ -54,19 +54,17 @@ on: [pull_request]
 jobs:
   preview:
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/quantecon/quantecon-build:latest  # Or quantecon:latest for full
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Required for preview-netlify change detection
       
-      # Flexible environment setup
+      # Container-aware environment setup (auto-detects container)
       - uses: quantecon/actions/setup-environment@main
         with:
-          python-version: '3.13'
-          environment-file: 'environment.yml'
-          install-latex: 'true'
-          latex-requirements-file: 'latex-requirements.txt'
-          environment-name: 'quantecon'
+          environment-file: 'environment.yml'  # Optional - adds packages on top
       
       - uses: quantecon/actions/build-lectures@main
         with:
@@ -78,6 +76,27 @@ jobs:
           netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
           build-dir: _build/html
+```
+
+### Example: Standard Mode (No Container)
+
+For projects with custom environment.yml that need full control:
+
+```yaml
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: quantecon/actions/setup-environment@main
+        with:
+          python-version: '3.13'
+          environment-file: 'environment.yml'  # Full installation from scratch
+          install-latex: 'true'
+          latex-requirements-file: 'latex-requirements.txt'
+      
+      - uses: quantecon/actions/build-lectures@main
 ```
 
 ## Expected Time Savings

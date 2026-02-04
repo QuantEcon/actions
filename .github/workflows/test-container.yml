@@ -8,7 +8,8 @@ on:
       - completed
 
 jobs:
-  test-container:
+  test-quantecon:
+    name: Test quantecon (Full)
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     steps:
@@ -48,11 +49,54 @@ jobs:
             bash -c "cd minimal-jupyter-book && jb build . --builder pdflatex"
           ls -lh tests/minimal-jupyter-book/_build/latex/*.pdf
 
+  test-quantecon-build:
+    name: Test quantecon-build (Lean)
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull latest container
+        run: docker pull ghcr.io/quantecon/quantecon-build:latest
+
+      - name: Check container marker
+        run: |
+          docker run --rm ghcr.io/quantecon/quantecon-build:latest \
+            cat /etc/quantecon-container
+
+      - name: Test XeLaTeX compilation
+        run: |
+          cd containers/quantecon
+          docker run --rm -v $(pwd):/workspace -w /workspace/tests \
+            ghcr.io/quantecon/quantecon-build:latest \
+            bash -c "xelatex test-xelatex.tex && ls -lh test-xelatex.pdf"
+
+      - name: Test Jupyter Book HTML build
+        run: |
+          cd containers/quantecon
+          docker run --rm -v $(pwd):/workspace -w /workspace/tests \
+            ghcr.io/quantecon/quantecon-build:latest \
+            bash -c "cd minimal-jupyter-book && jb build . --builder html"
+          ls -lh tests/minimal-jupyter-book/_build/html/
+
+      - name: Show image size
+        run: |
+          echo "=== Container Image Size ==="
+          docker images ghcr.io/quantecon/quantecon-build:latest --format "quantecon-build (lean): {{.Size}}"
+
       - name: Upload test artifacts
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: test-outputs
+          name: test-outputs-lean
           path: |
             containers/quantecon/tests/test-xelatex.pdf
             containers/quantecon/tests/minimal-jupyter-book/_build/
