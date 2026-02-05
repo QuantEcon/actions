@@ -43,6 +43,16 @@ Publishes production builds to GitHub Pages using native artifact-based deployme
 
 **Features:** Custom domain support, native GitHub Pages deployment (no gh-pages branch), optional release assets
 
+### 💾 [`build-jupyter-cache`](./build-jupyter-cache)
+Weekly cache generation for main branch builds.
+
+**Features:** Multi-format builds (html, pdflatex, jupyter), validates all builds pass before saving, creates GitHub issues on failure, unique cache keys for safe updates
+
+### 📥 [`restore-jupyter-cache`](./restore-jupyter-cache)
+Read-only cache restore for PR workflows.
+
+**Features:** Never saves (PRs can't corrupt cache), prefix matching for latest cache, detailed status logging, optional `fail-on-miss`
+
 ## Quick Start
 
 ### Example: CI Workflow

@@ -8,6 +8,8 @@ A cheat sheet for using QuantEcon composite actions in your workflows.
 |--------|---------|--------------|
 | `setup-environment` | Conda + Python + LaTeX + ML libs | ~5-6 min (cached) |
 | `build-lectures` | Jupyter Book builds | Varies (cached execution) |
+| `build-jupyter-cache` | Weekly cache generation (main branch) | Enables 80% faster CI |
+| `restore-jupyter-cache` | Read-only cache restore (PRs) | ~14 min (avoids full rebuild) |
 | `preview-netlify` | PR preview deployment (Netlify) | ~1 min |
 | `preview-cloudflare` | PR preview deployment (Cloudflare) | ~1 min |
 | `publish-gh-pages` | GitHub Pages deployment | ~30 sec |

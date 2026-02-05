@@ -57,7 +57,17 @@ publish-gh-pages/    → Deploy to GitHub Pages
 - Where: GitHub Actions cache API
 - Size: ~50-200 MB per lecture
 - Lifespan: 7 days
-- Management: Automatic via `build-lectures` action
+- Management: Via dedicated cache actions
+
+**Cache Actions:**
+- `build-jupyter-cache` - Weekly cache generation on main branch
+  - Builds all formats, verifies success, saves cache
+  - Creates issues on failure (duplicate prevention)
+  - Uses unique keys: `build-{env-hash}-{run-id}`
+- `restore-jupyter-cache` - Read-only restore for PRs
+  - Never saves (prevents cache corruption)
+  - Prefix matching finds latest cache
+  - Optional `fail-on-miss` for strict requirements
 
 **Combined performance:**
 - Cold cache (first build): 9-11 min
