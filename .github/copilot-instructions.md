@@ -13,14 +13,21 @@ This repository contains **reusable GitHub Actions composite actions** for build
 
 ## Current Status
 
-**✅ COMPLETED (November 20, 2025):**
-- Container infrastructure (`ghcr.io/quantecon/quantecon:latest`)
+**✅ CONTAINERS VALIDATED (February 5, 2026):**
+- Container infrastructure:
+  - `ghcr.io/quantecon/quantecon:latest` - Full container (~8GB)
+  - `ghcr.io/quantecon/quantecon-build:latest` - Lean container (~3GB)
   - Ubuntu 24.04 LTS + TexLive + Miniconda + Python 3.13
-  - Anaconda 2025.12 metapackage (base scientific stack)
+  - Intel MKL for optimized linear algebra
+  - Chrome + kaleido for Plotly static image export
   - Jupyter Book 1.0.4post1 + extensions
   - Weekly automated builds (Monday 2am UTC)
+- Validation:
+  - All 4 lecture repos build successfully on both containers
+  - No Jupyter Book warnings
+  - Build times comparable or faster than full container
 - Composite actions:
-  - `setup-environment` - Flexible environment setup with optional LaTeX
+  - `setup-environment` - Container-aware, auto-detects QuantEcon containers
   - `build-lectures` - Jupyter Book builds
   - `preview-netlify` - Netlify PR previews
   - `publish-gh-pages` - GitHub Pages publishing
@@ -29,18 +36,15 @@ This repository contains **reusable GitHub Actions composite actions** for build
   - docs/ARCHITECTURE.md - System design
   - docs/MIGRATION-GUIDE.md - Migration steps
   - docs/FUTURE-DEVELOPMENT.md - GPU roadmap
-  - TESTING.md - Validation strategy
+  - TESTING.md - Validation strategy and results
 
-**🧪 NEXT: TESTING PHASE**
-- **Test Repository:** `QuantEcon/test-lecture-python-intro`
-- **Goal:** Validate container workflow with real lecture content
-- **Metrics:** Compare build times, outputs, deployment
-- **See:** TESTING.md for detailed validation steps
+**🚀 NEXT: MIGRATION**
+- Migrate lecture repositories to use container-based workflows
+- Start with `lecture-python-intro` (simplest, Netlify deployment)
+- Measure production performance improvements
 
 **⏳ PENDING:**
-- Test container with test-lecture-python-intro
-- Measure actual performance improvements
-- Migrate CPU lecture repositories
+- Migrate CPU lecture repositories (4 repos)
 - Document GPU support plans
 
 ## Testing Approach

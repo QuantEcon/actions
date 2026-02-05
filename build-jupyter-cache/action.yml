@@ -1,0 +1,365 @@
+name: 'Build Jupyter Cache'
+description: 'Fresh build of all lecture formats and save to GitHub cache (runs on main branch, typically weekly)'
+author: 'QuantEcon'
+
+inputs:
+  builders:
+    description: 'Comma-separated list of builders to run: jupyter, pdflatex, html'
+    required: false
+    default: 'html'
+  environment-file:
+    description: 'Path to environment.yml for lecture-specific packages'
+    required: false
+    default: 'environment.yml'
+  source-dir:
+    description: 'Source directory containing lectures'
+    required: false
+    default: 'lectures'
+  upload-artifact:
+    description: 'Upload _build directory as artifact for inspection'
+    required: false
+    default: 'true'
+  artifact-retention-days:
+    description: 'Number of days to retain the build artifact'
+    required: false
+    default: '30'
+  create-issue-on-failure:
+    description: 'Create GitHub issue when build fails'
+    required: false
+    default: 'true'
+  issue-assignees:
+    description: 'Comma-separated GitHub usernames to assign to failure issues'
+    required: false
+    default: ''
+  issue-labels:
+    description: 'Comma-separated labels for failure issues'
+    required: false
+    default: 'build-failure,automated'
+
+outputs:
+  cache-saved:
+    description: 'Whether new cache was saved (only true if all builds passed)'
+    value: ${{ steps.verify-builds.outputs.all-passed }}
+  build-success:
+    description: 'Whether all builds succeeded'
+    value: ${{ steps.verify-builds.outputs.all-passed }}
+  cache-key:
+    description: 'The cache key used for saving'
+    value: ${{ steps.cache-key.outputs.key }}
+  jupyter-status:
+    description: 'Status of jupyter build (success/failure/skipped)'
+    value: ${{ steps.verify-builds.outputs.jupyter-status }}
+  pdflatex-status:
+    description: 'Status of pdflatex build (success/failure/skipped)'
+    value: ${{ steps.verify-builds.outputs.pdflatex-status }}
+  html-status:
+    description: 'Status of html build (success/failure/skipped)'
+    value: ${{ steps.verify-builds.outputs.html-status }}
+
+runs:
+  using: "composite"
+  steps:
+    # ============================================================
+    # SETUP
+    # ============================================================
+    
+    - name: Generate cache key
+      id: cache-key
+      shell: bash
+      run: |
+        KEY="build-${{ hashFiles(inputs.environment-file) }}-${{ github.run_id }}"
+        echo "key=$KEY" >> $GITHUB_OUTPUT
+        echo "Cache key: $KEY"
+
+    - name: Validate builders input
+      id: validate-builders
+      shell: bash
+      run: |
+        BUILDERS="${{ inputs.builders }}"
+        
+        # Check at least one valid builder is specified
+        if [[ ! "$BUILDERS" == *"jupyter"* ]] && [[ ! "$BUILDERS" == *"pdflatex"* ]] && [[ ! "$BUILDERS" == *"html"* ]]; then
+          echo "::error::No valid builders specified. Must include at least one of: jupyter, pdflatex, html"
+          echo "::error::Received: '$BUILDERS'"
+          exit 1
+        fi
+        echo "✅ Valid builders input: $BUILDERS"
+
+    - name: Parse builders input
+      id: parse-builders
+      shell: bash
+      run: |
+        BUILDERS="${{ inputs.builders }}"
+        
+        # Check which builders are requested
+        if [[ "$BUILDERS" == *"jupyter"* ]]; then
+          echo "run-jupyter=true" >> $GITHUB_OUTPUT
+        else
+          echo "run-jupyter=false" >> $GITHUB_OUTPUT
+        fi
+        
+        if [[ "$BUILDERS" == *"pdflatex"* ]]; then
+          echo "run-pdflatex=true" >> $GITHUB_OUTPUT
+        else
+          echo "run-pdflatex=false" >> $GITHUB_OUTPUT
+        fi
+        
+        if [[ "$BUILDERS" == *"html"* ]]; then
+          echo "run-html=true" >> $GITHUB_OUTPUT
+        else
+          echo "run-html=false" >> $GITHUB_OUTPUT
+        fi
+        
+        echo "Builders requested: $BUILDERS"
+        echo "  jupyter: $(if [[ "$BUILDERS" == *"jupyter"* ]]; then echo yes; else echo no; fi)"
+        echo "  pdflatex: $(if [[ "$BUILDERS" == *"pdflatex"* ]]; then echo yes; else echo no; fi)"
+        echo "  html: $(if [[ "$BUILDERS" == *"html"* ]]; then echo yes; else echo no; fi)"
+
+    # ============================================================
+    # ENVIRONMENT SETUP
+    # ============================================================
+    
+    - name: Setup environment
+      id: setup-env
+      uses: quantecon/actions/setup-environment@main
+      with:
+        environment-file: ${{ inputs.environment-file }}
+        install-latex: ${{ steps.parse-builders.outputs.run-pdflatex }}
+
+    # ============================================================
+    # BUILD ALL REQUESTED FORMATS
+    # Each build uses continue-on-error so we can check all results
+    # ============================================================
+    
+    - name: Build notebooks (jupyter)
+      id: build-jupyter
+      if: steps.parse-builders.outputs.run-jupyter == 'true'
+      continue-on-error: true
+      uses: quantecon/actions/build-lectures@main
+      with:
+        builder: 'jupyter'
+        source-dir: ${{ inputs.source-dir }}
+
+    - name: Build PDF (pdflatex)
+      id: build-pdflatex
+      if: steps.parse-builders.outputs.run-pdflatex == 'true'
+      continue-on-error: true
+      uses: quantecon/actions/build-lectures@main
+      with:
+        builder: 'pdflatex'
+        source-dir: ${{ inputs.source-dir }}
+
+    - name: Build HTML
+      id: build-html
+      if: steps.parse-builders.outputs.run-html == 'true'
+      continue-on-error: true
+      uses: quantecon/actions/build-lectures@main
+      with:
+        builder: 'html'
+        source-dir: ${{ inputs.source-dir }}
+        html-copy-pdf: ${{ steps.parse-builders.outputs.run-pdflatex }}
+        html-copy-notebooks: ${{ steps.parse-builders.outputs.run-jupyter }}
+
+    # ============================================================
+    # VERIFY ALL BUILDS SUCCEEDED
+    # ============================================================
+    
+    - name: Verify all builds succeeded
+      id: verify-builds
+      shell: bash
+      run: |
+        echo ""
+        echo "╔════════════════════════════════════════════════════════════════╗"
+        echo "║                    BUILD VERIFICATION                          ║"
+        echo "╚════════════════════════════════════════════════════════════════╝"
+        echo ""
+        
+        ALL_PASSED=true
+        
+        # Check jupyter build
+        if [ "${{ steps.parse-builders.outputs.run-jupyter }}" = "true" ]; then
+          if [ "${{ steps.build-jupyter.outcome }}" = "success" ]; then
+            echo "  ✅ jupyter: passed"
+            echo "jupyter-status=success" >> $GITHUB_OUTPUT
+          else
+            echo "  ❌ jupyter: FAILED"
+            echo "jupyter-status=failure" >> $GITHUB_OUTPUT
+            ALL_PASSED=false
+          fi
+        else
+          echo "  ⏭️  jupyter: skipped"
+          echo "jupyter-status=skipped" >> $GITHUB_OUTPUT
+        fi
+        
+        # Check pdflatex build
+        if [ "${{ steps.parse-builders.outputs.run-pdflatex }}" = "true" ]; then
+          if [ "${{ steps.build-pdflatex.outcome }}" = "success" ]; then
+            echo "  ✅ pdflatex: passed"
+            echo "pdflatex-status=success" >> $GITHUB_OUTPUT
+          else
+            echo "  ❌ pdflatex: FAILED"
+            echo "pdflatex-status=failure" >> $GITHUB_OUTPUT
+            ALL_PASSED=false
+          fi
+        else
+          echo "  ⏭️  pdflatex: skipped"
+          echo "pdflatex-status=skipped" >> $GITHUB_OUTPUT
+        fi
+        
+        # Check html build
+        if [ "${{ steps.parse-builders.outputs.run-html }}" = "true" ]; then
+          if [ "${{ steps.build-html.outcome }}" = "success" ]; then
+            echo "  ✅ html: passed"
+            echo "html-status=success" >> $GITHUB_OUTPUT
+          else
+            echo "  ❌ html: FAILED"
+            echo "html-status=failure" >> $GITHUB_OUTPUT
+            ALL_PASSED=false
+          fi
+        else
+          echo "  ⏭️  html: skipped"
+          echo "html-status=skipped" >> $GITHUB_OUTPUT
+        fi
+        
+        echo ""
+        echo "════════════════════════════════════════════════════════════════════"
+        
+        if [ "$ALL_PASSED" = "true" ]; then
+          echo "  ✅ ALL BUILDS PASSED - Cache will be saved"
+          echo "all-passed=true" >> $GITHUB_OUTPUT
+        else
+          echo "  ❌ SOME BUILDS FAILED - Cache will NOT be saved"
+          echo "  Existing cache preserved for PR workflows"
+          echo "all-passed=false" >> $GITHUB_OUTPUT
+        fi
+        
+        echo ""
+
+    # ============================================================
+    # SAVE CACHE (only if all builds passed)
+    # ============================================================
+    
+    - name: Save build cache
+      if: steps.verify-builds.outputs.all-passed == 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: _build
+        key: ${{ steps.cache-key.outputs.key }}
+
+    - name: Save execution cache
+      if: steps.verify-builds.outputs.all-passed == 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: _build/.jupyter_cache
+        key: jupyter-cache-${{ hashFiles(format('{0}/**/*.md', inputs.source-dir)) }}-${{ github.run_id }}
+
+    # ============================================================
+    # UPLOAD ARTIFACT
+    # ============================================================
+    
+    - name: Upload build artifact
+      if: inputs.upload-artifact == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-cache-${{ github.run_id }}
+        path: _build
+        retention-days: ${{ inputs.artifact-retention-days }}
+        if-no-files-found: warn
+
+    # ============================================================
+    # CREATE ISSUE ON FAILURE
+    # ============================================================
+    
+    - name: Create failure issue
+      if: steps.verify-builds.outputs.all-passed == 'false' && inputs.create-issue-on-failure == 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        SOURCE_DIR: ${{ inputs.source-dir }}
+        ISSUE_LABELS: ${{ inputs.issue-labels }}
+        ISSUE_ASSIGNEES: ${{ inputs.issue-assignees }}
+        JUPYTER_STATUS: ${{ steps.verify-builds.outputs.jupyter-status }}
+        PDFLATEX_STATUS: ${{ steps.verify-builds.outputs.pdflatex-status }}
+        HTML_STATUS: ${{ steps.verify-builds.outputs.html-status }}
+      run: |
+        ${{ github.action_path }}/scripts/create-failure-issue.sh
+
+    # ============================================================
+    # BUILD SUMMARY
+    # ============================================================
+    
+    - name: Generate build summary
+      if: always()
+      shell: bash
+      run: |
+        echo "## 📦 Jupyter Cache Build Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [ "${{ steps.verify-builds.outputs.all-passed }}" = "true" ]; then
+          echo "### ✅ Build Successful - Cache Saved" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "### ❌ Build Failed - Cache NOT Saved" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> ⚠️ Existing cache preserved for PR workflows" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
+        echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+        echo "| Cache Key | \`${{ steps.cache-key.outputs.key }}\` |" >> $GITHUB_STEP_SUMMARY
+        echo "| Trigger | ${{ github.event_name }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+        echo "| Container Mode | ${{ steps.setup-env.outputs.container-mode }} |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        echo "### Builder Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Builder | Status |" >> $GITHUB_STEP_SUMMARY
+        echo "|---------|--------|" >> $GITHUB_STEP_SUMMARY
+        
+        # Add status icons
+        JUPYTER_ICON="⏭️"
+        PDFLATEX_ICON="⏭️"
+        HTML_ICON="⏭️"
+        
+        if [ "${{ steps.verify-builds.outputs.jupyter-status }}" = "success" ]; then JUPYTER_ICON="✅"; fi
+        if [ "${{ steps.verify-builds.outputs.jupyter-status }}" = "failure" ]; then JUPYTER_ICON="❌"; fi
+        if [ "${{ steps.verify-builds.outputs.pdflatex-status }}" = "success" ]; then PDFLATEX_ICON="✅"; fi
+        if [ "${{ steps.verify-builds.outputs.pdflatex-status }}" = "failure" ]; then PDFLATEX_ICON="❌"; fi
+        if [ "${{ steps.verify-builds.outputs.html-status }}" = "success" ]; then HTML_ICON="✅"; fi
+        if [ "${{ steps.verify-builds.outputs.html-status }}" = "failure" ]; then HTML_ICON="❌"; fi
+        
+        echo "| jupyter | $JUPYTER_ICON ${{ steps.verify-builds.outputs.jupyter-status }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| pdflatex | $PDFLATEX_ICON ${{ steps.verify-builds.outputs.pdflatex-status }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| html | $HTML_ICON ${{ steps.verify-builds.outputs.html-status }} |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [ -d "_build" ]; then
+          echo "### Build Output" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Directory | Size |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Total | $(du -sh _build 2>/dev/null | cut -f1 || echo 'N/A') |" >> $GITHUB_STEP_SUMMARY
+          for dir in _build/*/; do
+            if [ -d "$dir" ]; then
+              NAME=$(basename "$dir")
+              SIZE=$(du -sh "$dir" 2>/dev/null | cut -f1 || echo 'N/A')
+              echo "| $NAME | $SIZE |" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+        fi
+
+    # ============================================================
+    # FAIL WORKFLOW IF BUILDS FAILED
+    # ============================================================
+    
+    - name: Fail if builds failed
+      if: steps.verify-builds.outputs.all-passed == 'false'
+      shell: bash
+      run: |
+        echo "::error::One or more builds failed - see summary above"
+        exit 1
+
+branding:
+  icon: 'package'
+  color: 'green'
