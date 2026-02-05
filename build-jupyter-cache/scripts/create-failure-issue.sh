@@ -82,7 +82,9 @@ if [ -n "$ISSUE_ASSIGNEES" ]; then
 fi
 
 # Check for existing open issue with same label to avoid duplicates
-EXISTING=$(gh issue list --label "build-failure" --state open --limit 1 --json number --jq '.[0].number' 2>/dev/null || echo "")
+# Extract first label from ISSUE_LABELS for duplicate detection
+FIRST_LABEL=$(echo "$ISSUE_LABELS" | cut -d',' -f1 | xargs)
+EXISTING=$(gh issue list --label "$FIRST_LABEL" --state open --limit 1 --json number --jq '.[0].number' 2>/dev/null || echo "")
 
 if [ -n "$EXISTING" ]; then
   echo "Found existing open issue #$EXISTING, adding comment instead of creating new issue"

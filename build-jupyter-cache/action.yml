@@ -67,7 +67,7 @@ runs:
       id: cache-key
       shell: bash
       run: |
-        KEY="build-${{ hashFiles('environment.yml') }}-${{ github.run_id }}"
+        KEY="build-${{ hashFiles(inputs.environment-file) }}-${{ github.run_id }}"
         echo "key=$KEY" >> $GITHUB_OUTPUT
         echo "Cache key: $KEY"
 
