@@ -49,6 +49,7 @@ jobs:
     permissions:
       contents: read
       issues: write
+      packages: read
     
     steps:
       - name: Checkout
