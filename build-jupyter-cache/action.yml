@@ -261,7 +261,7 @@ runs:
       if: inputs.upload-artifact == 'true'
       uses: actions/upload-artifact@v4
       with:
-        name: build-cache-${{ github.sha }}
+        name: build-cache-${{ github.run_id }}
         path: _build
         retention-days: ${{ inputs.artifact-retention-days }}
         if-no-files-found: warn
