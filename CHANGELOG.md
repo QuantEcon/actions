@@ -22,9 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Lecture Validation Tests** (`.github/workflows/test-containers-lectures.yml`)
   - Full lecture builds against all 4 QuantEcon lecture repositories
   - Tests container's built-in environment (ignores lecture repo's environment.yml)
-  - Matrix-based parallel testing across repositories
+  - Matrix-based parallel testing across all containers × all repos (2×4 = 8 jobs)
   - Triggered automatically after container builds, or manually via workflow_dispatch
   - 120-minute timeout per build, artifacts retained for debugging
+  - Validated: All 4 lecture repos build successfully on both containers
 
 ### Changed
 - **`setup-environment`** - Now container-aware
@@ -35,8 +36,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added `skip-latex` input for manual control
 
 - **Container Infrastructure**
+  - Added Chrome + kaleido for Plotly static image export (`fig.to_image()`)
+  - Added Intel MKL for optimized linear algebra (2-3x faster for numerical computations)
+  - Added scikit-learn for ML lectures
   - Added DejaVu fonts to both containers for XeLaTeX compatibility
   - Updated lean container to Miniconda py313_25.11.1-1
+  - Uses `defaults` channel only (matches Anaconda metapackage behavior)
 
 ### Documentation
 - Added container marker documentation

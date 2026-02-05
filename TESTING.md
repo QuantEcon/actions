@@ -1,8 +1,22 @@
 # Testing Strategy
 
-## Current Status (2026-01-15)
+## Current Status (2026-02-05)
 
-**Container infrastructure complete.** Ready for production use.
+**✅ Container infrastructure validated.** All 4 lecture repositories build successfully on both containers.
+
+### Validation Results
+
+| Repository | quantecon-build | quantecon | Status |
+|------------|-----------------|-----------|--------|
+| lecture-python-programming.myst | 4.6 min | 5.4 min | ✅ Pass |
+| lecture-python-intro | 11.5 min | 13.4 min | ✅ Pass |
+| lecture-python-advanced.myst | 33.6 min | 35.9 min | ✅ Pass |
+| lecture-python.myst | 60.0 min | 60.0 min | ✅ Pass |
+
+**Key Findings:**
+- Lean container (`quantecon-build`) performs equal or better than full container
+- No Jupyter Book warnings (builds pass with `-W` warnings-as-errors)
+- Container pulls + setup: ~2-3 min (vs 7-8 min for ubuntu-latest)
 
 ---
 
