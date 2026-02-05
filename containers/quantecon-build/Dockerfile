@@ -3,17 +3,19 @@ FROM ubuntu:24.04
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install minimal system dependencies and LaTeX
-# Using texlive-xetex instead of full texlive to reduce size
+# Install system dependencies and LaTeX
+# Includes texlive-fonts-extra (bbm.sty) and xindy for PDF builds
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        # Minimal LaTeX for PDF builds
+        # LaTeX for PDF builds
         texlive-xetex \
         texlive-fonts-recommended \
+        texlive-fonts-extra \
         texlive-latex-recommended \
         texlive-latex-extra \
         # Build tools
         latexmk \
+        xindy \
         dvipng \
         ghostscript \
         cm-super \
