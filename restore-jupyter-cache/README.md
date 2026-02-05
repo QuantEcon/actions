@@ -66,8 +66,6 @@ Restores only `.jupyter_cache` directory containing cached notebook execution ou
 - uses: quantecon/actions/restore-jupyter-cache@v1
 
 - uses: quantecon/actions/build-lectures@v1
-  with:
-    cache-notebook-execution: false  # Already restored
 ```
 
 ### Execution Cache Only
@@ -88,7 +86,6 @@ Restores only `.jupyter_cache` directory containing cached notebook execution ou
 - uses: quantecon/actions/build-lectures@v1
   with:
     builder: 'jupyter'
-    cache-notebook-execution: false
 
 - uses: quantecon/actions/build-lectures@v1
   with:

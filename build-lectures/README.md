@@ -19,7 +19,6 @@ Builds QuantEcon lectures using Jupyter Book.
 
 | Input | Description | Required | Default |
 |-------|-------------|----------|---------|
-|-------|-------------|----------|---------|
 | `builder` | Jupyter Book builder (html/pdflatex/jupyter) | No | `html` |
 | `source-dir` | Directory containing lecture files | No | `lectures` |
 | `output-dir` | Base output directory | No | `./` |

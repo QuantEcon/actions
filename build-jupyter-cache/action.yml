@@ -139,8 +139,6 @@ runs:
       with:
         builder: 'jupyter'
         source-dir: ${{ inputs.source-dir }}
-        cache-notebook-execution: false
-        use-build-cache: false
 
     - name: Build PDF (pdflatex)
       id: build-pdflatex
@@ -150,8 +148,6 @@ runs:
       with:
         builder: 'pdflatex'
         source-dir: ${{ inputs.source-dir }}
-        cache-notebook-execution: false
-        use-build-cache: false
 
     - name: Build HTML
       id: build-html
@@ -161,8 +157,6 @@ runs:
       with:
         builder: 'html'
         source-dir: ${{ inputs.source-dir }}
-        cache-notebook-execution: false
-        use-build-cache: false
         html-copy-pdf: ${{ steps.parse-builders.outputs.run-pdflatex }}
         html-copy-notebooks: ${{ steps.parse-builders.outputs.run-jupyter }}
 

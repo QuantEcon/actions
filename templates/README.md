@@ -60,8 +60,6 @@ jobs:
       
       # Incremental build (only re-runs changed notebooks)
       - uses: quantecon/actions/build-lectures@v1
-        with:
-          cache-notebook-execution: false  # Cache already restored
 ```
 
 ## Cache Strategy
