@@ -133,8 +133,8 @@ runs:
         echo "$DEPLOY_OUTPUT"
         echo "::endgroup::"
         
-        # Extract URL from JSON output
-        DEPLOY_URL=$(echo "$DEPLOY_OUTPUT" | jq -r '.deploy_url // .url // empty')
+        # Extract URL from JSON output (use Python instead of jq for container compatibility)
+        DEPLOY_URL=$(echo "$DEPLOY_OUTPUT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('deploy_url') or d.get('url',''))")
         
         # Validate deployment URL
         if [ -z "$DEPLOY_URL" ]; then
