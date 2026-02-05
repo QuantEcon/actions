@@ -170,7 +170,8 @@ The container already includes: numpy, scipy, pandas, matplotlib, jupyter, jupyt
 | Scenario | Recommended Setup |
 |----------|------------------|
 | **Standard CPU lectures** | Container + `setup-environment` |
-| **GPU lectures** | `setup-environment` with `install-ml-libs: true` |
+| **GPU lectures (RunsOn AMI)** | AMI with marker file + `environment-update` |
+| **GPU lectures (no AMI)** | `setup-environment` with `install-ml-libs: true` |
 | **Local development** | Container or full `setup-environment` |
 | **Legacy workflows** | `setup-environment` with `install-latex: true` |
 
@@ -186,3 +187,64 @@ build_date=2026-02-04T00:00:00+00:00
 
 If found → Container mode (fast path)
 If not found → Standard mode (full installation)
+
+This detection also works with **custom AMIs** (e.g., RunsOn GPU instances). See below.
+
+## RunsOn + Custom AMI (GPU Builds)
+
+For GPU lectures running on EC2 via [RunsOn](https://runs-on.com) with a custom AMI, you can use the same container mode by adding the marker file to your AMI. This lets you use `environment-update` for delta package installs, avoiding full environment rebuilds on every run.
+
+### AMI Requirements
+
+When building your AMI (e.g., with Packer), ensure it includes:
+
+1. **Marker file** — triggers container mode detection:
+   ```bash
+   echo "quantecon-container" > /etc/quantecon-container
+   echo "image=ami-your-ami-id" >> /etc/quantecon-container
+   echo "variant=gpu" >> /etc/quantecon-container
+   echo "build_date=$(date -Iseconds)" >> /etc/quantecon-container
+   ```
+
+2. **Conda on PATH** — container mode calls `conda env update` directly (no `setup-miniconda`):
+   ```bash
+   # Miniconda or Anaconda installed, e.g.:
+   /opt/conda/bin/conda  # or wherever your install lives
+   ```
+
+3. **Pre-installed base environment** — the scientific stack + GPU libraries:
+   - Python 3.13, numpy, scipy, pandas, matplotlib, jupyter
+   - Jupyter Book + extensions
+   - CUDA toolkit, JAX, PyTorch (GPU-specific)
+   - LaTeX (texlive)
+
+### Workflow Example
+
+```yaml
+jobs:
+  build:
+    runs-on: [runs-on, gpu=1, image=your-gpu-ami]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: quantecon/actions/setup-environment@v1
+        with:
+          environment-update: 'environment-update.yml'  # Delta packages only
+        # Detects /etc/quantecon-container → skips full install
+
+      - uses: quantecon/actions/build-lectures@v1
+```
+
+### What Container Mode Skips on AMI
+
+| Step | Container/AMI Mode | Standard Mode |
+|------|-------------------|---------------|
+| Miniconda install | Skipped (pre-installed) | Installed |
+| Full conda env create | Skipped (pre-installed) | From `environment` |
+| LaTeX install | Skipped (pre-installed) | If `install-latex: true` |
+| ML libs install | Skipped (pre-installed) | If `install-ml-libs: true` |
+| Delta package update | If `environment-update` set | N/A |
+
+### Advantage Over Containers
+
+Unlike Docker containers, AMIs run on the host directly, so `actions/cache` works normally. This means cached conda environments, pip packages, and build caches all persist between runs — potentially even faster than container mode for repeated builds.
