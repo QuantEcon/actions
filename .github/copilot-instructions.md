@@ -328,32 +328,31 @@ gh workflow run build-containers.yml
 
 ### ⚠️ CRITICAL: GitHub CLI Commands
 
-**ALWAYS use files in `/tmp` for multi-line content** - Shell escaping breaks with inline strings:
+**ALWAYS use the `create_file` tool for multi-line content** - heredoc and shell escaping break frequently in terminals:
 
 ```bash
-# ❌ WRONG - Escaping breaks with special characters, quotes, backticks
+# ❌ WRONG - heredoc breaks in terminal tool, escaping fails with backticks/variables
+cat > /tmp/pr-body.md << 'EOF'
+Multi-line content
+EOF
 gh pr edit 13 --body "Multi-line content with `backticks` and $variables"
 gh release create v1.0.0 --notes "Release notes with **markdown**"
 
-# ✅ CORRECT - Write content to a temp file first, then use --body-file or --notes-file
-cat > /tmp/pr-body.md << 'EOF'
-## Summary
-Multi-line content with `backticks` and $variables works fine here.
-EOF
+# ✅ CORRECT - Use create_file tool to write /tmp files, then reference them in gh commands
+# Step 1: Use create_file tool to write /tmp/pr-body.md
+# Step 2: Run in terminal:
 gh pr edit 13 --body-file /tmp/pr-body.md
 
-cat > /tmp/release-notes.md << 'EOF'
-## What's New
-Release notes with **markdown** and `code` work perfectly.
-EOF
+# Step 1: Use create_file tool to write /tmp/release-notes.md
+# Step 2: Run in terminal:
 gh release create v1.0.0 --notes-file /tmp/release-notes.md
 ```
 
 **This applies to:**
-- `gh pr create --body` → use `--body-file /tmp/pr-body.md`
-- `gh pr edit --body` → use `--body-file /tmp/pr-body.md`
-- `gh release create --notes` → use `--notes-file /tmp/release-notes.md`
-- `gh issue create --body` → use `--body-file /tmp/issue-body.md`
+- `gh pr create --body` → use `create_file` for `/tmp/pr-body.md`, then `--body-file /tmp/pr-body.md`
+- `gh pr edit --body` → use `create_file` for `/tmp/pr-body.md`, then `--body-file /tmp/pr-body.md`
+- `gh release create --notes` → use `create_file` for `/tmp/release-notes.md`, then `--notes-file /tmp/release-notes.md`
+- `gh issue create --body` → use `create_file` for `/tmp/issue-body.md`, then `--body-file /tmp/issue-body.md`
 
 **ALWAYS write `gh` command output to a file** - gh CLI is interactive and won't display in terminal:
 
