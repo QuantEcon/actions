@@ -18,8 +18,8 @@ This ensures PRs always have a working cache to restore, even when the weekly bu
 | Input | Description | Required | Default |
 |-------|-------------|----------|---------|
 | `builders` | Comma-separated builders: jupyter, pdflatex, html | No | `html` |
-| `environment-file` | Path to environment.yml (non-container builds) | No | `environment.yml` |
-| `container-environment-file` | Path to delta environment.yml for container builds | No | `''` |
+| `environment` | Path to environment.yml (non-container builds) | No | `environment.yml` |
+| `environment-update` | Path to delta environment.yml for container builds | No | `''` |
 | `source-dir` | Source directory for lectures | No | `lectures` |
 | `upload-artifact` | Upload _build as artifact | No | `true` |
 | `artifact-retention-days` | Days to retain artifact | No | `30` |

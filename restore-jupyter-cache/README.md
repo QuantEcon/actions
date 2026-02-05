@@ -19,7 +19,7 @@ For cache generation, use the `build-jupyter-cache` action in your cache.yml wor
 | `cache-type` | `build` (full `_build`) or `execution` (`.jupyter_cache` only) | No | `build` |
 | `path` | Path to restore cache to | No | `_build` |
 | `source-dir` | Source directory for lectures (used for content hash in execution cache) | No | `lectures` |
-| `environment-file` | Path to environment file (used for cache key hash) | No | `environment.yml` |
+| `environment` | Path to environment file (used for cache key hash) | No | `environment.yml` |
 | `key` | Custom cache key (auto-generated if not specified) | No | Auto |
 | `fail-on-miss` | Fail workflow if no cache found | No | `false` |
 

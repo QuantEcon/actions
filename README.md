@@ -133,7 +133,7 @@ jobs:
       - uses: quantecon/actions/setup-environment@main
         with:
           python-version: '3.13'
-          environment-file: 'environment.yml'  # Full installation from scratch
+          environment: 'environment.yml'  # Full installation from scratch
           install-latex: 'true'
           latex-requirements-file: 'latex-requirements.txt'
       

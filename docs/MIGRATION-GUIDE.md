@@ -37,7 +37,7 @@ Before starting migration:
   uses: conda-incubator/setup-miniconda@v3
   with:
     python-version: "3.13"
-    environment-file: environment.yml
+    environment-file: environment.yml  # This is setup-miniconda's own input name
     activate-environment: quantecon
 
 - name: Install LaTeX
@@ -51,7 +51,7 @@ Before starting migration:
 - uses: quantecon/actions/setup-environment@v1
   with:
     python-version: '3.13'
-    environment-file: 'environment.yml'
+    environment: 'environment.yml'
     install-latex: 'true'
     latex-requirements-file: 'latex-requirements.txt'
     environment-name: 'quantecon'
@@ -108,7 +108,7 @@ jobs:
           auto-activate-base: true
           miniconda-version: 'latest'
           python-version: "3.13"
-          environment-file: environment.yml
+          environment-file: environment.yml  # This is setup-miniconda's own input name
           activate-environment: quantecon
       
       - name: Install latex dependencies
@@ -142,7 +142,7 @@ jobs:
       - uses: quantecon/actions/setup-environment@v1
         with:
           python-version: '3.13'
-          environment-file: 'environment.yml'
+          environment: 'environment.yml'
           environment-name: 'quantecon'
           install-latex: 'true'
           install-ml-libs: 'false'  # Set to 'true' for lecture-python.myst
@@ -511,7 +511,7 @@ jobs:
       
       - uses: quantecon/actions/setup-environment@v1
         with:
-          environment-file: 'environment.yml'
+          environment: 'environment.yml'
       
       - uses: quantecon/actions/restore-jupyter-cache@v1
         with:

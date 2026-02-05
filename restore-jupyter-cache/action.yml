@@ -15,7 +15,7 @@ inputs:
     description: 'Source directory containing lectures (used for content hash in execution cache)'
     required: false
     default: 'lectures'
-  environment-file:
+  environment:
     description: 'Path to environment file (used for cache key hash)'
     required: false
     default: 'environment.yml'
@@ -61,10 +61,10 @@ runs:
         else
           # Build cache: build-{env-hash}-{run-id}
           # Use a key that won't match exactly (forces restore-keys lookup)
-          KEY="build-${{ hashFiles(inputs.environment-file) }}-00000000"
+          KEY="build-${{ hashFiles(inputs.environment) }}-00000000"
           echo "key=$KEY" >> $GITHUB_OUTPUT
           echo "restore-keys<<EOF" >> $GITHUB_OUTPUT
-          echo "build-${{ hashFiles(inputs.environment-file) }}-" >> $GITHUB_OUTPUT
+          echo "build-${{ hashFiles(inputs.environment) }}-" >> $GITHUB_OUTPUT
           echo "build-" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
           echo "Using build cache with prefix match"

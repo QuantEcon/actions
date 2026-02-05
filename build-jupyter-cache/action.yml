@@ -7,11 +7,11 @@ inputs:
     description: 'Comma-separated list of builders to run: jupyter, pdflatex, html'
     required: false
     default: 'html'
-  environment-file:
-    description: 'Path to environment.yml for lecture-specific packages (non-container builds)'
+  environment:
+    description: 'Path to environment.yml for full environment (non-container builds)'
     required: false
     default: 'environment.yml'
-  container-environment-file:
+  environment-update:
     description: 'Path to delta environment.yml for container builds (empty = use pre-installed packages only)'
     required: false
     default: ''
@@ -71,7 +71,7 @@ runs:
       id: cache-key
       shell: bash
       run: |
-        KEY="build-${{ hashFiles(inputs.environment-file) }}-${{ github.run_id }}"
+        KEY="build-${{ hashFiles(inputs.environment) }}-${{ github.run_id }}"
         echo "key=$KEY" >> $GITHUB_OUTPUT
         echo "Cache key: $KEY"
 
@@ -127,8 +127,8 @@ runs:
       id: setup-env
       uses: quantecon/actions/setup-environment@main
       with:
-        environment-file: ${{ inputs.environment-file }}
-        container-environment-file: ${{ inputs.container-environment-file }}
+        environment: ${{ inputs.environment }}
+        environment-update: ${{ inputs.environment-update }}
         install-latex: ${{ steps.parse-builders.outputs.run-pdflatex }}
 
     # ============================================================

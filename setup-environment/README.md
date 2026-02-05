@@ -44,14 +44,12 @@ jobs:
       - uses: actions/checkout@v4
       
       - uses: quantecon/actions/setup-environment@v1
-        with:
-          environment-file: 'environment.yml'  # Optional - adds packages on top
-        # Auto-detects container, installs only lecture-specific packages
+        # environment-update defaults to '' - uses pre-installed packages
       
       - uses: quantecon/actions/build-lectures@v1
 ```
 
-### Container with No environment.yml (Fastest)
+### Container with No Extra Packages (Fastest)
 
 If the container has all packages you need:
 
@@ -60,7 +58,7 @@ container:
   image: ghcr.io/quantecon/quantecon-build:latest
 steps:
   - uses: quantecon/actions/setup-environment@v1
-    # container-environment-file defaults to '' - uses pre-installed packages
+    # environment-update defaults to '' - uses pre-installed packages
 ```
 
 ### Container with Delta Packages
@@ -71,7 +69,7 @@ If you need a few extra packages not in the container:
 steps:
   - uses: quantecon/actions/setup-environment@v1
     with:
-      container-environment-file: 'environment-update.yml'  # Delta packages only
+      environment-update: 'environment-update.yml'  # Delta packages only
 ```
 
 Where `environment-update.yml` contains only the extras:
@@ -88,7 +86,7 @@ dependencies:
 - uses: quantecon/actions/setup-environment@v1
   with:
     python-version: '3.13'
-    environment-file: 'environment.yml'
+    environment: 'environment.yml'
     install-latex: 'true'
     latex-requirements-file: 'latex-requirements.txt'
     environment-name: 'quantecon'
@@ -108,8 +106,8 @@ dependencies:
 | Input | Description | Required | Default |
 |-------|-------------|----------|---------|
 | `python-version` | Python version (ignored in container mode) | No | `3.13` |
-| `environment-file` | Path to environment.yml (non-container builds) | No | `environment.yml` |
-| `container-environment-file` | Path to delta environment.yml for container builds | No | `''` |
+| `environment` | Path to environment.yml (non-container builds) | No | `environment.yml` |
+| `environment-update` | Path to delta environment.yml for container builds | No | `''` |
 | `environment-name` | Conda environment name | No | `quantecon` |
 | `cache-version` | Cache version for manual invalidation | No | `v1` |
 | `install-latex` | Install LaTeX packages (auto-disabled in container) | No | `false` |
