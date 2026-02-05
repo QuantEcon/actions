@@ -7,10 +7,14 @@ inputs:
     description: 'Python version to use (ignored in container mode)'
     required: false
     default: '3.13'
-  environment-file:
-    description: 'Path to environment.yml for lecture-specific packages'
+  environment:
+    description: 'Path to environment.yml for full environment (non-container builds)'
     required: false
     default: 'environment.yml'
+  environment-update:
+    description: 'Path to delta environment.yml for container builds (empty = use pre-installed packages only)'
+    required: false
+    default: ''
   environment-name:
     description: 'Conda environment name (must match name in environment.yml)'
     required: false
@@ -70,30 +74,31 @@ runs:
     # See: https://github.com/QuantEcon/actions/issues/18
     # ============================================================
 
-    - name: Install lecture-specific packages (container mode)
-      if: steps.detect-container.outputs.container-mode == 'true' && inputs.environment-file != ''
+    - name: Update environment (container mode)
+      if: steps.detect-container.outputs.container-mode == 'true' && inputs.environment-update != ''
       shell: bash
       run: |
-        echo "::group::Installing lecture-specific packages"
-        if [ -f "${{ inputs.environment-file }}" ]; then
-          echo "Updating environment from ${{ inputs.environment-file }}"
-          # Let conda use the environment name from the file (more flexible than -n flag)
-          # This works regardless of what environment-name input is passed
-          conda env update -f ${{ inputs.environment-file }}
-          echo "✅ Lecture packages installed"
+        echo "::group::Environment Update (Container Mode)"
+        echo "📦 Action: Installing delta packages from ${{ inputs.environment-update }}"
+        if [ -f "${{ inputs.environment-update }}" ]; then
+          echo "Running: conda env update -f ${{ inputs.environment-update }}"
+          conda env update -f ${{ inputs.environment-update }}
+          echo "✅ Environment updated successfully"
         else
-          echo "⚠️ Environment file not found: ${{ inputs.environment-file }}"
-          echo "::error::Environment file not found: ${{ inputs.environment-file }}"
+          echo "::error::Environment update file not found: ${{ inputs.environment-update }}"
           exit 1
         fi
         echo "::endgroup::"
     
-    - name: Container mode - no packages needed
-      if: steps.detect-container.outputs.container-mode == 'true' && inputs.environment-file == ''
+    - name: Skip environment update (container mode)
+      if: steps.detect-container.outputs.container-mode == 'true' && inputs.environment-update == ''
       shell: bash
       run: |
-        echo "🐳 Container mode with no environment file"
-        echo "✅ Using container's pre-installed packages (fastest path)"
+        echo "::group::Environment Setup (Container Mode)"
+        echo "🐳 Action: Using pre-installed container packages"
+        echo "ℹ️  No environment-update file specified - skipping conda env update"
+        echo "✅ Ready to build (fastest path)"
+        echo "::endgroup::"
 
     # ============================================================
     # NON-CONTAINER MODE: Full installation (existing behavior)
@@ -107,9 +112,9 @@ runs:
         path: |
           /home/runner/miniconda3/envs/${{ inputs.environment-name }}
           /home/runner/conda_pkgs_dir
-        key: conda-${{ runner.os }}-${{ hashFiles(inputs.environment-file) }}-${{ inputs.cache-version }}
+        key: conda-${{ runner.os }}-${{ hashFiles(inputs.environment) }}-${{ inputs.cache-version }}
         restore-keys: |
-          conda-${{ runner.os }}-${{ hashFiles(inputs.environment-file) }}-
+          conda-${{ runner.os }}-${{ hashFiles(inputs.environment) }}-
           conda-${{ runner.os }}-
     
     - name: Setup Anaconda (non-container mode)
@@ -120,7 +125,7 @@ runs:
         auto-activate-base: true
         miniconda-version: 'latest'
         python-version: ${{ inputs.python-version }}
-        environment-file: ${{ inputs.environment-file }}
+        environment-file: ${{ inputs.environment }}
         activate-environment: ${{ inputs.environment-name }}
         use-only-tar-bz2: true
 
@@ -149,7 +154,7 @@ runs:
       id: pip-cache
       with:
         path: ~/.cache/pip
-        key: pip-${{ runner.os }}-${{ inputs.ml-libs-version }}-${{ hashFiles(inputs.environment-file) }}-${{ inputs.cache-version }}
+        key: pip-${{ runner.os }}-${{ inputs.ml-libs-version }}-${{ hashFiles(inputs.environment) }}-${{ inputs.cache-version }}
         restore-keys: |
           pip-${{ runner.os }}-${{ inputs.ml-libs-version }}-
           pip-${{ runner.os }}-
@@ -190,10 +195,10 @@ runs:
           echo "   LaTeX: Pre-installed ✅"
           echo "   Python: Pre-installed ✅"
           echo "   Base packages: Pre-installed ✅"
-          if [ -n "${{ inputs.environment-file }}" ]; then
-            echo "   Lecture packages: Installed from environment.yml"
+          if [ -n "${{ inputs.environment-update }}" ]; then
+            echo "   Environment update: Applied from ${{ inputs.environment-update }}"
           else
-            echo "   Lecture packages: Not requested (no environment file)"
+            echo "   Environment update: Skipped (using pre-installed packages)"
           fi
         else
           echo "📦 Mode: Standard runner"

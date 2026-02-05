@@ -54,7 +54,27 @@ All high priority items completed! ✅
 
 ## GPU Support
 
-### Options Under Consideration
+### Current Approach: RunsOn + Custom AMI
+
+GPU lectures use [RunsOn](https://runs-on.com) with a custom AMI that has CUDA, LaTeX, Python, and GPU libraries pre-installed. The AMI includes the `/etc/quantecon-container` marker file, enabling `setup-environment` to detect it as a pre-built environment and use the fast container mode path.
+
+**How it works:**
+- AMI built with Packer, includes marker file + full scientific stack + GPU libs
+- `setup-environment` detects marker → skips full install
+- `environment-update` input applies delta packages (~30-60 seconds)
+- `actions/cache` works normally on AMI (unlike Docker containers)
+
+```yaml
+runs-on: [runs-on, gpu=1, image=your-gpu-ami]
+steps:
+  - uses: quantecon/actions/setup-environment@v1
+    with:
+      environment-update: 'environment-update.yml'  # Delta packages only
+```
+
+See [setup-environment/README.md](../setup-environment/README.md#runson--custom-ami-gpu-builds) for AMI requirements and setup details.
+
+### Other Options Under Consideration
 
 **1. Custom AMI with RunsOn**
 - Pre-configured GPU instances with CUDA, LaTeX, Python environment
@@ -72,19 +92,23 @@ All high priority items completed! ✅
 - Requires GPU-enabled runners
 - Would need RunsOn or GitHub GPU runners
 
-### Current GPU Workflow (Unchanged)
+### Current GPU Workflow
 
-GPU lectures continue using existing approach:
+GPU lectures use RunsOn with a custom AMI:
 
 ```yaml
-runs-on: [runs-on, gpu=1, image=your-ami]
+runs-on: [runs-on, gpu=1, image=your-gpu-ami]
 steps:
   - uses: quantecon/actions/setup-environment@v1
     with:
-      install-ml-libs: 'true'
+      environment-update: 'environment-update.yml'
 ```
 
-**Benefit:** `setup-environment` action already works in any environment (validates architecture).
+**Benefits:**
+- `setup-environment` detects AMI marker file and uses fast path
+- Delta package installs via `environment-update` (~30-60 seconds)
+- Full `actions/cache` support (unlike Docker containers)
+- Pre-installed CUDA + GPU libraries eliminate setup overhead
 
 ## Build Action Enhancements
 

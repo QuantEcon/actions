@@ -18,7 +18,8 @@ This ensures PRs always have a working cache to restore, even when the weekly bu
 | Input | Description | Required | Default |
 |-------|-------------|----------|---------|
 | `builders` | Comma-separated builders: jupyter, pdflatex, html | No | `html` |
-| `environment-file` | Path to environment.yml | No | `environment.yml` |
+| `environment` | Path to environment.yml (non-container builds) | No | `environment.yml` |
+| `environment-update` | Path to delta environment.yml for container builds | No | `''` |
 | `source-dir` | Source directory for lectures | No | `lectures` |
 | `upload-artifact` | Upload _build as artifact | No | `true` |
 | `artifact-retention-days` | Days to retain artifact | No | `30` |
@@ -39,13 +40,14 @@ This ensures PRs always have a working cache to restore, even when the weekly bu
 
 ## Cache Key Strategy
 
-**Save key:** `build-{hash(environment.yml)}-{run_id}`
+**Save key:** `build-{hash(environment.yml)}-{hash(environment-update.yml)}-{run_id}`
 
 Each successful build creates a new cache entry. Old caches expire automatically after 7 days of no access (GitHub's default).
 
 **Restore key pattern** (used by `restore-jupyter-cache`):
 ```yaml
 restore-keys: |
+  build-{hash(environment.yml)}-{hash(environment-update.yml)}-
   build-{hash(environment.yml)}-
   build-
 ```

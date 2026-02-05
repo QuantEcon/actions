@@ -152,7 +152,7 @@ jobs:
 - uses: quantecon/actions/setup-environment@main
   with:
     install-latex: 'true'
-    environment-file: 'environment.yml'
+    environment: 'environment.yml'
 ```
 
 **Note:** Not needed when using container (LaTeX + Anaconda already included).

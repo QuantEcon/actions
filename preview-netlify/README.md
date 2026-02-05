@@ -90,7 +90,7 @@ jobs:
       - name: Setup Environment
         uses: quantecon/actions/setup-environment@v1
         with:
-          environment-file: environment.yml
+          environment: environment.yml
 
       - name: Build Lectures
         run: jb build lectures --path-output ./
