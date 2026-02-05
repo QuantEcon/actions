@@ -1,0 +1,210 @@
+name: 'Restore Jupyter Cache'
+description: 'Restores Jupyter Book build cache from GitHub Actions cache (read-only, for PR workflows)'
+author: 'QuantEcon'
+
+inputs:
+  cache-type:
+    description: 'Type of cache to restore: execution (.jupyter_cache only) or build (full _build directory)'
+    required: false
+    default: 'build'
+  path:
+    description: 'Path to restore cache to'
+    required: false
+    default: '_build'
+  key:
+    description: 'Cache key to look for (auto-generated if not specified)'
+    required: false
+    default: ''
+  fail-on-miss:
+    description: 'Fail the workflow if no cache is found'
+    required: false
+    default: 'false'
+
+outputs:
+  cache-hit:
+    description: 'Whether the cache was successfully restored'
+    value: ${{ steps.restore.outputs.cache-hit }}
+  cache-key:
+    description: 'The cache key that was matched (empty if no hit)'
+    value: ${{ steps.restore.outputs.cache-matched-key }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Determine cache key and restore-keys
+      id: cache-key
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.key }}" ]; then
+          # Custom key provided
+          echo "key=${{ inputs.key }}" >> $GITHUB_OUTPUT
+          echo "restore-keys=${{ inputs.key }}" >> $GITHUB_OUTPUT
+          echo "Using custom cache key: ${{ inputs.key }}"
+        elif [ "${{ inputs.cache-type }}" = "execution" ]; then
+          # Execution cache: jupyter-cache-{content-hash}-{run-id}
+          # Use a key that won't match exactly (forces restore-keys lookup)
+          KEY="jupyter-cache-${{ hashFiles('lectures/**/*.md') }}-00000000"
+          RESTORE_KEYS="jupyter-cache-${{ hashFiles('lectures/**/*.md') }}-
+        jupyter-cache-"
+          echo "key=$KEY" >> $GITHUB_OUTPUT
+          echo "restore-keys<<EOF" >> $GITHUB_OUTPUT
+          echo "$RESTORE_KEYS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "Using execution cache with prefix match"
+        else
+          # Build cache: build-{env-hash}-{run-id}
+          # Use a key that won't match exactly (forces restore-keys lookup)
+          KEY="build-${{ hashFiles('environment.yml') }}-00000000"
+          RESTORE_KEYS="build-${{ hashFiles('environment.yml') }}-
+        build-"
+          echo "key=$KEY" >> $GITHUB_OUTPUT
+          echo "restore-keys<<EOF" >> $GITHUB_OUTPUT
+          echo "$RESTORE_KEYS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "Using build cache with prefix match"
+        fi
+
+    - name: Determine cache path
+      id: cache-path
+      shell: bash
+      run: |
+        if [ "${{ inputs.cache-type }}" = "execution" ]; then
+          echo "path=${{ inputs.path }}/.jupyter_cache" >> $GITHUB_OUTPUT
+        else
+          echo "path=${{ inputs.path }}" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Restore cache
+      id: restore
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ steps.cache-path.outputs.path }}
+        key: ${{ steps.cache-key.outputs.key }}
+        restore-keys: ${{ steps.cache-key.outputs.restore-keys }}
+
+    - name: Cache status report
+      shell: bash
+      run: |
+        echo ""
+        echo "╔════════════════════════════════════════════════════════════════╗"
+        echo "║                    BUILD CACHE STATUS                          ║"
+        echo "╚════════════════════════════════════════════════════════════════╝"
+        echo ""
+        echo "  Cache Type:     ${{ inputs.cache-type }}"
+        echo "  Requested Key:  ${{ steps.cache-key.outputs.key }}"
+        echo "  Cache Hit:      ${{ steps.restore.outputs.cache-hit || 'false' }}"
+        echo "  Matched Key:    ${{ steps.restore.outputs.cache-matched-key || 'none' }}"
+        echo ""
+        
+        CACHE_PATH="${{ steps.cache-path.outputs.path }}"
+        
+        if [ "${{ steps.restore.outputs.cache-hit }}" = "true" ]; then
+          echo "════════════════════════════════════════════════════════════════════"
+          echo "  ✅ Cache restored successfully"
+          echo "════════════════════════════════════════════════════════════════════"
+          echo ""
+          
+          if [ -d "$CACHE_PATH" ]; then
+            echo "::group::Cache Contents"
+            echo "Path: $CACHE_PATH"
+            echo ""
+            
+            # Size information
+            TOTAL_SIZE=$(du -sh "$CACHE_PATH" 2>/dev/null | cut -f1 || echo "unknown")
+            echo "Total Size: $TOTAL_SIZE"
+            echo ""
+            
+            # File count
+            FILE_COUNT=$(find "$CACHE_PATH" -type f 2>/dev/null | wc -l | tr -d ' ')
+            DIR_COUNT=$(find "$CACHE_PATH" -type d 2>/dev/null | wc -l | tr -d ' ')
+            echo "Files: $FILE_COUNT"
+            echo "Directories: $DIR_COUNT"
+            echo ""
+            
+            # Newest and oldest files
+            echo "── Age Information ──"
+            NEWEST=$(find "$CACHE_PATH" -type f -exec stat -f "%m %N" {} \; 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
+            OLDEST=$(find "$CACHE_PATH" -type f -exec stat -f "%m %N" {} \; 2>/dev/null | sort -n | head -1 | cut -d' ' -f2-)
+            
+            # Try GNU stat format if BSD fails (for Linux runners)
+            if [ -z "$NEWEST" ]; then
+              NEWEST=$(find "$CACHE_PATH" -type f -printf "%T@ %p\n" 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
+              OLDEST=$(find "$CACHE_PATH" -type f -printf "%T@ %p\n" 2>/dev/null | sort -n | head -1 | cut -d' ' -f2-)
+            fi
+            
+            if [ -n "$NEWEST" ]; then
+              NEWEST_DATE=$(stat -f "%Sm" -t "%Y-%m-%d %H:%M:%S" "$NEWEST" 2>/dev/null || stat -c "%y" "$NEWEST" 2>/dev/null | cut -d'.' -f1)
+              echo "Newest file: $(basename "$NEWEST")"
+              echo "  Modified: $NEWEST_DATE"
+            fi
+            
+            if [ -n "$OLDEST" ]; then
+              OLDEST_DATE=$(stat -f "%Sm" -t "%Y-%m-%d %H:%M:%S" "$OLDEST" 2>/dev/null || stat -c "%y" "$OLDEST" 2>/dev/null | cut -d'.' -f1)
+              echo "Oldest file: $(basename "$OLDEST")"
+              echo "  Modified: $OLDEST_DATE"
+            fi
+            echo ""
+            
+            # Directory breakdown
+            echo "── Directory Sizes ──"
+            du -sh "$CACHE_PATH"/* 2>/dev/null | head -10 || echo "  (empty or inaccessible)"
+            echo ""
+            
+            # For execution cache, show notebook cache info
+            if [ "${{ inputs.cache-type }}" = "execution" ]; then
+              echo "── Jupyter Cache Info ──"
+              if [ -f "$CACHE_PATH/global.db" ]; then
+                DB_SIZE=$(du -sh "$CACHE_PATH/global.db" 2>/dev/null | cut -f1)
+                echo "Cache database: $DB_SIZE"
+              fi
+              NB_CACHE_COUNT=$(find "$CACHE_PATH" -name "*.ipynb" 2>/dev/null | wc -l | tr -d ' ')
+              echo "Cached notebooks: $NB_CACHE_COUNT"
+            fi
+            
+            # For build cache, show _build structure
+            if [ "${{ inputs.cache-type }}" = "build" ]; then
+              echo "── Build Directories ──"
+              for dir in html latex jupyter; do
+                if [ -d "$CACHE_PATH/$dir" ]; then
+                  SIZE=$(du -sh "$CACHE_PATH/$dir" 2>/dev/null | cut -f1)
+                  COUNT=$(find "$CACHE_PATH/$dir" -type f 2>/dev/null | wc -l | tr -d ' ')
+                  echo "  $dir/: $SIZE ($COUNT files)"
+                fi
+              done
+              if [ -d "$CACHE_PATH/.jupyter_cache" ]; then
+                SIZE=$(du -sh "$CACHE_PATH/.jupyter_cache" 2>/dev/null | cut -f1)
+                echo "  .jupyter_cache/: $SIZE"
+              fi
+            fi
+            
+            echo "::endgroup::"
+          else
+            echo "::warning::Cache path does not exist after restore: $CACHE_PATH"
+          fi
+        else
+          echo "════════════════════════════════════════════════════════════════════"
+          echo "  ⚠️  No cache found"
+          echo "════════════════════════════════════════════════════════════════════"
+          echo ""
+          echo "  This is normal for:"
+          echo "    - First build on a new branch"
+          echo "    - After environment.yml changes (build cache)"
+          echo "    - After lecture content changes (execution cache)"
+          echo ""
+          echo "  The build will proceed without cached state."
+          echo ""
+        fi
+
+    - name: Fail on cache miss
+      if: inputs.fail-on-miss == 'true' && steps.restore.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        echo "::error::Cache miss with fail-on-miss enabled"
+        echo "Expected cache key: ${{ steps.cache-key.outputs.key }}"
+        echo ""
+        echo "Ensure the cache generation workflow has run on main branch."
+        exit 1
+
+branding:
+  icon: 'download-cloud'
+  color: 'blue'

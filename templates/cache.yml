@@ -1,0 +1,59 @@
+# Build Cache Generation Workflow (Container)
+#
+# This workflow creates the cache that PR workflows restore.
+# Copy this template to your repository as .github/workflows/cache.yml
+#
+# Uses the QuantEcon container for reliable, fast builds with pre-installed
+# LaTeX and scientific Python packages.
+#
+# Triggers:
+# - Weekly (Sunday midnight UTC) - fresh build with latest dependencies
+# - Manual dispatch - on-demand rebuild
+# - Push to main (environment.yml changes only) - update cache with new env
+#
+# Cache Strategy:
+# - Each successful build saves a new cache with unique key (run_id)
+# - Old caches expire automatically after 7 days of no access
+# - Failed builds preserve existing cache (PRs always have working cache)
+# - Issues are automatically created on build failure
+
+name: Build Cache
+
+on:
+  schedule:
+    # Weekly on Sunday at midnight UTC
+    - cron: '0 0 * * 0'
+  
+  workflow_dispatch:
+    # Manual trigger for on-demand cache rebuild
+  
+  push:
+    branches:
+      - main
+    paths:
+      # Auto-rebuild when environment changes
+      - 'environment.yml'
+
+# Prevent concurrent cache builds
+concurrency:
+  group: cache-build
+  cancel-in-progress: false
+
+jobs:
+  build-cache:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/quantecon/quantecon:latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      # Build all formats and save cache
+      # Only saves if ALL builds succeed (preserves existing cache on failure)
+      - name: Build and cache
+        uses: quantecon/actions/build-jupyter-cache@v1
+        with:
+          builders: 'jupyter,pdflatex,html'
+          create-issue-on-failure: true
+          # issue-assignees: 'maintainer1,maintainer2'  # Optional: assign issues
