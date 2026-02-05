@@ -19,6 +19,10 @@ inputs:
     description: 'Path to environment file (used for cache key hash)'
     required: false
     default: 'environment.yml'
+  environment-update:
+    description: 'Path to delta environment file for container builds (used for cache key hash)'
+    required: false
+    default: ''
   key:
     description: 'Cache key to look for (auto-generated if not specified)'
     required: false
@@ -59,12 +63,15 @@ runs:
           echo "EOF" >> $GITHUB_OUTPUT
           echo "Using execution cache with prefix match"
         else
-          # Build cache: build-{env-hash}-{run-id}
+          # Build cache: build-{env-hash}-{update-hash}-{run-id}
           # Use a key that won't match exactly (forces restore-keys lookup)
-          KEY="build-${{ hashFiles(inputs.environment) }}-00000000"
+          ENV_HASH="${{ hashFiles(inputs.environment) }}"
+          UPDATE_HASH="${{ hashFiles(inputs.environment-update) }}"
+          KEY="build-${ENV_HASH}-${UPDATE_HASH}-00000000"
           echo "key=$KEY" >> $GITHUB_OUTPUT
           echo "restore-keys<<EOF" >> $GITHUB_OUTPUT
-          echo "build-${{ hashFiles(inputs.environment) }}-" >> $GITHUB_OUTPUT
+          echo "build-${ENV_HASH}-${UPDATE_HASH}-" >> $GITHUB_OUTPUT
+          echo "build-${ENV_HASH}-" >> $GITHUB_OUTPUT
           echo "build-" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
           echo "Using build cache with prefix match"

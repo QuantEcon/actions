@@ -40,7 +40,7 @@ jobs:
           fetch-depth: 0
       - uses: quantecon/actions/setup-environment@v1
         with:
-          environment: 'environment.yml'  # Optional - adds packages on top
+          environment-update: 'environment-update.yml'  # Optional - delta packages for container
         # Auto-detects container, installs only lecture-specific packages
       - uses: quantecon/actions/restore-jupyter-cache@v1
         with:
@@ -186,8 +186,8 @@ Add `restore-jupyter-cache` before `build-lectures` to restore cached execution 
 |--------|-----------|----------------|
 | `setup-environment` (container) | No caching | N/A |
 | `setup-environment` (standard) | `conda-{OS}-{hash(env.yml)}-{version}` | env.yml changes, manual bump |
-| `build-jupyter-cache` | `build-{hash(env.yml)}-{run-id}` | env.yml changes, each run |
-| `restore-jupyter-cache` | `build-{hash(env.yml)}-` (prefix) | env.yml changes |
+| `build-jupyter-cache` | `build-{hash(env.yml)}-{hash(env-update.yml)}-{run-id}` | env file changes, each run |
+| `restore-jupyter-cache` | `build-{hash(env.yml)}-{hash(env-update.yml)}-` (prefix) | env file changes |
 
 ## 🎯 Inputs Quick Reference
 

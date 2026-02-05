@@ -40,13 +40,14 @@ This ensures PRs always have a working cache to restore, even when the weekly bu
 
 ## Cache Key Strategy
 
-**Save key:** `build-{hash(environment.yml)}-{run_id}`
+**Save key:** `build-{hash(environment.yml)}-{hash(environment-update.yml)}-{run_id}`
 
 Each successful build creates a new cache entry. Old caches expire automatically after 7 days of no access (GitHub's default).
 
 **Restore key pattern** (used by `restore-jupyter-cache`):
 ```yaml
 restore-keys: |
+  build-{hash(environment.yml)}-{hash(environment-update.yml)}-
   build-{hash(environment.yml)}-
   build-
 ```

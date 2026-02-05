@@ -511,7 +511,7 @@ jobs:
       
       - uses: quantecon/actions/setup-environment@v1
         with:
-          environment: 'environment.yml'
+          environment-update: 'environment-update.yml'  # Delta packages for container
       
       - uses: quantecon/actions/restore-jupyter-cache@v1
         with:

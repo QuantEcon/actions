@@ -6,8 +6,9 @@ Flexible, container-aware environment setup action for QuantEcon lectures. Auto-
 
 **Container Mode** (when running in `ghcr.io/quantecon/quantecon` or `ghcr.io/quantecon/quantecon-build`):
 1. Detects container via `/etc/quantecon-container` marker
-2. Runs `conda env update` to install only delta packages (~30-60 seconds)
-3. Skips LaTeX (pre-installed in container)
+2. If `environment-update` specified: runs `conda env update` with delta packages (~30-60 seconds)
+3. If `environment-update` omitted (default): uses pre-installed packages only (fastest)
+4. Skips LaTeX (pre-installed in container)
 
 **Standard Mode** (ubuntu-latest or other runners):
 1. Caches Conda environment based on `environment.yml` hash
@@ -135,7 +136,8 @@ dependencies:
 
 ### Container Mode
 - **No caching** - `actions/cache` runs on the host runner, not inside the container
-- Packages installed fresh each run via `conda env update` (~30-60 seconds)
+- If `environment-update` specified: packages installed via `conda env update` (~30-60 seconds)
+- If `environment-update` omitted: uses pre-installed packages (fastest path)
 - See [issue #18](https://github.com/QuantEcon/actions/issues/18) for future caching improvements
 
 ### Standard Mode
@@ -143,12 +145,12 @@ dependencies:
 - **Path**: `/home/runner/miniconda3/envs/{name}`, `/home/runner/conda_pkgs_dir`
 - **What's cached**: Full Conda environment
 
-## Lean environment.yml for Containers
+## Delta environment-update.yml for Containers
 
-When using containers, your `environment.yml` should only list lecture-specific packages not included in the container's Anaconda base:
+When using containers, create an `environment-update.yml` with only the lecture-specific packages not included in the container's base image:
 
 ```yaml
-# Lean environment.yml (for container builds)
+# environment-update.yml (delta packages for container builds)
 name: quantecon
 channels:
   - conda-forge
@@ -160,6 +162,8 @@ dependencies:
 ```
 
 The container already includes: numpy, scipy, pandas, matplotlib, jupyter, jupyter-book, and 300+ other Anaconda packages.
+
+**Note:** The full `environment.yml` is still used for non-container builds and for cache key computation.
 
 ## When to use what
 

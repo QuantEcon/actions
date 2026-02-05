@@ -58,7 +58,7 @@ jobs:
       - name: Setup Environment
         uses: quantecon/actions/setup-environment@main
         with:
-          environment: 'environment.yml'  # Install lecture-specific packages
+          environment-update: 'environment-update.yml'  # Install lecture-specific delta packages
       
       - name: Build
         run: jupyter-book build lectures/
