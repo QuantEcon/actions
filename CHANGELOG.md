@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-02-06
+
 ### Changed
 - Renamed `environment-file` input to `environment` across all actions
   - `setup-environment`: `environment-file` → `environment`
@@ -17,8 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`environment-update`** input for container-optimized builds
   - `setup-environment`: New `environment-update` input for delta package installs
   - `build-jupyter-cache`: New `environment-update` input (passed through to setup-environment)
+  - `restore-jupyter-cache`: New `environment-update` input (for cache key computation)
   - Default `''` skips conda update entirely in container mode (fastest path)
   - When specified, installs only delta packages from a minimal environment file
+- Cache key computation now includes both `environment` and `environment-update` file hashes
+- Documentation for RunsOn + custom AMI setup for GPU builds
+  - AMI requirements for container mode detection (marker file)
+  - Workflow examples and comparison tables
 
 ## [0.4.0] - 2026-02-05
 
