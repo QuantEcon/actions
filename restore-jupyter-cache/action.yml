@@ -130,31 +130,6 @@ runs:
             echo "Directories: $DIR_COUNT"
             echo ""
             
-            # Newest and oldest files
-            echo "── Age Information ──"
-            # Note: Use || true to suppress SIGPIPE (exit 141) when head exits early
-            NEWEST=$(find "$CACHE_PATH" -type f -exec stat -f "%m %N" {} \; 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2- || true)
-            OLDEST=$(find "$CACHE_PATH" -type f -exec stat -f "%m %N" {} \; 2>/dev/null | sort -n | head -1 | cut -d' ' -f2- || true)
-            
-            # Try GNU stat format if BSD fails (for Linux runners)
-            if [ -z "$NEWEST" ]; then
-              NEWEST=$(find "$CACHE_PATH" -type f -printf "%T@ %p\n" 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2- || true)
-              OLDEST=$(find "$CACHE_PATH" -type f -printf "%T@ %p\n" 2>/dev/null | sort -n | head -1 | cut -d' ' -f2- || true)
-            fi
-            
-            if [ -n "$NEWEST" ]; then
-              NEWEST_DATE=$(stat -f "%Sm" -t "%Y-%m-%d %H:%M:%S" "$NEWEST" 2>/dev/null || stat -c "%y" "$NEWEST" 2>/dev/null | cut -d'.' -f1)
-              echo "Newest file: $(basename "$NEWEST")"
-              echo "  Modified: $NEWEST_DATE"
-            fi
-            
-            if [ -n "$OLDEST" ]; then
-              OLDEST_DATE=$(stat -f "%Sm" -t "%Y-%m-%d %H:%M:%S" "$OLDEST" 2>/dev/null || stat -c "%y" "$OLDEST" 2>/dev/null | cut -d'.' -f1)
-              echo "Oldest file: $(basename "$OLDEST")"
-              echo "  Modified: $OLDEST_DATE"
-            fi
-            echo ""
-            
             # Directory breakdown
             echo "── Directory Sizes ──"
             du -sh "$CACHE_PATH"/* 2>/dev/null | head -10 || echo "  (empty or inaccessible)"
