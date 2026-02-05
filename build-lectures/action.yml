@@ -1,6 +1,10 @@
 name: 'Build Lectures'
-description: 'Builds QuantEcon lectures using Jupyter Book with execution caching'
+description: 'Builds QuantEcon lectures using Jupyter Book'
 author: 'QuantEcon'
+
+# NOTE: For caching, use the dedicated cache actions:
+#   - build-jupyter-cache: Weekly cache generation on main branch
+#   - restore-jupyter-cache: Read-only restore for PR workflows
 
 inputs:
   builder:
@@ -19,14 +23,6 @@ inputs:
     description: 'Extra arguments to pass to jupyter-book build'
     required: false
     default: '-W --keep-going'
-  cache-notebook-execution:
-    description: 'Enable notebook execution caching'
-    required: false
-    default: 'true'
-  use-build-cache:
-    description: 'Restore _build directory from GitHub cache before building (for fast incremental PR builds)'
-    required: false
-    default: 'false'
   html-copy-pdf:
     description: 'Copy PDF from _build/latex/ to _build/html/_pdf/ (HTML builder only, requires prior pdflatex build)'
     required: false
@@ -44,35 +40,10 @@ outputs:
   build-path:
     description: 'Path to the build output directory'
     value: ${{ steps.build.outputs.build-path }}
-  build-cache-hit:
-    description: 'Whether the build cache was restored'
-    value: ${{ steps.build-cache.outputs.cache-hit }}
 
 runs:
   using: "composite"
   steps:
-    - name: Restore build cache
-      if: inputs.use-build-cache == 'true'
-      uses: actions/cache/restore@v4
-      id: build-cache
-      with:
-        path: _build
-        key: build-${{ hashFiles('environment.yml') }}
-        restore-keys: |
-          build-
-
-    - name: Cache Jupyter execution
-      if: inputs.cache-notebook-execution == 'true' && inputs.use-build-cache != 'true'
-      uses: actions/cache@v4
-      id: jupyter-cache
-      with:
-        path: |
-          _build/.jupyter_cache
-        key: jupyter-cache-${{ runner.os }}-${{ hashFiles('lectures/**/*.md') }}-${{ github.sha }}
-        restore-keys: |
-          jupyter-cache-${{ runner.os }}-${{ hashFiles('lectures/**/*.md') }}-
-          jupyter-cache-${{ runner.os }}-
-
     - name: Build lectures
       id: build
       shell: bash -l {0}
@@ -208,8 +179,6 @@ runs:
         echo "Builder: ${{ inputs.builder }}"
         echo "Source: ${{ inputs.source-dir }}"
         echo "Output: ${{ steps.build.outputs.build-path }}"
-        echo "Build cache hit: ${{ steps.build-cache.outputs.cache-hit || 'N/A' }}"
-        echo "Jupyter cache hit: ${{ steps.jupyter-cache.outputs.cache-hit || 'N/A' }}"
         if [ "${{ inputs.builder }}" = "html" ]; then
           echo "PDF copied to HTML: ${{ inputs.html-copy-pdf }}"
           echo "Notebooks copied to HTML: ${{ inputs.html-copy-notebooks }}"
