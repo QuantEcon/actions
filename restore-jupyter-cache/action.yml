@@ -30,8 +30,8 @@ inputs:
 
 outputs:
   cache-hit:
-    description: 'Whether the cache was successfully restored'
-    value: ${{ steps.restore.outputs.cache-hit }}
+    description: 'Whether the cache was successfully restored (includes prefix match)'
+    value: ${{ steps.restore.outputs.cache-matched-key != '' }}
   cache-key:
     description: 'The cache key that was matched (empty if no hit)'
     value: ${{ steps.restore.outputs.cache-matched-key }}
@@ -103,8 +103,11 @@ runs:
         echo ""
         
         CACHE_PATH="${{ steps.cache-path.outputs.path }}"
+        MATCHED_KEY="${{ steps.restore.outputs.cache-matched-key }}"
         
-        if [ "${{ steps.restore.outputs.cache-hit }}" = "true" ]; then
+        # Check if cache was restored (via exact match OR prefix match)
+        # With prefix matching, cache-hit is false but cache-matched-key is set
+        if [ -n "$MATCHED_KEY" ]; then
           echo "════════════════════════════════════════════════════════════════════"
           echo "  ✅ Cache restored successfully"
           echo "════════════════════════════════════════════════════════════════════"
@@ -202,7 +205,7 @@ runs:
         fi
 
     - name: Fail on cache miss
-      if: inputs.fail-on-miss == 'true' && steps.restore.outputs.cache-hit != 'true'
+      if: inputs.fail-on-miss == 'true' && steps.restore.outputs.cache-matched-key == ''
       shell: bash
       run: |
         echo "::error::Cache miss with fail-on-miss enabled"
