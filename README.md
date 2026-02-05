@@ -26,7 +26,7 @@ This repository provides a set of composite actions that standardize and optimiz
 ### 📚 [`build-lectures`](./build-lectures)
 Builds Jupyter Book lectures (HTML, PDF, notebooks) with unified error handling.
 
-**Features:** Cached builds, execution reports, multi-format support
+**Features:** Multi-format builds, asset assembly (PDF/notebooks into HTML), execution reports on failure
 
 ### 🌐 [`preview-netlify`](./preview-netlify)
 Deploys preview builds to Netlify for pull requests with smart PR comments.
@@ -55,7 +55,7 @@ Read-only cache restore for PR workflows.
 
 ## Quick Start
 
-### Example: CI Workflow
+### Example: CI Workflow with Cache
 
 ```yaml
 name: Build Preview
@@ -65,27 +65,58 @@ jobs:
   preview:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/quantecon/quantecon-build:latest  # Or quantecon:latest for full
+      image: ghcr.io/quantecon/quantecon-build:latest
+    permissions:
+      contents: read
+      packages: read
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Required for preview-netlify change detection
+          fetch-depth: 0
       
-      # Container-aware environment setup (auto-detects container)
-      - uses: quantecon/actions/setup-environment@main
+      # Restore cache from main branch builds
+      - uses: quantecon/actions/restore-jupyter-cache@main
         with:
-          environment-file: 'environment.yml'  # Optional - adds packages on top
+          cache-type: 'build'
       
+      # Build (uses restored cache for incremental build)
       - uses: quantecon/actions/build-lectures@main
-        with:
-          builder: 'html'
-          source-dir: 'lectures'
+        id: build
       
       - uses: quantecon/actions/preview-netlify@main
         with:
           netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
-          build-dir: _build/html
+          build-dir: ${{ steps.build.outputs.build-path }}
+```
+
+### Example: Cache Generation Workflow
+
+Run weekly on main branch to generate cache for PRs:
+
+```yaml
+name: Build Cache
+on:
+  schedule:
+    - cron: '0 2 * * 1'  # Weekly Monday 2am UTC
+  workflow_dispatch:
+
+jobs:
+  cache:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/quantecon/quantecon:latest
+    permissions:
+      contents: read
+      issues: write
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: quantecon/actions/build-jupyter-cache@main
+        with:
+          builders: 'html'
+          create-issue-on-failure: true
 ```
 
 ### Example: Standard Mode (No Container)
@@ -109,23 +140,28 @@ jobs:
       - uses: quantecon/actions/build-lectures@main
 ```
 
-## Expected Time Savings
+## Performance Architecture
 
-| Optimization | Time Saved | Applies To |
-|--------------|-----------|------------|
-| Conda environment caching | ~5-6 minutes | All workflows |
-| pip package caching | 2-4 minutes | Workflows with ML libs (optional) |
-| LaTeX installation | ~2-3 minutes | Workflows building PDFs (unavoidable) |
-| **Total per workflow run** | **~5-6 minutes** | With Conda cache hit |
+### Container-Based Setup
+- Pre-built container images with LaTeX and Python environment
+- `ghcr.io/quantecon/quantecon:latest` - Full container (~8GB)
+- `ghcr.io/quantecon/quantecon-build:latest` - Lean container (~3GB)
+- Setup time: ~2-3 minutes (container pull + lecture-specific packages)
+- Weekly automated builds (Monday 2am UTC) for security updates
 
-After caching: **Setup completes in ~7-8 minutes** (cached) instead of ~12 minutes (fresh)!
+### Jupyter Book Execution Caching
+Use `build-jupyter-cache` and `restore-jupyter-cache` actions for execution caching:
 
-**Container-Based Architecture (Available Now):**
-- 🚀 Pre-built container images with LaTeX and Python environment included
-- 📦 `ghcr.io/quantecon/quantecon:latest` - CPU-optimized container (Ubuntu 24.04 + TexLive + Miniconda)
-- ⚡ Expected setup time: ~2-3 minutes (container pull + lecture-specific packages)
-- 📋 See [containers/quantecon/README.md](./containers/quantecon/README.md) for container usage
-- 🔄 Weekly automated builds (Monday 2am UTC) for security updates
+| Scenario | Build Time | Details |
+|----------|-----------|---------|
+| Full build (no cache) | ~17 minutes | All notebooks executed |
+| Incremental build (cached) | ~3-4 minutes | Only changed notebooks executed |
+| Time saved | **~13 minutes** | ~80% reduction |
+
+**How it works:**
+1. Weekly `build-jupyter-cache` runs on main branch (e.g., Monday 2am UTC)
+2. PR workflows use `restore-jupyter-cache` to get the cached execution state
+3. Jupyter Book only re-executes notebooks that have changed since the cache
 
 ## Usage by Repository
 
@@ -141,8 +177,6 @@ We use semantic versioning with Git tags:
 - `@v1` - Latest stable v1.x.x release (recommended for production)
 - `@v1.0.0` - Specific version (maximum stability)
 - `@main` - Latest development (use for testing only)
-
-## Migration Guide
 
 ## Documentation
 

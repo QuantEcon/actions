@@ -148,12 +148,15 @@ jobs:
           install-ml-libs: 'false'  # Set to 'true' for lecture-python.myst
       
       # Build lectures (with cache restore for fast incremental builds)
+      - uses: quantecon/actions/restore-jupyter-cache@v1
+        with:
+          cache-type: 'build'
+      
       - uses: quantecon/actions/build-lectures@v1
         id: build
         with:
           source-dir: 'lectures'
           builder: 'html'
-          use-build-cache: true  # Restore from main's cache
           upload-failure-reports: true  # Upload reports if build fails
       
       # Deploy preview
@@ -166,9 +169,7 @@ jobs:
 
 **Key Changes:**
 - Replaced ~60 lines with ~10 lines
-- Added caching automatically
-- `use-build-cache: true` restores from main's cache for fast PR builds
-- `upload-failure-reports: true` uploads debugging artifacts on failure
+- Added `restore-jupyter-cache` for fast PR builds
 - Unified error handling
 - Clearer intent with named actions
 
@@ -207,7 +208,7 @@ jobs:
           path: _build
 ```
 
-#### After (Recommended: GitHub Native Cache):
+#### After (Recommended: Using build-jupyter-cache Action):
 
 ```yaml
 name: Build Cache
@@ -224,45 +225,27 @@ on:
 jobs:
   cache:
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/quantecon/quantecon:latest
+    permissions:
+      contents: read
+      issues: write
+      packages: read
     steps:
       - uses: actions/checkout@v4
       
-      # Clear old cache to ensure fresh build
-      - name: Clear existing cache
-        run: gh cache delete "build-*" --repo ${{ github.repository }} || true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      - uses: quantecon/actions/setup-environment@v1
+      - uses: quantecon/actions/build-jupyter-cache@v1
         with:
-          install-latex: 'true'
-          install-ml-libs: 'false'  # Adjust per repo
-      
-      # Fresh build (no cache restore)
-      - uses: quantecon/actions/build-lectures@v1
-        id: build
-        with:
-          builder: 'html'
-      
-      # Save to GitHub cache (fast restore for PRs)
-      - uses: actions/cache/save@v4
-        with:
-          path: _build
-          key: build-${{ hashFiles('environment.yml') }}
-      
-      # Upload artifact for inspection/reference
-      - uses: actions/upload-artifact@v4
-        with:
-          name: build-cache-${{ hashFiles('environment.yml') }}
-          path: _build
-          retention-days: 90
+          builders: 'html'
+          create-issue-on-failure: true
 ```
 
 **Key Changes:**
-- Uses GitHub native cache (faster restore than artifacts)
-- Cache key based on `environment.yml` hash (auto-invalidates on env change)
+- Uses dedicated `build-jupyter-cache` action
+- Automatically handles cache key generation (`build-{env-hash}-{run-id}`)
+- Creates issues on failure (with duplicate prevention)
+- Verifies build before saving cache
 - Push trigger rebuilds cache when `environment.yml` changes on main
-- Artifact uploaded for inspection/debugging
 
 ### Step 6: Update `publish.yml`
 
@@ -500,6 +483,13 @@ jobs:
           install-latex: 'true'
           install-ml-libs: 'true'
           ml-libs-version: 'jax062-torch-nightly-cuda12'
+      
+      - uses: quantecon/actions/restore-jupyter-cache@v1
+        with:
+          cache-type: 'build'
+      
+      - uses: quantecon/actions/build-lectures@v1
+        id: build
 ```
 
 ### lecture-python-programming.myst
@@ -511,12 +501,24 @@ jobs:
 jobs:
   preview:
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/quantecon/quantecon-build:latest
+    permissions:
+      contents: read
+      packages: read
     steps:
       - uses: actions/checkout@v4
       
       - uses: quantecon/actions/setup-environment@v1
         with:
-          install-latex: 'true'
+          environment-file: 'environment.yml'
+      
+      - uses: quantecon/actions/restore-jupyter-cache@v1
+        with:
+          cache-type: 'build'
+      
+      - uses: quantecon/actions/build-lectures@v1
+        id: build
 ```
 
 ### lecture-python-intro

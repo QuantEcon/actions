@@ -27,10 +27,12 @@ Our next-generation CI/CD system combines three complementary elements:
 **Separate, focused actions that compose together:**
 
 ```
-build-lectures/      → Build Jupyter Book + handle caching
-preview-netlify/     → Deploy to Netlify for PR previews
-preview-cloudflare/  → Deploy to Cloudflare Pages for PR previews
-publish-gh-pages/    → Deploy to GitHub Pages
+build-jupyter-cache/  → Generate and save execution cache (main branch, weekly)
+restore-jupyter-cache/→ Restore execution cache (PR workflows)
+build-lectures/       → Build Jupyter Book (multi-format, asset assembly)
+preview-netlify/      → Deploy to Netlify for PR previews
+preview-cloudflare/   → Deploy to Cloudflare Pages for PR previews
+publish-gh-pages/     → Deploy to GitHub Pages
 ```
 
 **Why modular over monolithic?**
@@ -123,7 +125,12 @@ jobs:
       - name: Install lecture dependencies
         run: conda env update -f environment.yml
       
-      # Build with automatic caching (3-5 min)
+      # Restore cache from main branch (if available)
+      - uses: quantecon/actions/restore-jupyter-cache@v1
+        with:
+          cache-type: 'build'
+      
+      # Build (uses restored cache for incremental build)
       - uses: quantecon/actions/build-lectures@v1
         id: build
       
@@ -146,7 +153,7 @@ jobs:
 - ⚡ 30-40% faster (9-13 min vs 15-18 min) - LaTeX pre-installed saves 2-3 min, base packages save 3-4 min
 - 🎯 Clearer (explicit steps, obvious failures)
 - 🔧 Easier to customize (add/remove deployment targets)
-- 📦 Automatic caching (no manual cache management)
+- 📦 Dedicated cache actions (build-jupyter-cache + restore-jupyter-cache)
 - 🐛 Better debugging (know which action failed)
 
 ---
@@ -277,8 +284,17 @@ quantecon/actions/
 │   ├── environment.yml            # Centralized for all lectures
 │   └── environment-gpu.yml        # GPU-specific packages
 │
+├── build-jupyter-cache/           # Modular action
+│   ├── action.yml                 # Generate cache on main branch
+│   ├── scripts/                   # External scripts
+│   └── README.md
+│
+├── restore-jupyter-cache/         # Modular action
+│   ├── action.yml                 # Restore cache for PRs
+│   └── README.md
+│
 ├── build-lectures/                # Modular action
-│   ├── action.yml                 # Build + automatic caching
+│   ├── action.yml                 # Multi-format builds, asset assembly
 │   └── README.md
 │
 ├── preview-netlify/                # Modular action
@@ -383,7 +399,7 @@ lecture-python-intro/
 
 ### Simplicity 🎯
 - Cleaner workflows (remove setup steps)
-- Automatic cache management
+- Dedicated cache actions (restore = one line, no configuration)
 - Standard patterns across all lectures
 
 ### Reliability 🔒

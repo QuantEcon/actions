@@ -31,6 +31,9 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/quantecon/quantecon-build:latest  # Lean container for CI
+    permissions:
+      contents: read
+      packages: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,6 +42,9 @@ jobs:
         with:
           environment-file: 'environment.yml'  # Optional - adds packages on top
         # Auto-detects container, installs only lecture-specific packages
+      - uses: quantecon/actions/restore-jupyter-cache@v1
+        with:
+          cache-type: 'build'
       - uses: quantecon/actions/build-lectures@v1
         id: build
       - uses: quantecon/actions/preview-netlify@v1
@@ -140,12 +146,17 @@ jobs:
     builder: 'jupyter'
 ```
 
-### Fast PR Builds (with Build Cache)
+### Fast PR Builds (with Execution Cache)
+
+Add `restore-jupyter-cache` before `build-lectures` to restore cached execution state:
 
 ```yaml
-- uses: quantecon/actions/build-lectures@v1
+- uses: quantecon/actions/restore-jupyter-cache@v1
   with:
-    use-build-cache: true  # Restore from main's cache
+    cache-type: 'build'
+
+- uses: quantecon/actions/build-lectures@v1
+  id: build
 ```
 
 **Note:** Requires a `cache.yml` workflow to generate the cache. See [MIGRATION-GUIDE.md](MIGRATION-GUIDE.md#step-5-update-cacheyml).
@@ -175,8 +186,8 @@ jobs:
 |--------|-----------|----------------|
 | `setup-environment` (container) | No caching | N/A |
 | `setup-environment` (standard) | `conda-{OS}-{hash(env.yml)}-{version}` | env.yml changes, manual bump |
-| `build-lectures` (exec) | `jupyter-cache-{OS}-{hash(lectures)}-{sha}` | lecture changes, new commit |
-| `build-lectures` (build) | `build-{hash(environment.yml)}` | environment.yml changes |
+| `build-jupyter-cache` | `build-{hash(env.yml)}-{run-id}` | env.yml changes, each run |
+| `restore-jupyter-cache` | `build-{hash(env.yml)}-` (prefix) | env.yml changes |
 
 ## 🎯 Inputs Quick Reference
 
@@ -202,12 +213,12 @@ builder: 'html'                  # html|pdflatex|jupyter
 source-dir: 'lectures'           # Source directory
 output-dir: './'                 # Output base
 extra-args: '-W --keep-going'    # JB arguments
-cache-notebook-execution: 'true' # Enable exec cache
-use-build-cache: 'false'         # Restore _build from GitHub cache
 html-copy-pdf: 'false'           # Copy PDFs to _build/html/_pdf/
 html-copy-notebooks: 'false'     # Copy notebooks to _build/html/_notebooks/
 upload-failure-reports: 'false'  # Upload reports on failure
 ```
+
+**Note:** Caching is handled separately via `build-jupyter-cache` and `restore-jupyter-cache`.
 
 ### preview-netlify
 
@@ -294,8 +305,10 @@ cache-version: 'v2'
 
 **Build too slow?**
 ```yaml
-# Check execution cache enabled
-cache-notebook-execution: 'true'
+# Use restore-jupyter-cache before build-lectures
+- uses: quantecon/actions/restore-jupyter-cache@v1
+  with:
+    cache-type: 'build'
 ```
 
 **Netlify auth failing?**
