@@ -46,6 +46,10 @@ jobs:
     runs-on: ubuntu-latest
     # NOTE: No container - uses setup-environment to install Conda/LaTeX
     
+    permissions:
+      contents: read
+      issues: write
+    
     steps:
       - name: Checkout
         uses: actions/checkout@v4

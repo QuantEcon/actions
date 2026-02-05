@@ -200,7 +200,7 @@ The action generates a GitHub Actions summary showing:
 ## Workflow Templates
 
 See [templates/](../templates/) for complete workflow examples:
-- `cache-container.yml` - Using QuantEcon container
+- `cache.yml` - Using QuantEcon container
 - `cache-standard.yml` - Using ubuntu-latest
 
 ## Related Actions

@@ -71,6 +71,20 @@ runs:
         echo "key=$KEY" >> $GITHUB_OUTPUT
         echo "Cache key: $KEY"
 
+    - name: Validate builders input
+      id: validate-builders
+      shell: bash
+      run: |
+        BUILDERS="${{ inputs.builders }}"
+        
+        # Check at least one valid builder is specified
+        if [[ ! "$BUILDERS" == *"jupyter"* ]] && [[ ! "$BUILDERS" == *"pdflatex"* ]] && [[ ! "$BUILDERS" == *"html"* ]]; then
+          echo "::error::No valid builders specified. Must include at least one of: jupyter, pdflatex, html"
+          echo "::error::Received: '$BUILDERS'"
+          exit 1
+        fi
+        echo "✅ Valid builders input: $BUILDERS"
+
     - name: Parse builders input
       id: parse-builders
       shell: bash
@@ -243,7 +257,7 @@ runs:
       uses: actions/cache/save@v4
       with:
         path: _build/.jupyter_cache
-        key: jupyter-cache-${{ hashFiles('lectures/**/*.md') }}-${{ github.run_id }}
+        key: jupyter-cache-${{ hashFiles(format('{0}/**/*.md', inputs.source-dir)) }}-${{ github.run_id }}
 
     # ============================================================
     # UPLOAD ARTIFACT
@@ -262,76 +276,19 @@ runs:
     # CREATE ISSUE ON FAILURE
     # ============================================================
     
-    - name: Prepare failure issue content
-      if: steps.verify-builds.outputs.all-passed == 'false' && inputs.create-issue-on-failure == 'true'
-      shell: bash
-      run: |
-        cat > /tmp/issue-body.md << 'EOF'
-        ## 🔴 Jupyter Cache Build Failed
-        
-        **Workflow Run:** [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-        **Trigger:** ${{ github.event_name }}
-        **Branch:** ${{ github.ref_name }}
-        **Commit:** ${{ github.sha }}
-        **Date:** $(date -u +"%Y-%m-%d %H:%M UTC")
-        
-        ### Build Results
-        
-        | Builder | Status |
-        |---------|--------|
-        | jupyter | ${{ steps.verify-builds.outputs.jupyter-status }} |
-        | pdflatex | ${{ steps.verify-builds.outputs.pdflatex-status }} |
-        | html | ${{ steps.verify-builds.outputs.html-status }} |
-        
-        ### Impact
-        
-        ⚠️ **The existing cache has been preserved** - PR workflows will continue to use the previous working cache.
-        
-        ### Debug Steps
-        
-        1. Check the [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-        2. Download the build artifact for detailed execution reports
-        3. Run locally to reproduce:
-           ```bash
-           jb build ${{ inputs.source-dir }} --builder <failed-builder>
-           ```
-        
-        ### Notes
-        
-        - This issue was automatically created by the cache build workflow
-        - Close this issue once the build is fixed
-        - A new cache will be saved on the next successful build
-        
-        EOF
-        
-        echo "Issue content prepared"
-
     - name: Create failure issue
       if: steps.verify-builds.outputs.all-passed == 'false' && inputs.create-issue-on-failure == 'true'
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
+        SOURCE_DIR: ${{ inputs.source-dir }}
+        ISSUE_LABELS: ${{ inputs.issue-labels }}
+        ISSUE_ASSIGNEES: ${{ inputs.issue-assignees }}
+        JUPYTER_STATUS: ${{ steps.verify-builds.outputs.jupyter-status }}
+        PDFLATEX_STATUS: ${{ steps.verify-builds.outputs.pdflatex-status }}
+        HTML_STATUS: ${{ steps.verify-builds.outputs.html-status }}
       run: |
-        # Build assignees flag if provided
-        ASSIGNEES_FLAG=""
-        if [ -n "${{ inputs.issue-assignees }}" ]; then
-          ASSIGNEES_FLAG="--assignee ${{ inputs.issue-assignees }}"
-        fi
-        
-        # Check for existing open issue with same label to avoid duplicates
-        EXISTING=$(gh issue list --label "build-failure" --state open --limit 1 --json number --jq '.[0].number' || echo "")
-        
-        if [ -n "$EXISTING" ]; then
-          echo "Found existing open issue #$EXISTING, adding comment instead of creating new issue"
-          gh issue comment "$EXISTING" --body-file /tmp/issue-body.md
-        else
-          echo "Creating new failure issue"
-          gh issue create \
-            --title "🔴 Cache Build Failed - $(date -u +%Y-%m-%d)" \
-            --body-file /tmp/issue-body.md \
-            --label "${{ inputs.issue-labels }}" \
-            $ASSIGNEES_FLAG
-        fi
+        ${{ github.action_path }}/scripts/create-failure-issue.sh
 
     # ============================================================
     # BUILD SUMMARY

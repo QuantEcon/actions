@@ -11,6 +11,10 @@ inputs:
     description: 'Path to restore cache to'
     required: false
     default: '_build'
+  source-dir:
+    description: 'Source directory containing lectures (used for content hash in execution cache)'
+    required: false
+    default: 'lectures'
   key:
     description: 'Cache key to look for (auto-generated if not specified)'
     required: false
@@ -43,23 +47,21 @@ runs:
         elif [ "${{ inputs.cache-type }}" = "execution" ]; then
           # Execution cache: jupyter-cache-{content-hash}-{run-id}
           # Use a key that won't match exactly (forces restore-keys lookup)
-          KEY="jupyter-cache-${{ hashFiles('lectures/**/*.md') }}-00000000"
-          RESTORE_KEYS="jupyter-cache-${{ hashFiles('lectures/**/*.md') }}-
-        jupyter-cache-"
+          KEY="jupyter-cache-${{ hashFiles(format('{0}/**/*.md', inputs.source-dir)) }}-00000000"
           echo "key=$KEY" >> $GITHUB_OUTPUT
           echo "restore-keys<<EOF" >> $GITHUB_OUTPUT
-          echo "$RESTORE_KEYS" >> $GITHUB_OUTPUT
+          echo "jupyter-cache-${{ hashFiles(format('{0}/**/*.md', inputs.source-dir)) }}-" >> $GITHUB_OUTPUT
+          echo "jupyter-cache-" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
           echo "Using execution cache with prefix match"
         else
           # Build cache: build-{env-hash}-{run-id}
           # Use a key that won't match exactly (forces restore-keys lookup)
           KEY="build-${{ hashFiles('environment.yml') }}-00000000"
-          RESTORE_KEYS="build-${{ hashFiles('environment.yml') }}-
-        build-"
           echo "key=$KEY" >> $GITHUB_OUTPUT
           echo "restore-keys<<EOF" >> $GITHUB_OUTPUT
-          echo "$RESTORE_KEYS" >> $GITHUB_OUTPUT
+          echo "build-${{ hashFiles('environment.yml') }}-" >> $GITHUB_OUTPUT
+          echo "build-" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
           echo "Using build cache with prefix match"
         fi

@@ -45,6 +45,10 @@ jobs:
     container:
       image: ghcr.io/quantecon/quantecon:latest
     
+    permissions:
+      contents: read
+      issues: write
+    
     steps:
       - name: Checkout
         uses: actions/checkout@v4
