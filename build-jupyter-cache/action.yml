@@ -8,9 +8,13 @@ inputs:
     required: false
     default: 'html'
   environment-file:
-    description: 'Path to environment.yml for lecture-specific packages'
+    description: 'Path to environment.yml for lecture-specific packages (non-container builds)'
     required: false
     default: 'environment.yml'
+  container-environment-file:
+    description: 'Path to delta environment.yml for container builds (empty = use pre-installed packages only)'
+    required: false
+    default: ''
   source-dir:
     description: 'Source directory containing lectures'
     required: false
@@ -124,6 +128,7 @@ runs:
       uses: quantecon/actions/setup-environment@main
       with:
         environment-file: ${{ inputs.environment-file }}
+        container-environment-file: ${{ inputs.container-environment-file }}
         install-latex: ${{ steps.parse-builders.outputs.run-pdflatex }}
 
     # ============================================================

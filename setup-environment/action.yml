@@ -8,9 +8,13 @@ inputs:
     required: false
     default: '3.13'
   environment-file:
-    description: 'Path to environment.yml for lecture-specific packages'
+    description: 'Path to environment.yml for lecture-specific packages (non-container builds)'
     required: false
     default: 'environment.yml'
+  container-environment-file:
+    description: 'Path to delta environment.yml for container builds (empty = use pre-installed packages only)'
+    required: false
+    default: ''
   environment-name:
     description: 'Conda environment name (must match name in environment.yml)'
     required: false
@@ -70,30 +74,26 @@ runs:
     # See: https://github.com/QuantEcon/actions/issues/18
     # ============================================================
 
-    - name: Install lecture-specific packages (container mode)
-      if: steps.detect-container.outputs.container-mode == 'true' && inputs.environment-file != ''
+    - name: Install delta packages (container mode)
+      if: steps.detect-container.outputs.container-mode == 'true' && inputs.container-environment-file != ''
       shell: bash
       run: |
-        echo "::group::Installing lecture-specific packages"
-        if [ -f "${{ inputs.environment-file }}" ]; then
-          echo "Updating environment from ${{ inputs.environment-file }}"
-          # Let conda use the environment name from the file (more flexible than -n flag)
-          # This works regardless of what environment-name input is passed
-          conda env update -f ${{ inputs.environment-file }}
-          echo "✅ Lecture packages installed"
+        echo "::group::Installing delta packages for container"
+        if [ -f "${{ inputs.container-environment-file }}" ]; then
+          echo "Updating environment from ${{ inputs.container-environment-file }}"
+          conda env update -f ${{ inputs.container-environment-file }}
+          echo "✅ Delta packages installed"
         else
-          echo "⚠️ Environment file not found: ${{ inputs.environment-file }}"
-          echo "::error::Environment file not found: ${{ inputs.environment-file }}"
+          echo "::error::Container environment file not found: ${{ inputs.container-environment-file }}"
           exit 1
         fi
         echo "::endgroup::"
     
-    - name: Container mode - no packages needed
-      if: steps.detect-container.outputs.container-mode == 'true' && inputs.environment-file == ''
+    - name: Container mode - using pre-installed packages
+      if: steps.detect-container.outputs.container-mode == 'true' && inputs.container-environment-file == ''
       shell: bash
       run: |
-        echo "🐳 Container mode with no environment file"
-        echo "✅ Using container's pre-installed packages (fastest path)"
+        echo "🐳 Container mode - using pre-installed packages (fastest path)"
 
     # ============================================================
     # NON-CONTAINER MODE: Full installation (existing behavior)

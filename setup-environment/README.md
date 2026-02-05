@@ -60,8 +60,26 @@ container:
   image: ghcr.io/quantecon/quantecon-build:latest
 steps:
   - uses: quantecon/actions/setup-environment@v1
+    # container-environment-file defaults to '' - uses pre-installed packages
+```
+
+### Container with Delta Packages
+
+If you need a few extra packages not in the container:
+
+```yaml
+steps:
+  - uses: quantecon/actions/setup-environment@v1
     with:
-      environment-file: ''  # Skip package installation entirely
+      container-environment-file: 'environment-update.yml'  # Delta packages only
+```
+
+Where `environment-update.yml` contains only the extras:
+
+```yaml
+name: quantecon
+dependencies:
+  - wbgapi  # Example: package not in container
 ```
 
 ### Standard Build (ubuntu-latest)
@@ -90,7 +108,8 @@ steps:
 | Input | Description | Required | Default |
 |-------|-------------|----------|---------|
 | `python-version` | Python version (ignored in container mode) | No | `3.13` |
-| `environment-file` | Path to environment.yml | No | `environment.yml` |
+| `environment-file` | Path to environment.yml (non-container builds) | No | `environment.yml` |
+| `container-environment-file` | Path to delta environment.yml for container builds | No | `''` |
 | `environment-name` | Conda environment name | No | `quantecon` |
 | `cache-version` | Cache version for manual invalidation | No | `v1` |
 | `install-latex` | Install LaTeX packages (auto-disabled in container) | No | `false` |
