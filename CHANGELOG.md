@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-02-05
+
+### Added
+- **`build-jupyter-cache`** - Dedicated action for building and caching notebook execution
+  - Runs on `main` branch (scheduled weekly or on push)
+  - Full notebook execution with Jupyter Book
+  - Saves execution cache with unique key (`build-{env-hash}-{run-id}`)
+  - Verification step ensures cache validity before saving
+  - Creates GitHub issue on build failure with duplicate prevention
+  - Uploads execution reports as artifacts on failure
+
+- **`restore-jupyter-cache`** - Dedicated action for restoring notebook execution cache
+  - Runs on PR branches (read-only restore, never saves)
+  - Prefix-based matching finds most recent cache
+  - Detailed cache status output (hit/miss, matched key)
+  - ~80% build time reduction when cache available (tested: 16m53s → 3m28s)
+
+- **Workflow Templates** (`templates/`)
+  - `cache.yml` - Container-based cache workflow for lecture repos
+  - `cache-standard.yml` - Standard runner workflow (with LaTeX install)
+  - `README.md` - Template documentation and usage instructions
+
+### Changed
+- **BREAKING**: Removed caching inputs from `build-lectures`
+  - Removed `cache-notebook-execution` input
+  - Removed `use-build-cache` input
+  - Removed `build-cache-hit` output
+  - **Migration**: Use dedicated `build-jupyter-cache` and `restore-jupyter-cache` actions
+
+### Documentation
+- Updated ARCHITECTURE.md with Layer 2 caching strategy
+- Updated MIGRATION-GUIDE.md with cache workflow examples
+- Updated QUICK-REFERENCE.md with cache action reference
+- Added comprehensive README for both cache actions
+
 ## [0.3.0] - 2026-02-05
 
 ### Added
