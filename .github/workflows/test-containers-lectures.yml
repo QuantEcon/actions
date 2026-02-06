@@ -36,9 +36,10 @@ on:
 env:
   ALL_CONTAINERS: '["quantecon-build","quantecon"]'
   ALL_REPOS: '["lecture-python-programming.myst","lecture-python-intro","lecture-python-advanced.myst","lecture-python.myst"]'
+  ALL_BUILDERS: '["html","pdflatex","jupyter"]'
 
 jobs:
-  # Determine which containers and repos to test
+  # Determine which containers, repos, and builders to test
   setup:
     name: Setup Test Matrix
     runs-on: ubuntu-latest
@@ -52,26 +53,26 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.container }}" != "all" ]; then
             CONTAINERS='["${{ inputs.container }}"]'
           else
-            # Test all containers for automated runs or when "all" selected
             CONTAINERS='${{ env.ALL_CONTAINERS }}'
           fi
           
           # Determine repos to test
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.repos }}" != "all" ]; then
-            # Parse comma-separated repos
             REPOS='${{ inputs.repos }}'
             REPOS_JSON=$(echo "$REPOS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | jq -R -s -c 'split("\n") | map(select(. != ""))')
           else
-            # Test all lecture repositories
             REPOS_JSON='${{ env.ALL_REPOS }}'
           fi
           
+          # All builder types
+          BUILDERS='${{ env.ALL_BUILDERS }}'
+          
           # Create combined matrix
-          echo "matrix={\"container\":$CONTAINERS,\"repo\":$REPOS_JSON}" >> $GITHUB_OUTPUT
-          echo "Matrix: {\"container\":$CONTAINERS,\"repo\":$REPOS_JSON}"
+          echo "matrix={\"container\":$CONTAINERS,\"repo\":$REPOS_JSON,\"builder\":$BUILDERS}" >> $GITHUB_OUTPUT
+          echo "Matrix: {\"container\":$CONTAINERS,\"repo\":$REPOS_JSON,\"builder\":$BUILDERS}"
 
   test-lectures:
-    name: Test ${{ matrix.repo }} (${{ matrix.container }})
+    name: ${{ matrix.builder }} · ${{ matrix.repo }} (${{ matrix.container }})
     needs: setup
     runs-on: ubuntu-latest
     timeout-minutes: 120
@@ -83,14 +84,15 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
     
     strategy:
-      fail-fast: false  # Continue testing other combinations even if one fails
+      fail-fast: false
       matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
 
     steps:
       - name: Display test info
         run: |
           echo "=========================================="
-          echo "Testing: ${{ matrix.repo }}"
+          echo "Repo: ${{ matrix.repo }}"
+          echo "Builder: ${{ matrix.builder }}"
           echo "Container: ${{ matrix.container }}"
           echo "=========================================="
           cat /etc/quantecon-container || echo "Container marker not found"
@@ -107,65 +109,48 @@ jobs:
           echo ""
           echo "Lectures directory:"
           ls -la lectures/ || echo "No lectures/ directory"
-          echo ""
-          echo "Environment file:"
-          cat environment.yml || echo "No environment.yml"
 
       - name: Show container environment
         shell: bash
         run: |
           echo "Using container's built-in environment (ignoring lecture repo's environment.yml)"
-          echo "This tests whether the container has all required dependencies pre-installed."
           echo ""
           source /opt/conda/etc/profile.d/conda.sh
           conda activate quantecon
-          
-          # Show key packages from container
-          echo "Key packages in container:"
-          conda list | grep -E "^(jupyter-book|quantecon|numpy|scipy|pandas|matplotlib|jax)" || true
-          echo ""
-          echo "Python version:"
-          python --version
+          echo "Python version: $(python --version)"
+          echo "Jupyter Book version: $(jupyter-book --version)"
 
-      - name: Build lectures (full execution)
+      - name: Build lectures (${{ matrix.builder }})
         id: build
         shell: bash
         run: |
-          echo "Starting full lecture build with execution..."
-          echo "This may take 10-30+ minutes depending on the lecture series."
-          echo ""
-          
           source /opt/conda/etc/profile.d/conda.sh
           conda activate quantecon
-          
           cd lectures
           
-          # Record start time
           START_TIME=$(date +%s)
           
-          # Build with strict mode and execution
-          # -n: nitpicky mode (warn about all missing references)
-          # -W: turn warnings into errors
-          # --keep-going: continue building even if there are warnings
-          jb build . --builder html -n -W --keep-going 2>&1 | tee ../build.log
+          # Set builder command based on type
+          if [ "${{ matrix.builder }}" = "html" ]; then
+            jb build . --builder html -n -W --keep-going 2>&1 | tee ../build.log
+          elif [ "${{ matrix.builder }}" = "pdflatex" ]; then
+            jb build . --builder pdflatex -n -W --keep-going 2>&1 | tee ../build.log
+          elif [ "${{ matrix.builder }}" = "jupyter" ]; then
+            jb build . --builder=custom --custom-builder=jupyter -n -W --keep-going 2>&1 | tee ../build.log
+          fi
           BUILD_STATUS=${PIPESTATUS[0]}
           
-          # Record end time
           END_TIME=$(date +%s)
           DURATION=$((END_TIME - START_TIME))
-          MINUTES=$((DURATION / 60))
-          SECONDS=$((DURATION % 60))
           
           echo ""
           echo "=========================================="
-          echo "Build completed in ${MINUTES}m ${SECONDS}s"
+          echo "Build completed in $((DURATION / 60))m $((DURATION % 60))s"
           echo "Exit status: $BUILD_STATUS"
           echo "=========================================="
           
-          # Set output for summary
-          echo "duration=${MINUTES}m ${SECONDS}s" >> $GITHUB_OUTPUT
+          echo "duration=$((DURATION / 60))m $((DURATION % 60))s" >> $GITHUB_OUTPUT
           echo "status=$BUILD_STATUS" >> $GITHUB_OUTPUT
-          
           exit $BUILD_STATUS
 
       - name: Check build output
@@ -174,28 +159,21 @@ jobs:
           echo "Build artifacts:"
           ls -la lectures/_build/ 2>/dev/null || echo "No _build directory"
           
-          if [ -d "lectures/_build/html" ]; then
-            echo ""
-            echo "HTML output:"
-            ls -la lectures/_build/html/ | head -20
-            
-            echo ""
-            echo "Total HTML files:"
-            find lectures/_build/html -name "*.html" | wc -l
-          fi
-          
-          if [ -f "lectures/_build/html/reports/index.html" ]; then
-            echo ""
-            echo "Execution reports available"
+          if [ "${{ matrix.builder }}" = "html" ] && [ -d "lectures/_build/html" ]; then
+            echo "Total HTML files: $(find lectures/_build/html -name '*.html' | wc -l)"
+          elif [ "${{ matrix.builder }}" = "pdflatex" ] && [ -d "lectures/_build/latex" ]; then
+            find lectures/_build/latex -name "*.pdf" -exec ls -lh {} \; || echo "No PDFs found"
+          elif [ "${{ matrix.builder }}" = "jupyter" ] && [ -d "lectures/_build/jupyter" ]; then
+            echo "Total notebooks: $(find lectures/_build/jupyter -name '*.ipynb' | wc -l)"
           fi
 
       - name: Upload build artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-${{ matrix.container }}-${{ matrix.repo }}
+          name: build-${{ matrix.builder }}-${{ matrix.container }}-${{ matrix.repo }}
           path: |
-            lectures/_build/html/
+            lectures/_build/
             build.log
           retention-days: 7
 
@@ -203,7 +181,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: reports-${{ matrix.container }}-${{ matrix.repo }}
+          name: reports-${{ matrix.builder }}-${{ matrix.container }}-${{ matrix.repo }}
           path: |
             lectures/_build/html/reports/
           retention-days: 14
@@ -223,10 +201,11 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## Test Matrix" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Tests run for each combination of container × repository." >> $GITHUB_STEP_SUMMARY
+          echo "Tests run for each combination of container × repository × builder." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Containers tested:** \`${{ env.ALL_CONTAINERS }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Repositories tested:** \`${{ env.ALL_REPOS }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Containers:** \`${{ env.ALL_CONTAINERS }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Repositories:** \`${{ env.ALL_REPOS }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Builders:** \`${{ env.ALL_BUILDERS }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -234,7 +213,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## Artifacts" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Build artifacts are named: \`build-{container}-{repo}\`" >> $GITHUB_STEP_SUMMARY
+          echo "Build artifacts are named: \`build-{builder}-{container}-{repo}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- Build artifacts retained for 7 days" >> $GITHUB_STEP_SUMMARY
           echo "- Failure reports retained for 14 days" >> $GITHUB_STEP_SUMMARY
