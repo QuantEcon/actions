@@ -1,5 +1,5 @@
 name: 'Restore Jupyter Cache'
-description: 'Restores Jupyter Book build cache from GitHub Actions cache (read-only, for PR workflows)'
+description: 'Restores Jupyter Book build cache from GitHub Actions cache, with optional save for PR-scoped caching'
 author: 'QuantEcon'
 
 inputs:
@@ -31,14 +31,18 @@ inputs:
     description: 'Fail the workflow if no cache is found'
     required: false
     default: 'false'
+  save-cache:
+    description: 'Save build cache at end of job for faster subsequent PR runs. Cache is scoped to the PR branch and cannot affect other PRs or main.'
+    required: false
+    default: 'false'
 
 outputs:
   cache-hit:
     description: 'Whether the cache was successfully restored (includes prefix match)'
-    value: ${{ steps.restore.outputs.cache-matched-key != '' }}
+    value: ${{ steps.restore-readonly.outputs.cache-matched-key != '' || steps.restore-save.outputs.cache-matched-key != '' }}
   cache-key:
     description: 'The cache key that was matched (empty if no hit)'
-    value: ${{ steps.restore.outputs.cache-matched-key }}
+    value: ${{ steps.restore-readonly.outputs.cache-matched-key || steps.restore-save.outputs.cache-matched-key }}
 
 runs:
   using: "composite"
@@ -54,8 +58,11 @@ runs:
           echo "Using custom cache key: ${{ inputs.key }}"
         elif [ "${{ inputs.cache-type }}" = "execution" ]; then
           # Execution cache: jupyter-cache-{content-hash}-{run-id}
-          # Use a key that won't match exactly (forces restore-keys lookup)
-          KEY="jupyter-cache-${{ hashFiles(format('{0}/**/*.md', inputs.source-dir)) }}-00000000"
+          if [ "${{ inputs.save-cache }}" = "true" ]; then
+            KEY="jupyter-cache-${{ hashFiles(format('{0}/**/*.md', inputs.source-dir)) }}-${{ github.run_id }}"
+          else
+            KEY="jupyter-cache-${{ hashFiles(format('{0}/**/*.md', inputs.source-dir)) }}-00000000"
+          fi
           echo "key=$KEY" >> $GITHUB_OUTPUT
           echo "restore-keys<<EOF" >> $GITHUB_OUTPUT
           echo "jupyter-cache-${{ hashFiles(format('{0}/**/*.md', inputs.source-dir)) }}-" >> $GITHUB_OUTPUT
@@ -64,10 +71,13 @@ runs:
           echo "Using execution cache with prefix match"
         else
           # Build cache: build-{env-hash}-{update-hash}-{run-id}
-          # Use a key that won't match exactly (forces restore-keys lookup)
           ENV_HASH="${{ hashFiles(inputs.environment) }}"
           UPDATE_HASH="${{ hashFiles(inputs.environment-update) }}"
-          KEY="build-${ENV_HASH}-${UPDATE_HASH}-00000000"
+          if [ "${{ inputs.save-cache }}" = "true" ]; then
+            KEY="build-${ENV_HASH}-${UPDATE_HASH}-${{ github.run_id }}"
+          else
+            KEY="build-${ENV_HASH}-${UPDATE_HASH}-00000000"
+          fi
           echo "key=$KEY" >> $GITHUB_OUTPUT
           echo "restore-keys<<EOF" >> $GITHUB_OUTPUT
           echo "build-${ENV_HASH}-${UPDATE_HASH}-" >> $GITHUB_OUTPUT
@@ -87,9 +97,19 @@ runs:
           echo "path=${{ inputs.path }}" >> $GITHUB_OUTPUT
         fi
 
-    - name: Restore cache
-      id: restore
+    - name: Restore cache (read-only)
+      id: restore-readonly
+      if: inputs.save-cache != 'true'
       uses: actions/cache/restore@v4
+      with:
+        path: ${{ steps.cache-path.outputs.path }}
+        key: ${{ steps.cache-key.outputs.key }}
+        restore-keys: ${{ steps.cache-key.outputs.restore-keys }}
+
+    - name: Restore cache (with save at job end)
+      id: restore-save
+      if: inputs.save-cache == 'true'
+      uses: actions/cache@v4
       with:
         path: ${{ steps.cache-path.outputs.path }}
         key: ${{ steps.cache-key.outputs.key }}
@@ -105,12 +125,13 @@ runs:
         echo ""
         echo "  Cache Type:     ${{ inputs.cache-type }}"
         echo "  Requested Key:  ${{ steps.cache-key.outputs.key }}"
-        echo "  Cache Hit:      ${{ steps.restore.outputs.cache-hit || 'false' }}"
-        echo "  Matched Key:    ${{ steps.restore.outputs.cache-matched-key || 'none' }}"
+        echo "  Cache Hit:      ${{ steps.restore-readonly.outputs.cache-hit || steps.restore-save.outputs.cache-hit || 'false' }}"
+        echo "  Matched Key:    ${{ steps.restore-readonly.outputs.cache-matched-key || steps.restore-save.outputs.cache-matched-key || 'none' }}"
+        echo "  Save Cache:     ${{ inputs.save-cache }}"
         echo ""
         
         CACHE_PATH="${{ steps.cache-path.outputs.path }}"
-        MATCHED_KEY="${{ steps.restore.outputs.cache-matched-key }}"
+        MATCHED_KEY="${{ steps.restore-readonly.outputs.cache-matched-key || steps.restore-save.outputs.cache-matched-key }}"
         
         # Check if cache was restored (via exact match OR prefix match)
         # With prefix matching, cache-hit is false but cache-matched-key is set
@@ -188,7 +209,7 @@ runs:
         fi
 
     - name: Fail on cache miss
-      if: inputs.fail-on-miss == 'true' && steps.restore.outputs.cache-matched-key == ''
+      if: inputs.fail-on-miss == 'true' && steps.restore-readonly.outputs.cache-matched-key == '' && steps.restore-save.outputs.cache-matched-key == ''
       shell: bash
       run: |
         echo "::error::Cache miss with fail-on-miss enabled"
