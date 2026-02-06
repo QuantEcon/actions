@@ -24,11 +24,11 @@ inputs:
     required: false
     default: '-W --keep-going'
   html-copy-pdf:
-    description: 'Copy PDF from _build/latex/ to _build/html/_pdf/ (HTML builder only, requires prior pdflatex build)'
+    description: 'Stage PDF from _build/latex/ into _build/html/_pdf/ before HTML build so theme can detect and enable downloads (requires prior pdflatex build)'
     required: false
     default: 'false'
   html-copy-notebooks:
-    description: 'Copy notebooks from _build/jupyter/ to _build/html/_notebooks/ (HTML builder only, requires prior jupyter build)'
+    description: 'Stage notebooks from _build/jupyter/ into _build/html/_notebooks/ before HTML build so theme can detect and enable downloads (requires prior jupyter build)'
     required: false
     default: 'false'
   upload-failure-reports:
@@ -44,6 +44,44 @@ outputs:
 runs:
   using: "composite"
   steps:
+    - name: Stage PDF for HTML build
+      if: inputs.builder == 'html' && inputs.html-copy-pdf == 'true'
+      shell: bash
+      run: |
+        echo "::group::Stage PDF for HTML build"
+        PDF_SOURCE="${{ inputs.output-dir }}/_build/latex"
+        PDF_DEST="${{ inputs.output-dir }}/_build/html/_pdf"
+        
+        if [ -d "$PDF_SOURCE" ]; then
+          mkdir -p "$PDF_DEST"
+          find "$PDF_SOURCE" -name "*.pdf" -exec cp {} "$PDF_DEST/" \;
+          echo "Staged PDFs in $PDF_DEST (Jupyter Book will detect and enable downloads):"
+          ls -lh "$PDF_DEST" || echo "No PDFs found"
+        else
+          echo "::warning::PDF source directory not found: $PDF_SOURCE"
+          echo "Run pdflatex builder before html builder with html-copy-pdf"
+        fi
+        echo "::endgroup::"
+
+    - name: Stage notebooks for HTML build
+      if: inputs.builder == 'html' && inputs.html-copy-notebooks == 'true'
+      shell: bash
+      run: |
+        echo "::group::Stage notebooks for HTML build"
+        NB_SOURCE="${{ inputs.output-dir }}/_build/jupyter"
+        NB_DEST="${{ inputs.output-dir }}/_build/html/_notebooks"
+        
+        if [ -d "$NB_SOURCE" ]; then
+          mkdir -p "$NB_DEST"
+          find "$NB_SOURCE" -name "*.ipynb" -exec cp {} "$NB_DEST/" \;
+          NB_COUNT=$(find "$NB_DEST" -name "*.ipynb" | wc -l)
+          echo "Staged $NB_COUNT notebooks in $NB_DEST (Jupyter Book will detect and enable downloads)"
+        else
+          echo "::warning::Notebook source directory not found: $NB_SOURCE"
+          echo "Run jupyter builder before html builder with html-copy-notebooks"
+        fi
+        echo "::endgroup::"
+
     - name: Build lectures
       id: build
       shell: bash -l {0}
@@ -85,48 +123,6 @@ runs:
         
         # Exit with build exit code
         exit $BUILD_EXIT_CODE
-
-    - name: Copy PDF to HTML
-      if: inputs.builder == 'html' && inputs.html-copy-pdf == 'true' && success()
-      shell: bash
-      run: |
-        echo "::group::Copy PDF to HTML"
-        PDF_SOURCE="${{ inputs.output-dir }}/_build/latex"
-        PDF_DEST="${{ inputs.output-dir }}/_build/html/_pdf"
-        
-        if [ -d "$PDF_SOURCE" ]; then
-          mkdir -p "$PDF_DEST"
-          # Copy all PDFs
-          find "$PDF_SOURCE" -name "*.pdf" -exec cp {} "$PDF_DEST/" \;
-          echo "Copied PDFs to $PDF_DEST:"
-          ls -lh "$PDF_DEST" || echo "No PDFs found"
-        else
-          echo "::warning::PDF source directory not found: $PDF_SOURCE"
-          echo "Run pdflatex builder before html builder with html-copy-pdf"
-        fi
-        echo "::endgroup::"
-
-    - name: Copy notebooks to HTML
-      if: inputs.builder == 'html' && inputs.html-copy-notebooks == 'true' && success()
-      shell: bash
-      run: |
-        echo "::group::Copy Notebooks to HTML"
-        NB_SOURCE="${{ inputs.output-dir }}/_build/jupyter"
-        NB_DEST="${{ inputs.output-dir }}/_build/html/_notebooks"
-        
-        if [ -d "$NB_SOURCE" ]; then
-          mkdir -p "$NB_DEST"
-          # Copy all notebooks to flat directory
-          find "$NB_SOURCE" -name "*.ipynb" -exec cp {} "$NB_DEST/" \;
-          echo "Copied notebooks to $NB_DEST:"
-          ls -lh "$NB_DEST" | head -20 || echo "No notebooks found"
-          NB_COUNT=$(find "$NB_DEST" -name "*.ipynb" | wc -l)
-          echo "Total notebooks: $NB_COUNT"
-        else
-          echo "::warning::Notebook source directory not found: $NB_SOURCE"
-          echo "Run jupyter builder before html builder with html-copy-notebooks"
-        fi
-        echo "::endgroup::"
 
     - name: Report build failure
       if: failure()
