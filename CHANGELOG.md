@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-02-06
+
+### Fixed
+- **`build-lectures`**: Stage PDF and notebooks *before* HTML build so Jupyter Book
+  theme can detect them and activate download features (#23)
+- **`preview-netlify`**: Replace `jq` with `python3` for JSON parsing (lean container
+  does not include `jq`)
+- **`quantecon-build` container**: Add `texlive-fonts-extra` (provides `bbm.sty`) and
+  `xindy` for PDF builds
+
+### Changed
+- **`test-containers-lectures`**: Add `builder` dimension to test matrix
+  (container × repo × builder) for parallel validation of all build types
+- **`test-containers-lectures`**: Add `builder` input to `workflow_dispatch` for
+  targeted manual testing
+
 ## [0.5.0] - 2026-02-06
 
 ### Changed
