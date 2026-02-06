@@ -30,6 +30,16 @@ on:
         required: false
         default: 'all'
         type: string
+      builder:
+        description: 'Builder to test (or "all" to test all builders)'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - html
+          - pdflatex
+          - jupyter
 
 # Define available containers in one place for easy maintenance
 # To add a new container (e.g., GPU): add it to this list
@@ -65,7 +75,11 @@ jobs:
           fi
           
           # All builder types
-          BUILDERS='${{ env.ALL_BUILDERS }}'
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.builder }}" != "all" ]; then
+            BUILDERS='["${{ inputs.builder }}"]'
+          else
+            BUILDERS='${{ env.ALL_BUILDERS }}'
+          fi
           
           # Create combined matrix
           echo "matrix={\"container\":$CONTAINERS,\"repo\":$REPOS_JSON,\"builder\":$BUILDERS}" >> $GITHUB_OUTPUT
