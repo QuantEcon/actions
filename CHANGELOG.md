@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-02-06
+
+### Added
+- **`restore-jupyter-cache`**: New `save-cache` input for PR-scoped build caching (#24)
+  - When `true`, saves build cache at job end using `actions/cache`
+  - Subsequent pushes to the same PR restore the prior build, only re-executing changed notebooks
+  - Cache is scoped to the PR branch (cannot affect other PRs or main)
+  - Default `false` preserves existing read-only behavior
+
 ## [0.5.1] - 2026-02-06
 
 ### Fixed
