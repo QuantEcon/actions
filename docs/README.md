@@ -16,6 +16,9 @@ Step-by-step guide for migrating lecture repositories
 ### [QUICK-REFERENCE.md](./QUICK-REFERENCE.md)
 Action inputs, outputs, and usage examples
 
+### [GPU-AMI-SETUP.md](./GPU-AMI-SETUP.md)
+Building RunsOn AMI for GPU lecture builds (driver requirements, ML library bundling)
+
 ### [FUTURE-DEVELOPMENT.md](./FUTURE-DEVELOPMENT.md)
 Planned enhancements: GPU support, build optimizations, monitoring
 
