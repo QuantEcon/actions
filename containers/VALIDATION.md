@@ -2,6 +2,17 @@
 
 This document records validation test results for the QuantEcon containers across all lecture repositories and build types.
 
+## Automated Testing
+
+**As of February 9, 2026:** Containers are now tested via separate workflows to reduce parallel load:
+
+- [`test-quantecon-build-container.yml`](../.github/workflows/test-quantecon-build-container.yml) - Tests lean container (12 jobs: 4 repos × 3 builders)
+- [`test-quantecon-container.yml`](../.github/workflows/test-quantecon-container.yml) - Tests full container (12 jobs: 4 repos × 3 builders)
+
+Each workflow limits to 6 parallel jobs (`max-parallel: 6`) to reduce load on external services (intersphinx inventories, etc.) and minimize transient network failures.
+
+**Manual testing:** [`test-all-containers.yml`](../.github/workflows/test-containers-lectures.yml) remains available for comprehensive manual testing (24 jobs total).
+
 ## Containers
 
 | Container | Image | Size | Description |
