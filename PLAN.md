@@ -90,7 +90,7 @@ Once `lecture-dp` is running smoothly, migrate existing repos — CPU-only first
 | Feature | lecture-python.myst does | Our action | Status |
 |---------|-------------------------|------------|--------|
 | Environment setup on RunsOn AMI | `conda-incubator/setup-miniconda@v3` | `setup-environment` (marker detection) | ✅ Supported |
-| ML libs (JAX CUDA 13, numpyro) | `pip install -U "jax[cuda13]"` + numpyro | `setup-environment` (`install-ml-libs`) | ✅ Supported — verify CUDA 13 |
+| ML libs (JAX CUDA 13, numpyro) | `pip install -U "jax[cuda13]"` + numpyro | Repo's `environment.yml` / `environment-update.yml` | ✅ Repos manage their own ML packages |
 | HTML build | `jb build lectures -W --keep-going` | `build-lectures` (builder: html) | ✅ Supported |
 | PDF build | `jb build --builder pdflatex` | `build-lectures` (builder: pdflatex) | ✅ Supported |
 | Jupyter notebook build | `jb build --builder=custom --custom-builder=jupyter` | `build-lectures` (builder: jupyter) | ✅ Supported |
@@ -133,15 +133,7 @@ Our `publish-gh-pages` uses native OIDC-based deployment (`actions/deploy-pages`
 
 **Action:** Test a Pages deployment from a RunsOn runner.
 
-#### 3. Verify JAX CUDA 13 compatibility
-
-**Priority:** Medium
-
-Our `setup-environment` has `install-ml-libs: 'true'` which installs JAX and PyTorch. Need to verify the installed JAX version supports CUDA 13 and matches what the lectures expect.
-
-**Action:** Check `setup-environment` ML libs install commands against `jax[cuda13]` + numpyro.
-
-#### 4. Download Notebooks Zip
+#### 3. Download Notebooks Zip
 
 **Priority:** Medium — needed for `publish.yml` parity
 
@@ -154,7 +146,7 @@ Our `setup-environment` has `install-ml-libs: 'true'` which installs JAX and PyT
 
 **Recommendation:** Inline workflow step initially. Consider action feature if other repos need it.
 
-#### 5. Notebook Repository Sync
+#### 4. Notebook Repository Sync
 
 **Priority:** Low — `lecture-python.myst` specific
 
@@ -192,7 +184,6 @@ All features needed to fully replace current lecture-repo workflows:
 - [ ] **Notebook Repository Sync** — Document as inline workflow steps (too repo-specific for an action)
 - [ ] **Verify `actions/cache` on RunsOn** — Test cache save/restore on self-hosted GPU runners
 - [ ] **Verify OIDC Pages deployment from RunsOn** — Test native GH Pages deploy from self-hosted runners
-- [ ] **Verify JAX CUDA 13 install** — Confirm `install-ml-libs` matches `jax[cuda13]` + numpyro
 
 ### Completed ✅
 
@@ -207,7 +198,7 @@ All features needed to fully replace current lecture-repo workflows:
 - [x] Changed file detection for PR comments
 - [x] Conda environment caching (standard mode)
 - [x] LaTeX installation with requirements file
-- [x] JAX/PyTorch ML libs installation
+- [x] JAX/PyTorch ML libs — managed via repo `environment.yml` (not hardcoded in action)
 - [x] Multi-builder support (html, pdflatex, jupyter)
 - [x] Container-aware environment setup (marker file detection)
 - [x] Delta package installs (`environment-update` input)

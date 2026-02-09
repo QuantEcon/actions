@@ -6,7 +6,7 @@ A cheat sheet for using QuantEcon composite actions in your workflows.
 
 | Action | Purpose | Time Savings |
 |--------|---------|--------------|
-| `setup-environment` | Conda + Python + LaTeX + ML libs | ~5-6 min (cached) |
+| `setup-environment` | Conda + Python + LaTeX | ~5-6 min (cached) |
 | `build-lectures` | Jupyter Book builds | Varies (cached execution) |
 | `build-jupyter-cache` | Weekly cache generation (main branch) | Enables 80% faster CI |
 | `restore-jupyter-cache` | Read-only cache restore (PRs) | ~14 min (avoids full rebuild) |
@@ -118,14 +118,6 @@ jobs:
 
 ## 🔧 Common Customizations
 
-### Add ML Libraries (JAX/PyTorch)
-
-```yaml
-- uses: quantecon/actions/setup-environment@v1
-  with:
-    install-ml-libs: 'true'
-```
-
 ### Build PDF
 
 ```yaml
@@ -201,8 +193,6 @@ environment-name: 'quantecon'    # Conda env name
 cache-version: 'v1'              # Manual cache control
 install-latex: 'false'           # Install LaTeX (auto-disabled in container)
 latex-requirements-file: 'latex-requirements.txt'  # LaTeX packages list
-install-ml-libs: 'false'         # JAX/PyTorch/CUDA
-ml-libs-version: 'jax062-...'    # ML cache key
 ```
 
 **Outputs:** `container-mode`, `conda-cache-hit`
@@ -339,16 +329,16 @@ permissions:
 ### lecture-python.myst (GPU)
 
 ```yaml
+# ML packages (JAX, PyTorch) specified in repo's environment.yml
 - uses: quantecon/actions/setup-environment@v1
   with:
-    install-latex: 'true'
-    install-ml-libs: 'true'  # JAX + PyTorch
+    environment-update: 'environment-update.yml'
 ```
 
 ### lecture-python-programming.myst
 
 ```yaml
-# Standard setup (no ML libs)
+# Standard setup
 - uses: quantecon/actions/setup-environment@v1
   with:
     install-latex: 'true'

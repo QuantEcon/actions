@@ -14,7 +14,6 @@ Flexible, container-aware environment setup action for QuantEcon lectures. Auto-
 1. Caches Conda environment based on `environment.yml` hash
 2. Installs full Conda environment
 3. Optional LaTeX installation via apt-get
-4. Optional ML libraries (JAX/PyTorch)
 
 ## Key Benefits
 
@@ -93,15 +92,6 @@ dependencies:
     environment-name: 'quantecon'
 ```
 
-### With ML Libraries (GPU builds)
-
-```yaml
-- uses: quantecon/actions/setup-environment@v1
-  with:
-    install-latex: 'true'
-    install-ml-libs: 'true'
-```
-
 ## Inputs
 
 | Input | Description | Required | Default |
@@ -113,8 +103,6 @@ dependencies:
 | `cache-version` | Cache version for manual invalidation | No | `v1` |
 | `install-latex` | Install LaTeX packages (auto-disabled in container) | No | `false` |
 | `latex-requirements-file` | Path to latex-requirements.txt | No | `latex-requirements.txt` |
-| `install-ml-libs` | Install JAX/PyTorch with CUDA | No | `false` |
-| `ml-libs-version` | ML libraries version tag | No | `jax062-torch-nightly-cuda12` |
 
 ## Outputs
 
@@ -171,7 +159,6 @@ The container already includes: numpy, scipy, pandas, matplotlib, jupyter, jupyt
 |----------|------------------|
 | **Standard CPU lectures** | Container + `setup-environment` |
 | **GPU lectures (RunsOn AMI)** | AMI with marker file + `environment-update` |
-| **GPU lectures (no AMI)** | `setup-environment` with `install-ml-libs: true` |
 | **Local development** | Container or full `setup-environment` |
 | **Legacy workflows** | `setup-environment` with `install-latex: true` |
 
@@ -242,7 +229,6 @@ jobs:
 | Miniconda install | Skipped (pre-installed) | Installed |
 | Full conda env create | Skipped (pre-installed) | From `environment` |
 | LaTeX install | Skipped (pre-installed) | If `install-latex: true` |
-| ML libs install | Skipped (pre-installed) | If `install-ml-libs: true` |
 | Delta package update | If `environment-update` set | N/A |
 
 ### Advantage Over Containers

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- **`setup-environment`**: Remove `install-ml-libs` and `ml-libs-version` inputs
+  - ML/GPU libraries (JAX, PyTorch, numpyro) should be specified in each repo's
+    `environment.yml` or `environment-update.yml` instead of being hardcoded in the action
+  - JAX now bundles its own CUDA toolkit via pip (`jax[cuda13]`), so system-level
+    CUDA installation is unnecessary — GPU drivers on the AMI are sufficient
+  - Removes pip cache step and hardcoded install step for ML libraries
+
 ## [0.5.2] - 2026-02-06
 
 ### Added
