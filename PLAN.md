@@ -105,8 +105,8 @@ Once `lecture-dp` is running smoothly, migrate existing repos — CPU-only first
 | CNAME for custom domain | `cname: python.quantecon.org` | `publish-gh-pages` (`cname` input) | ✅ Supported |
 | Release assets (tar.gz + checksum + manifest) | `softprops/action-gh-release@v2` | `publish-gh-pages` (release asset inputs) | ✅ Supported |
 | Issue creation on failure | `peter-evans/create-issue-from-file@v6` | `build-jupyter-cache` (`create-issue-on-failure`) | ✅ Supported |
-| Download notebooks zip | `zip -r download-notebooks.zip _build/jupyter` | — | 🔴 Not yet supported |
-| Notebook repo sync | Clone + push to `lecture-python.notebooks` | — | 🔴 Not yet supported |
+| Download notebooks zip | `zip -r download-notebooks.zip _build/jupyter` | Inline workflow step | ⚪ Optional (for release assets) |
+| Notebook repo sync | Clone + push to `lecture-python.notebooks` | — | ⚪ Can be eliminated (notebooks on gh-pages) |
 | Colab compatibility testing | Separate workflow with Colab container | — | ⚪ Out of scope (standalone) |
 | Link checking | `lycheeverse/lychee-action@v2` | — | ⚪ Out of scope (standalone) |
 | GPU validation (`nvidia-smi`) | Inline step | — | ⚪ Inline step (no action needed) |
@@ -133,26 +133,26 @@ Our `publish-gh-pages` uses native OIDC-based deployment (`actions/deploy-pages`
 
 **Action:** Test a Pages deployment from a RunsOn runner.
 
-#### 3. Download Notebooks Zip
+#### 3. ~~Download Notebooks Zip~~ ✅ Resolved
 
-**Priority:** Medium — needed for `publish.yml` parity
+**Decision:** Inline workflow step (not needed as action feature)
 
-`publish.yml` creates `download-notebooks.zip` from `_build/jupyter` and uploads it as an artifact. We don't have this as a built-in feature.
+Simple one-liner for release assets if needed. Most users download individual notebooks from lecture pages, not bulk zips.
 
-**Options:**
-- Add `create-notebooks-zip: 'true'` input to `build-lectures`
-- Add it as an inline workflow step in the migration (simpler)
-- Add it as a feature of `publish-gh-pages`
+#### 4. ~~Notebook Repository Sync~~ ✅ Architectural Decision
 
-**Recommendation:** Inline workflow step initially. Consider action feature if other repos need it.
+**Decision:** Eliminate separate `.notebooks` repos — use gh-pages instead
 
-#### 4. Notebook Repository Sync
+**Rationale:**
+- Users access notebooks via: (1) download links on lecture pages, (2) Colab badges on lecture pages
+- `build-lectures` already copies notebooks to `_build/html/_notebooks` via `html-copy-notebooks: 'true'`
+- Colab supports opening from any URL: `colab.research.google.com/notebook?url=https://python.quantecon.org/_notebooks/example.ipynb`
+- Eliminates sync step, reduces repo count by 4, single source of truth
 
-**Priority:** Low — `lecture-python.myst` specific
-
-`publish.yml` pushes generated `.ipynb` files to `quantecon/lecture-python.notebooks` using a PAT (`QUANTECON_SERVICES_PAT`). This is highly repo-specific.
-
-**Recommendation:** Keep as inline workflow steps in the migrated `publish.yml`. Document the pattern in the migration guide.
+**Migration:**
+1. Update `quantecon-book-theme` to generate Colab URLs pointing to gh-pages instead of `.notebooks` repos ([quantecon-book-theme#359](https://github.com/QuantEcon/quantecon-book-theme/issues/359))
+2. Deploy updated theme + notebooks to gh-pages
+3. Archive/deprecate `.notebooks` repos with redirect notices
 
 ---
 
@@ -180,13 +180,13 @@ All features needed to fully replace current lecture-repo workflows:
 
 ### Remaining
 
-- [ ] **Download Notebooks Zip** — Create zip of built notebooks for artifact/release upload
-- [ ] **Notebook Repository Sync** — Document as inline workflow steps (too repo-specific for an action)
 - [ ] **Verify `actions/cache` on RunsOn** — Test cache save/restore on self-hosted GPU runners
 - [ ] **Verify OIDC Pages deployment from RunsOn** — Test native GH Pages deploy from self-hosted runners
 
 ### Completed ✅
 
+- [x] **Architectural decision: Eliminate `.notebooks` repos** — Use gh-pages for Colab integration, update theme URL generation
+- [x] **Download Notebooks Zip** — Inline workflow step (simple one-liner, not needed as action feature)
 - [x] Execution reports on failure (`build-lectures` — `upload-failure-reports`)
 - [x] Asset assembly (`build-lectures` — `html-copy-pdf`, `html-copy-notebooks`)
 - [x] Dedicated cache actions (`build-jupyter-cache`, `restore-jupyter-cache`)
