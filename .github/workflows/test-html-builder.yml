@@ -1,0 +1,72 @@
+name: Test HTML Builder (Execute Notebooks)
+
+on:
+  workflow_run:
+    workflows: ["Build QuantEcon Containers"]
+    types:
+      - completed
+  workflow_dispatch:
+
+jobs:
+  test-html:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        container: [quantecon, quantecon-build]
+        repo:
+          - repo: lecture-python-intro
+            owner: QuantEcon
+            ref: refs/heads/main
+          - repo: lecture-python
+            owner: QuantEcon
+            ref: refs/heads/main
+          - repo: lecture-python-advanced
+            owner: QuantEcon
+            ref: refs/heads/main
+          - repo: lecture-jax
+            owner: QuantEcon
+            ref: refs/heads/main
+    
+    container:
+      image: ghcr.io/quantecon/${{ matrix.container }}:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user root
+    
+    name: html · ${{ matrix.repo.repo }} (${{ matrix.container }})
+    
+    steps:
+      - name: Checkout actions repository
+        uses: actions/checkout@v4
+        with:
+          path: actions-repo
+      
+      - name: Checkout lecture repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repo.owner }}/${{ matrix.repo.repo }}
+          ref: ${{ matrix.repo.ref }}
+          path: lecture-repo
+      
+      - name: Setup Environment
+        uses: ./actions-repo/setup-environment
+        with:
+          lectures-path: lecture-repo/lectures
+      
+      - name: Build HTML (Execute Notebooks)
+        uses: ./actions-repo/build-lectures
+        with:
+          lectures-path: lecture-repo/lectures
+          builder: html
+      
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.container }}-${{ matrix.repo.repo }}
+          path: lecture-repo/lectures/_build
+          retention-days: 1

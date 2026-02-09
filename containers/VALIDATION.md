@@ -4,14 +4,22 @@ This document records validation test results for the QuantEcon containers acros
 
 ## Automated Testing
 
-**As of February 9, 2026:** Containers are now tested via separate workflows to reduce parallel load:
+**As of February 9, 2026:** Containers are now tested via a three-stage builder workflow pipeline, with artifact sharing to eliminate redundant notebook execution:
 
-- [`test-quantecon-build-container.yml`](../.github/workflows/test-quantecon-build-container.yml) - Tests lean container (12 jobs: 4 repos × 3 builders)
-- [`test-quantecon-container.yml`](../.github/workflows/test-quantecon-container.yml) - Tests full container (12 jobs: 4 repos × 3 builders)
+- **Stage 1:** [`test-html-builder.yml`](../.github/workflows/test-html-builder.yml) - Execute notebooks + build HTML (8 jobs: 2 containers × 4 repos, max-parallel: 6)
+  - Uploads `_build/` artifacts for reuse
+- **Stage 2:** [`test-pdflatex-builder.yml`](../.github/workflows/test-pdflatex-builder.yml) - Build PDF from executed notebooks (8 jobs: 2 containers × 4 repos, max-parallel: 4)
+  - Downloads artifacts from Stage 1
+- **Stage 3:** [`test-jupyter-builder.yml`](../.github/workflows/test-jupyter-builder.yml) - MyST → Jupyter notebook conversion (8 jobs: 2 containers × 4 repos, max-parallel: 8)
+  - Downloads artifacts from Stage 1
 
-Each workflow limits to 6 parallel jobs (`max-parallel: 6`) to reduce load on external services (intersphinx inventories, etc.) and minimize transient network failures.
+**Key improvements:**
+- Notebook execution: 8 times (once per container/repo) instead of 24 times
+- Intersphinx fetches: Reduced from 24 → 8 (major resilience improvement)
+- Temporal spreading: Tests run sequentially over 2-3 hours
+- Clear diagnostics: Execution failures caught in Stage 1, rendering issues in Stage 2/3
 
-**Manual testing:** [`test-all-containers.yml`](../.github/workflows/test-containers-lectures.yml) remains available for comprehensive manual testing (24 jobs total).
+**Manual testing:** [`test-all-containers.yml`](../.github/workflows/test-containers-lectures.yml) remains available for comprehensive manual testing (24 jobs total, executes notebooks 24 times).
 
 ## Containers
 
