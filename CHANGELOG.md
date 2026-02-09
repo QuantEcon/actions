@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Architecture**: Simplified notebook deployment - notebooks now served from gh-pages
+  instead of separate `.notebooks` repos
+  - Eliminates 4 separate `.notebooks` repositories (one per lecture series)
+  - Removes sync workflows from publish pipelines
+  - Google Colab integration via direct gh-pages URLs
+  - Requires `quantecon-book-theme` update (tracked in quantecon-book-theme#359)
+  - Single source of truth for notebooks alongside HTML content
+
 ### Removed
 - **`setup-environment`**: Remove `install-ml-libs` and `ml-libs-version` inputs ⚠️ **BREAKING**
   - ML/GPU libraries (JAX, PyTorch, numpyro) should be specified in each repo's
@@ -16,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Removes pip cache step and hardcoded install step for ML libraries
   - **Migration:** Repos using `install-ml-libs: 'true'` should move ML packages to
     their `environment-update.yml` and remove the `install-ml-libs` input
+
+### Added
+- **Documentation**: New GPU-AMI-SETUP.md guide for building RunsOn GPU AMI
+  - Driver requirements (NVIDIA >= 580 for CUDA 13)
+  - Packer template for automated AMI builds
+  - Marker file setup for container detection
+  - Architecture notes on JAX bundled CUDA
 
 ## [0.5.2] - 2026-02-06
 

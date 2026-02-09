@@ -184,8 +184,10 @@ We use semantic versioning with Git tags:
 - **[docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)** - System design and rationale
 - **[docs/MIGRATION-GUIDE.md](./docs/MIGRATION-GUIDE.md)** - Migrating lecture repositories
 - **[docs/QUICK-REFERENCE.md](./docs/QUICK-REFERENCE.md)** - Action reference
+- **[docs/GPU-AMI-SETUP.md](./docs/GPU-AMI-SETUP.md)** - Building RunsOn GPU AMI
 - **[docs/FUTURE-DEVELOPMENT.md](./docs/FUTURE-DEVELOPMENT.md)** - GPU support and roadmap
 - **[TESTING.md](./TESTING.md)** - Testing strategy
+- **[PLAN.md](./PLAN.md)** - Migration plan and feature parity status
 
 ## Getting Started
 

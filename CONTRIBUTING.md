@@ -15,34 +15,52 @@
 
 ## Release Process
 
+### Version Strategy
+
+**Current phase:** 0.x development (pre-1.0.0)
+- Breaking changes are allowed in minor versions (0.x.0)
+- Patch releases for bug fixes (0.x.y)
+- Version 1.0.0 will be released when all lecture repos are successfully migrated
+
+**After 1.0.0 release:**
+- We'll use floating major tags (`v1`, `v2`, etc.)
+- Breaking changes require major version bumps
+
 ### Version Tags
 
-We use semantic versioning with a floating major tag:
+We use semantic versioning:
 
 | Tag | Purpose |
 |-----|---------|
-| `v1.0.0` | Specific release version |
-| `v1` | Floating tag pointing to latest v1.x.x |
+| `v0.5.2` | Specific release version |
+| `@main` | Latest development (testing only) |
+
+After 1.0.0 release, we'll add floating major tags (`v1`, `v2`) for stable references.
 
 ### Creating a Release
 
-1. **Update version references** in documentation if needed
+1. **Update CHANGELOG.md**
+   - Move `[Unreleased]` items to new `[X.Y.Z]` section
+   - Add release date
+   - For breaking changes in 0.x, mark with ⚠️ **BREAKING**
 
 2. **Create and push tags:**
    ```bash
-   git tag -a v1.x.x -m "Release v1.x.x - Description"
-   git push origin v1.x.x
-   
-   # Update floating major tag
-   git tag -fa v1 -m "Update v1 to v1.x.x"
-   git push origin v1 --force
+   git tag -a v0.x.y -m "Release v0.x.y - Description"
+   git push origin v0.x.y
    ```
 
 3. **Create GitHub Release** at https://github.com/QuantEcon/actions/releases/new
+   - Copy changelog entry as release notes
+   - Attach any relevant artifacts
 
 ### Breaking Changes
 
-Breaking changes require a **major version bump** (v1 → v2):
+**During 0.x phase (current):**
+- Breaking changes are allowed and increment minor version (0.x.0)
+- Mark as ⚠️ **BREAKING** in CHANGELOG with migration notes
+
+**After 1.0.0 release:**
 - Removing inputs/outputs
 - Changing default behavior
 - Renaming actions
