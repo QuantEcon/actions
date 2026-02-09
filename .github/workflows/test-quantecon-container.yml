@@ -1,11 +1,11 @@
 name: Test quantecon Container
 
 # Validates quantecon container by building all lecture repos with all builders.
-# Runs after container builds complete or can be triggered manually.
+# Runs AFTER test-quantecon-build-container completes (sequenced to reduce parallel load).
 
 on:
   workflow_run:
-    workflows: ["Build QuantEcon Containers"]
+    workflows: ["Test quantecon-build Container"]
     types:
       - completed
   workflow_dispatch:
