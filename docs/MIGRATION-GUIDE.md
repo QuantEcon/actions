@@ -145,7 +145,6 @@ jobs:
           environment: 'environment.yml'
           environment-name: 'quantecon'
           install-latex: 'true'
-          install-ml-libs: 'false'  # Set to 'true' for lecture-python.myst
       
       # Build lectures (with cache restore for fast incremental builds)
       - uses: quantecon/actions/restore-jupyter-cache@v1
@@ -310,7 +309,6 @@ jobs:
       - uses: quantecon/actions/setup-environment@v1
         with:
           install-latex: 'true'
-          install-ml-libs: 'false'  # Adjust per repo
       
       # Build PDF
       - uses: quantecon/actions/build-lectures@v1
@@ -353,11 +351,11 @@ jobs:
 
 ```yaml
 # In ci.yml, cache.yml, publish.yml:
+# ML packages (JAX, PyTorch, numpyro) are specified in the repo's
+# environment.yml or environment-update.yml, not in the action.
 - uses: quantecon/actions/setup-environment@v1
   with:
-    install-latex: 'true'
-    install-ml-libs: 'true'  # Enable ML libraries
-    ml-libs-version: 'jax062-torch-nightly-cuda12'  # For cache key
+    environment-update: 'environment-update.yml'
 
 # Also update runner if needed:
 jobs:
@@ -467,8 +465,7 @@ Before merging, verify:
 
 **Special requirements:**
 - GPU runners: `runs-on: "runs-on=${{ github.run_id }}/family=g4dn.2xlarge/..."`
-- ML libraries: Set `install-ml-libs: 'true'`
-- CUDA support: Uses JAX 0.6.2 with CUDA 12
+- ML libraries: Specified in repo's `environment.yml` / `environment-update.yml` (JAX, PyTorch, numpyro)
 
 **Example ci.yml excerpt:**
 ```yaml
@@ -480,9 +477,7 @@ jobs:
       
       - uses: quantecon/actions/setup-environment@v1
         with:
-          install-latex: 'true'
-          install-ml-libs: 'true'
-          ml-libs-version: 'jax062-torch-nightly-cuda12'
+          environment-update: 'environment-update.yml'
       
       - uses: quantecon/actions/restore-jupyter-cache@v1
         with:

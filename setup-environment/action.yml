@@ -1,5 +1,5 @@
 name: 'Setup Environment'
-description: 'Flexible environment setup - auto-detects container or installs Conda, LaTeX, and ML libraries'
+description: 'Flexible environment setup - auto-detects container or installs Conda and LaTeX'
 author: 'QuantEcon'
 
 inputs:
@@ -31,14 +31,6 @@ inputs:
     description: 'Path to latex-requirements.txt file listing packages to install'
     required: false
     default: 'latex-requirements.txt'
-  install-ml-libs:
-    description: 'Whether to install JAX/PyTorch with CUDA support'
-    required: false
-    default: 'false'
-  ml-libs-version:
-    description: 'Version tag for ML libraries cache key'
-    required: false
-    default: 'jax062-torch-nightly-cuda12'
 
 outputs:
   container-mode:
@@ -145,33 +137,6 @@ runs:
         fi
 
     # ============================================================
-    # ML LIBRARIES: Same for both modes
-    # ============================================================
-    
-    - name: Cache pip packages (ML libs)
-      uses: actions/cache@v4
-      if: inputs.install-ml-libs == 'true'
-      id: pip-cache
-      with:
-        path: ~/.cache/pip
-        key: pip-${{ runner.os }}-${{ inputs.ml-libs-version }}-${{ hashFiles(inputs.environment) }}-${{ inputs.cache-version }}
-        restore-keys: |
-          pip-${{ runner.os }}-${{ inputs.ml-libs-version }}-
-          pip-${{ runner.os }}-
-
-    - name: Install JAX, PyTorch, NumPyro, Pyro
-      if: inputs.install-ml-libs == 'true'
-      shell: bash -l {0}
-      run: |
-        echo "Installing ML libraries with CUDA support..."
-        pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu128
-        pip install pyro-ppl
-        pip install --upgrade "jax[cuda12-local]==0.6.2"
-        pip install numpyro
-        echo "Testing JAX installation..."
-        python scripts/test-jax-install.py || echo "JAX test script not found or failed (non-fatal)"
-
-    # ============================================================
     # SUMMARY: Display environment info
     # ============================================================
         
@@ -212,9 +177,6 @@ runs:
           else
             echo "   LaTeX: Skipped"
           fi
-        fi
-        if [ "${{ inputs.install-ml-libs }}" == "true" ]; then
-          echo "   ML Libraries: Installed (JAX, PyTorch)"
         fi
         echo "::endgroup::"
         
