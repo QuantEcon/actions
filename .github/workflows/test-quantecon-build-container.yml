@@ -27,7 +27,6 @@ on:
           - jupyter
 
 env:
-  CONTAINER: 'quantecon-build'
   ALL_REPOS: '["lecture-python-programming.myst","lecture-python-intro","lecture-python-advanced.myst","lecture-python.myst"]'
   ALL_BUILDERS: '["html","pdflatex","jupyter"]'
 
@@ -67,7 +66,7 @@ jobs:
     timeout-minutes: 120
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     container:
-      image: ghcr.io/quantecon/${{ env.CONTAINER }}:latest
+      image: ghcr.io/quantecon/quantecon-build:latest
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -81,7 +80,7 @@ jobs:
       - name: Display test info
         run: |
           echo "=========================================="
-          echo "Container: ${{ env.CONTAINER }}"
+          echo "Container: quantecon-build"
           echo "Repo: ${{ matrix.repo }}"
           echo "Builder: ${{ matrix.builder }}"
           echo "=========================================="
@@ -151,7 +150,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-${{ matrix.builder }}-${{ env.CONTAINER }}-${{ matrix.repo }}
+          name: build-${{ matrix.builder }}-quantecon-build-${{ matrix.repo }}
           path: |
             lectures/_build/
             build.log
@@ -161,7 +160,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: reports-${{ matrix.builder }}-${{ env.CONTAINER }}-${{ matrix.repo }}
+          name: reports-${{ matrix.builder }}-quantecon-build-${{ matrix.repo }}
           path: |
             lectures/_build/html/reports/
           retention-days: 14
@@ -176,8 +175,8 @@ jobs:
         run: |
           echo "# quantecon-build Container Validation" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Container:** \`${{ env.CONTAINER }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Image:** \`ghcr.io/quantecon/${{ env.CONTAINER }}:latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Container:** \`quantecon-build\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`ghcr.io/quantecon/quantecon-build:latest\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## Test Matrix" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
