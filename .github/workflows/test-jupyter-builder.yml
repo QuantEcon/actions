@@ -63,3 +63,4 @@ jobs:
           source-dir: lecture-repo/lectures
           output-dir: lecture-repo
           builder: jupyter
+          upload-failure-reports: true

@@ -63,3 +63,4 @@ jobs:
           source-dir: lecture-repo/lectures
           output-dir: lecture-repo
           builder: pdflatex
+          upload-failure-reports: true
