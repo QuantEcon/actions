@@ -20,16 +20,12 @@ jobs:
         repo:
           - repo: lecture-python-intro
             owner: QuantEcon
-            ref: refs/heads/main
-          - repo: lecture-python
+          - repo: lecture-python.myst
             owner: QuantEcon
-            ref: refs/heads/main
-          - repo: lecture-python-advanced
+          - repo: lecture-python-advanced.myst
             owner: QuantEcon
-            ref: refs/heads/main
           - repo: lecture-jax
             owner: QuantEcon
-            ref: refs/heads/main
     
     container:
       image: ghcr.io/quantecon/${{ matrix.container }}:latest
@@ -50,7 +46,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ matrix.repo.owner }}/${{ matrix.repo.repo }}
-          ref: ${{ matrix.repo.ref }}
           path: lecture-repo
       
       - name: Download build artifacts
