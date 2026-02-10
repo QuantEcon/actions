@@ -61,11 +61,10 @@ jobs:
       
       - name: Setup Environment
         uses: ./actions-repo/setup-environment
-        with:
-          lectures-path: lecture-repo/lectures
       
       - name: Build PDF (No Execution)
         uses: ./actions-repo/build-lectures
         with:
-          lectures-path: lecture-repo/lectures
+          source-dir: lecture-repo/lectures
+          output-dir: lecture-repo
           builder: pdflatex

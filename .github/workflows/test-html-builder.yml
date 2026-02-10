@@ -55,13 +55,12 @@ jobs:
       
       - name: Setup Environment
         uses: ./actions-repo/setup-environment
-        with:
-          lectures-path: lecture-repo/lectures
       
       - name: Build HTML (Execute Notebooks)
         uses: ./actions-repo/build-lectures
         with:
-          lectures-path: lecture-repo/lectures
+          source-dir: lecture-repo/lectures
+          output-dir: lecture-repo
           builder: html
       
       - name: Upload build artifacts
