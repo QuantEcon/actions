@@ -1,235 +1,104 @@
-name: Test All Containers (Manual)
+name: Test Container Builds
 
-# Full matrix test of ALL containers × repos × builders (24 jobs).
-# Use individual container workflows for automated testing.
-# This workflow is for manual comprehensive testing only.
+# Validates containers by building all lecture repos with all builders.
+# Architecture: Each job builds one repo × one container through the full
+# builder pipeline (html → pdflatex → jupyter) sequentially.
 #
-# Automated testing: test-quantecon-build-container.yml, test-quantecon-container.yml
+# Concurrency groups ensure the same repo never builds on two containers
+# simultaneously, avoiding network contention from concurrent dataset
+# downloads. Different repos can run in parallel.
 
 on:
+  workflow_run:
+    workflows: ["Build QuantEcon Containers"]
+    types:
+      - completed
   workflow_dispatch:
-    inputs:
-      container:
-        description: 'Container to test (or "all" to test all containers)'
-        required: false
-        default: 'all'
-        type: choice
-        options:
-          - all
-          - quantecon-build
-          - quantecon
-      repos:
-        description: 'Repositories to test (comma-separated, or "all")'
-        required: false
-        default: 'all'
-        type: string
-      builder:
-        description: 'Builder to test (or "all" to test all builders)'
-        required: false
-        default: 'all'
-        type: choice
-        options:
-          - all
-          - html
-          - pdflatex
-          - jupyter
-
-# Define available containers in one place for easy maintenance
-# To add a new container (e.g., GPU): add it to this list
-env:
-  ALL_CONTAINERS: '["quantecon-build","quantecon"]'
-  ALL_REPOS: '["lecture-python-programming.myst","lecture-python-intro","lecture-python-advanced.myst","lecture-python.myst"]'
-  ALL_BUILDERS: '["html","pdflatex","jupyter"]'
 
 jobs:
-  # Determine which containers, repos, and builders to test
-  setup:
-    name: Setup Test Matrix
+  test:
     runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
-    steps:
-      - name: Set matrix
-        id: set-matrix
-        run: |
-          # Determine containers to test
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.container }}" != "all" ]; then
-            CONTAINERS='["${{ inputs.container }}"]'
-          else
-            CONTAINERS='${{ env.ALL_CONTAINERS }}'
-          fi
-          
-          # Determine repos to test
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.repos }}" != "all" ]; then
-            REPOS='${{ inputs.repos }}'
-            REPOS_JSON=$(echo "$REPOS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | jq -R -s -c 'split("\n") | map(select(. != ""))')
-          else
-            REPOS_JSON='${{ env.ALL_REPOS }}'
-          fi
-          
-          # All builder types
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.builder }}" != "all" ]; then
-            BUILDERS='["${{ inputs.builder }}"]'
-          else
-            BUILDERS='${{ env.ALL_BUILDERS }}'
-          fi
-          
-          # Create combined matrix
-          echo "matrix={\"container\":$CONTAINERS,\"repo\":$REPOS_JSON,\"builder\":$BUILDERS}" >> $GITHUB_OUTPUT
-          echo "Matrix: {\"container\":$CONTAINERS,\"repo\":$REPOS_JSON,\"builder\":$BUILDERS}"
-
-  test-lectures:
-    name: ${{ matrix.builder }} · ${{ matrix.repo }} (${{ matrix.container }})
-    needs: setup
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    timeout-minutes: 120
+
+    # Serialize containers for the same repo to avoid concurrent downloads
+    concurrency:
+      group: test-build-${{ matrix.repo.repo }}
+      cancel-in-progress: false
+
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        container: [quantecon, quantecon-build]
+        repo:
+          - repo: lecture-python-intro
+            owner: QuantEcon
+          - repo: lecture-python.myst
+            owner: QuantEcon
+          - repo: lecture-python-advanced.myst
+            owner: QuantEcon
+          - repo: lecture-jax
+            owner: QuantEcon
+
     container:
       image: ghcr.io/quantecon/${{ matrix.container }}:latest
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
-    
-    strategy:
-      fail-fast: false
-      max-parallel: 8  # Limit parallel jobs for manual full-matrix testing
-      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
+      options: --user root
+
+    name: ${{ matrix.repo.repo }} · ${{ matrix.container }}
 
     steps:
-      - name: Display test info
-        run: |
-          echo "=========================================="
-          echo "Repo: ${{ matrix.repo }}"
-          echo "Builder: ${{ matrix.builder }}"
-          echo "Container: ${{ matrix.container }}"
-          echo "=========================================="
-          cat /etc/quantecon-container || echo "Container marker not found"
+      - name: Checkout actions repository
+        uses: actions/checkout@v4
+        with:
+          path: actions-repo
 
       - name: Checkout lecture repository
         uses: actions/checkout@v4
         with:
-          repository: QuantEcon/${{ matrix.repo }}
+          repository: ${{ matrix.repo.owner }}/${{ matrix.repo.repo }}
+          path: lecture-repo
 
-      - name: Display repository info
-        run: |
-          echo "Repository contents:"
-          ls -la
-          echo ""
-          echo "Lectures directory:"
-          ls -la lectures/ || echo "No lectures/ directory"
+      - name: Setup Environment
+        uses: ./actions-repo/setup-environment
 
-      - name: Show container environment
-        shell: bash
-        run: |
-          echo "Using container's built-in environment (ignoring lecture repo's environment.yml)"
-          echo ""
-          source /opt/conda/etc/profile.d/conda.sh
-          conda activate quantecon
-          echo "Python version: $(python --version)"
-          echo "Jupyter Book version: $(jupyter-book --version)"
+      # Stage 1: HTML (executes notebooks)
+      - name: Build HTML (Execute Notebooks)
+        uses: ./actions-repo/build-lectures
+        with:
+          source-dir: lecture-repo/lectures
+          output-dir: lecture-repo
+          builder: html
+          upload-failure-reports: true
+          failure-artifact-name: reports-html-${{ matrix.container }}-${{ matrix.repo.repo }}
 
-      - name: Build lectures (${{ matrix.builder }})
-        id: build
-        shell: bash
-        run: |
-          source /opt/conda/etc/profile.d/conda.sh
-          conda activate quantecon
-          cd lectures
-          
-          START_TIME=$(date +%s)
-          
-          # Set builder command based on type
-          if [ "${{ matrix.builder }}" = "html" ]; then
-            jb build . --builder html -n -W --keep-going 2>&1 | tee ../build.log
-          elif [ "${{ matrix.builder }}" = "pdflatex" ]; then
-            jb build . --builder pdflatex -n -W --keep-going 2>&1 | tee ../build.log
-          elif [ "${{ matrix.builder }}" = "jupyter" ]; then
-            jb build . --builder=custom --custom-builder=jupyter -n -W --keep-going 2>&1 | tee ../build.log
-          fi
-          BUILD_STATUS=${PIPESTATUS[0]}
-          
-          END_TIME=$(date +%s)
-          DURATION=$((END_TIME - START_TIME))
-          
-          echo ""
-          echo "=========================================="
-          echo "Build completed in $((DURATION / 60))m $((DURATION % 60))s"
-          echo "Exit status: $BUILD_STATUS"
-          echo "=========================================="
-          
-          echo "duration=$((DURATION / 60))m $((DURATION % 60))s" >> $GITHUB_OUTPUT
-          echo "status=$BUILD_STATUS" >> $GITHUB_OUTPUT
-          exit $BUILD_STATUS
+      # Stage 2: pdflatex (reuses cached notebooks from HTML build)
+      - name: Build PDF (No Execution)
+        uses: ./actions-repo/build-lectures
+        with:
+          source-dir: lecture-repo/lectures
+          output-dir: lecture-repo
+          builder: pdflatex
+          upload-failure-reports: true
+          failure-artifact-name: reports-pdflatex-${{ matrix.container }}-${{ matrix.repo.repo }}
 
-      - name: Check build output
-        if: always()
-        run: |
-          echo "Build artifacts:"
-          ls -la lectures/_build/ 2>/dev/null || echo "No _build directory"
-          
-          if [ "${{ matrix.builder }}" = "html" ] && [ -d "lectures/_build/html" ]; then
-            echo "Total HTML files: $(find lectures/_build/html -name '*.html' | wc -l)"
-          elif [ "${{ matrix.builder }}" = "pdflatex" ] && [ -d "lectures/_build/latex" ]; then
-            find lectures/_build/latex -name "*.pdf" -exec ls -lh {} \; || echo "No PDFs found"
-          elif [ "${{ matrix.builder }}" = "jupyter" ] && [ -d "lectures/_build/jupyter" ]; then
-            echo "Total notebooks: $(find lectures/_build/jupyter -name '*.ipynb' | wc -l)"
-          fi
+      # Stage 3: jupyter (reuses cached notebooks from HTML build)
+      - name: Build Jupyter Notebooks (No Execution)
+        uses: ./actions-repo/build-lectures
+        with:
+          source-dir: lecture-repo/lectures
+          output-dir: lecture-repo
+          builder: jupyter
+          upload-failure-reports: true
+          failure-artifact-name: reports-jupyter-${{ matrix.container }}-${{ matrix.repo.repo }}
 
       - name: Upload build artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-${{ matrix.builder }}-${{ matrix.container }}-${{ matrix.repo }}
-          path: |
-            lectures/_build/
-            build.log
-          retention-days: 7
-
-      - name: Upload execution reports
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: reports-${{ matrix.builder }}-${{ matrix.container }}-${{ matrix.repo }}
-          path: |
-            lectures/_build/html/reports/
-          retention-days: 14
-
-  # Summary job that runs after all tests complete
-  summary:
-    name: Test Summary
-    needs: [setup, test-lectures]
-    runs-on: ubuntu-latest
-    if: always()
-    steps:
-      - name: Generate summary
-        run: |
-          echo "# Lecture Validation Test Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "## Test Matrix" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Tests run for each combination of container × repository × builder." >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Containers:** \`${{ env.ALL_CONTAINERS }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Repositories:** \`${{ env.ALL_REPOS }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Builders:** \`${{ env.ALL_BUILDERS }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "## Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "See individual job results above for detailed status of each container/repository combination." >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "## Artifacts" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Build artifacts are named: \`build-{builder}-{container}-{repo}\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- Build artifacts retained for 7 days" >> $GITHUB_STEP_SUMMARY
-          echo "- Failure reports retained for 14 days" >> $GITHUB_STEP_SUMMARY
-
-      - name: Check overall status
-        if: ${{ needs.test-lectures.result == 'failure' }}
-        run: |
-          echo "::warning::One or more lecture builds failed. Check artifacts for details."
-          echo ""
-          echo "This is informational - container has been published but may have issues"
-          echo "with specific lecture repositories."
+          name: build-${{ matrix.container }}-${{ matrix.repo.repo }}
+          path: lecture-repo/_build
+          retention-days: 3
