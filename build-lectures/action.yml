@@ -35,6 +35,10 @@ inputs:
     description: 'Upload execution reports as artifacts when build fails'
     required: false
     default: 'false'
+  failure-artifact-name:
+    description: 'Custom name for failure report artifact (default: execution-reports-{builder})'
+    required: false
+    default: ''
 
 outputs:
   build-path:
@@ -158,7 +162,7 @@ runs:
       if: inputs.upload-failure-reports == 'true' && failure()
       uses: actions/upload-artifact@v4
       with:
-        name: execution-reports-${{ inputs.builder }}
+        name: ${{ inputs.failure-artifact-name != '' && inputs.failure-artifact-name || format('execution-reports-{0}', inputs.builder) }}
         path: |
           ${{ inputs.output-dir }}/_build/html/reports
           ${{ inputs.output-dir }}/_build/latex/reports

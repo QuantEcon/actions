@@ -64,3 +64,4 @@ jobs:
           output-dir: lecture-repo
           builder: pdflatex
           upload-failure-reports: true
+          failure-artifact-name: execution-reports-pdflatex-${{ matrix.container }}-${{ matrix.repo.repo }}

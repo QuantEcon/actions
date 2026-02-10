@@ -64,3 +64,4 @@ jobs:
           output-dir: lecture-repo
           builder: jupyter
           upload-failure-reports: true
+          failure-artifact-name: execution-reports-jupyter-${{ matrix.container }}-${{ matrix.repo.repo }}

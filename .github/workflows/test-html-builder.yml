@@ -58,6 +58,7 @@ jobs:
           output-dir: lecture-repo
           builder: html
           upload-failure-reports: true
+          failure-artifact-name: execution-reports-html-${{ matrix.container }}-${{ matrix.repo.repo }}
       
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
