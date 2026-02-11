@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **CI**: Temporarily disabled lecture-jax in container tests until JAX installation commands are added ([lecture-jax#284](https://github.com/QuantEcon/lecture-jax/issues/284))
+
 ## [0.6.0] - 2026-02-09
 
 ### Changed

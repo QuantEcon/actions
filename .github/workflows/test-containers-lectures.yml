@@ -38,8 +38,10 @@ jobs:
             owner: QuantEcon
           - repo: lecture-python-advanced.myst
             owner: QuantEcon
-          - repo: lecture-jax
-            owner: QuantEcon
+          # TODO: Re-enable after https://github.com/QuantEcon/lecture-jax/issues/284 is resolved
+          # lecture-jax requires JAX but doesn't include pip install commands
+          # - repo: lecture-jax
+          #   owner: QuantEcon
 
     container:
       image: ghcr.io/quantecon/${{ matrix.container }}:latest
