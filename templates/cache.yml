@@ -1,21 +1,18 @@
 # Build Cache Generation Workflow (Container)
 #
-# This workflow creates the cache that PR workflows restore.
-# Copy this template to your repository as .github/workflows/cache.yml
+# Creates the build cache that ci.yml and publish.yml restore.
+# A successful run saves a new cache; a failed run preserves the
+# existing cache so PRs always have something to restore.
 #
-# Uses the QuantEcon container for reliable, fast builds with pre-installed
-# LaTeX and scientific Python packages.
+# Copy to your repository as .github/workflows/cache.yml
 #
 # Triggers:
-# - Weekly (Sunday midnight UTC) - fresh build with latest dependencies
-# - Manual dispatch - on-demand rebuild
-# - Push to main (environment.yml changes only) - update cache with new env
+#   - Weekly (Sunday midnight UTC) — fresh build with latest dependencies
+#   - Manual dispatch — on-demand rebuild
+#   - Push to main (environment.yml changes) — update cache after env change
 #
-# Cache Strategy:
-# - Each successful build saves a new cache with unique key (run_id)
-# - Old caches expire automatically after 7 days of no access
-# - Failed builds preserve existing cache (PRs always have working cache)
-# - Issues are automatically created on build failure
+# Action versions: Pin to @v1 for stability. Check for latest at:
+#   https://github.com/quantecon/actions/releases
 
 name: Build Cache
 
@@ -23,10 +20,10 @@ on:
   schedule:
     # Weekly on Sunday at midnight UTC
     - cron: '0 0 * * 0'
-  
+
   workflow_dispatch:
     # Manual trigger for on-demand cache rebuild
-  
+
   push:
     branches:
       - main
@@ -34,7 +31,7 @@ on:
       # Auto-rebuild when environment changes
       - 'environment.yml'
 
-# Prevent concurrent cache builds
+# Prevent concurrent cache builds — let prior run finish
 concurrency:
   group: cache-build
   cancel-in-progress: false
@@ -44,21 +41,53 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/quantecon/quantecon:latest
-    
+      # ─── Standard Runner Alternative ───────────────────────────────
+      # Remove the 'container' block. The build-jupyter-cache action
+      # calls setup-environment internally, which will install Conda
+      # and (optionally) LaTeX on a standard runner.
+      # ───────────────────────────────────────────────────────────────
+
     permissions:
       contents: read
-      issues: write
-      packages: read
-    
+      issues: write             # Required for auto-creating failure issues
+      packages: read            # Required for container image pull
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      
-      # Build all formats and save cache
-      # Only saves if ALL builds succeed (preserves existing cache on failure)
+
+      # Build all requested formats and save cache.
+      # Only saves if ALL builds succeed — preserves existing cache on failure.
       - name: Build and cache
         uses: quantecon/actions/build-jupyter-cache@v1
         with:
-          builders: 'jupyter,pdflatex,html'
-          create-issue-on-failure: true
-          # issue-assignees: 'maintainer1,maintainer2'  # Optional: assign issues
+          # ─── Builders ──────────────────────────────────────────
+          # Comma-separated list: html, jupyter, pdflatex
+          # Each builder produces a cached _build/{format}/ directory.
+          #
+          #   html      — HTML site (always needed)
+          #   jupyter   — .ipynb notebooks for download links
+          #   pdflatex  — PDF for download link
+          #
+          # Start with 'html' and add formats as needed:
+          builders: 'html'
+          # builders: 'jupyter,html'             # HTML + notebook downloads
+          # builders: 'jupyter,pdflatex,html'    # HTML + PDF + notebook downloads
+
+          source-dir: 'lectures'
+
+          # ─── Environment (container builds) ────────────────────
+          # Only needed if you require packages beyond the container base.
+          # environment-update: 'environment.yml'
+
+          # ─── Environment (standard runner builds) ──────────────
+          # environment: 'environment.yml'   # Full conda environment file
+
+          # ─── Failure Handling ──────────────────────────────────
+          create-issue-on-failure: 'true'
+          # issue-assignees: 'maintainer1,maintainer2'
+          # issue-labels: 'build-failure,automated'
+
+          # ─── Artifacts ─────────────────────────────────────────
+          upload-artifact: 'true'              # Upload _build for inspection
+          artifact-retention-days: '30'

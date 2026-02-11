@@ -1,0 +1,116 @@
+# Publish Workflow (GitHub Pages)
+#
+# Builds and deploys the lecture site to GitHub Pages when changes
+# are pushed to main. Restores the build cache first so only changed
+# notebooks are re-executed.
+#
+# Copy to your repository as .github/workflows/publish.yml
+#
+# Prerequisites:
+#   1. cache.yml workflow running (provides the build cache)
+#   2. GitHub Pages enabled: Settings → Pages → Source → "GitHub Actions"
+#   3. (Optional) Custom domain configured in Settings → Pages → Custom domain
+#
+# Action versions: Pin to @v1 for stability. Check for latest at:
+#   https://github.com/quantecon/actions/releases
+
+name: Publish
+
+on:
+  push:
+    branches:
+      - main
+  
+  workflow_dispatch:
+    # Manual trigger for re-deployment without code changes
+
+# Only one publish at a time
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/quantecon/quantecon:latest
+      # ─── Standard Runner Alternative ───────────────────────────────
+      # Remove the 'container' block and uncomment the
+      # setup-environment 'with' block below.
+      # ───────────────────────────────────────────────────────────────
+
+    permissions:
+      contents: read
+      pages: write              # Required for GitHub Pages deployment
+      id-token: write           # Required for GitHub Pages OIDC
+      packages: read            # Required for container image pull
+
+    environment:
+      name: github-pages
+      url: ${{ steps.publish.outputs.page-url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ─── Environment Setup ───────────────────────────────────────
+      - name: Setup environment
+        uses: quantecon/actions/setup-environment@v1
+        # with:
+        #   environment-update: 'environment.yml'   # Delta packages for container
+        #   install-latex: 'true'                    # Required for pdflatex builds
+        #   latex-requirements-file: 'latex-requirements.txt'
+        #
+        # ─── Standard Runner (non-container) ──────────────────────
+        # with:
+        #   environment: 'environment.yml'
+        #   python-version: '3.13'
+        #   install-latex: 'true'
+
+      # ─── Cache Restore ───────────────────────────────────────────
+      - name: Restore build cache
+        uses: quantecon/actions/restore-jupyter-cache@v1
+
+      # ─── Build ───────────────────────────────────────────────────
+      # Build HTML (and optionally other formats). The cache gives
+      # Jupyter Book pre-executed notebooks, so only changed lectures
+      # are re-executed.
+
+      # Optional: Build notebooks for download links
+      # - name: Build notebooks
+      #   uses: quantecon/actions/build-lectures@v1
+      #   with:
+      #     builder: 'jupyter'
+      #     source-dir: 'lectures'
+
+      # Optional: Build PDF for download link
+      # - name: Build PDF
+      #   uses: quantecon/actions/build-lectures@v1
+      #   with:
+      #     builder: 'pdflatex'
+      #     source-dir: 'lectures'
+
+      - name: Build HTML
+        uses: quantecon/actions/build-lectures@v1
+        with:
+          builder: 'html'
+          source-dir: 'lectures'
+          extra-args: '-W --keep-going'
+          upload-failure-reports: 'true'
+          # html-copy-pdf: 'true'           # Enable if pdflatex build runs above
+          # html-copy-notebooks: 'true'     # Enable if jupyter build runs above
+
+      # ─── Publish ─────────────────────────────────────────────────
+      - name: Publish to GitHub Pages
+        id: publish
+        uses: quantecon/actions/publish-gh-pages@v1
+        with:
+          build-dir: '_build/html'
+          # cname: 'lectures.example.org'   # Custom domain (adds CNAME file)
+
+          # ─── Release Assets (optional) ───────────────────────────
+          # Create downloadable archives on tagged releases.
+          # Only works when triggered by a tag push (e.g., v1.0.0).
+          # create-release-assets: 'true'
+          # asset-name: 'lecture-python-html'
+          # github-token: ${{ secrets.GITHUB_TOKEN }}
