@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Containers**: Upgraded `quantecon-book-theme` from 0.10.1 to 0.18.0
 - **CI**: Temporarily disabled lecture-jax in container tests until JAX installation commands are added ([lecture-jax#284](https://github.com/QuantEcon/lecture-jax/issues/284))
 
 ## [0.6.0] - 2026-02-09
