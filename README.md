@@ -6,7 +6,7 @@ Reusable composite GitHub Actions for building QuantEcon lecture repositories.
 
 This repository provides a set of composite actions that standardize and optimize the build process for QuantEcon lecture websites. These actions include intelligent caching strategies that significantly reduce build times.
 
-**Status:** Container infrastructure complete. Ready for testing with lecture repositories.
+**Status:** Stable; current release `v0.7.0` (see the [CHANGELOG](./CHANGELOG.md)).
 
 📋 **See:** [docs/CONTAINER-GUIDE.md](./docs/CONTAINER-GUIDE.md) for quick start, [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for design overview.
 
@@ -75,15 +75,15 @@ jobs:
           fetch-depth: 0
       
       # Restore cache from main branch builds
-      - uses: quantecon/actions/restore-jupyter-cache@main
+      - uses: quantecon/actions/restore-jupyter-cache@v0
         with:
           cache-type: 'build'
       
       # Build (uses restored cache for incremental build)
-      - uses: quantecon/actions/build-lectures@main
+      - uses: quantecon/actions/build-lectures@v0
         id: build
       
-      - uses: quantecon/actions/preview-netlify@main
+      - uses: quantecon/actions/preview-netlify@v0
         with:
           netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
@@ -113,7 +113,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - uses: quantecon/actions/build-jupyter-cache@main
+      - uses: quantecon/actions/build-jupyter-cache@v0
         with:
           builders: 'html'
           create-issue-on-failure: true
@@ -130,14 +130,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - uses: quantecon/actions/setup-environment@main
+      - uses: quantecon/actions/setup-environment@v0
         with:
           python-version: '3.13'
           environment: 'environment.yml'  # Full installation from scratch
           install-latex: 'true'
           latex-requirements-file: 'latex-requirements.txt'
       
-      - uses: quantecon/actions/build-lectures@main
+      - uses: quantecon/actions/build-lectures@v0
 ```
 
 ## Performance Architecture
@@ -165,10 +165,12 @@ Use `build-jupyter-cache` and `restore-jupyter-cache` actions for execution cach
 
 ## Usage by Repository
 
-- **lecture-python.myst** - Requires ML libraries (JAX, PyTorch)
-- **lecture-python-programming.myst** - Standard environment
-- **lecture-python-intro** - Standard environment  
-- **lecture-python-advanced.myst** - Standard environment
+These actions are used across the QuantEcon lecture repositories, including those exercised by the container test matrix:
+
+- **lecture-python-intro**
+- **lecture-python.myst**
+- **lecture-python-advanced.myst**
+- **lecture-jax** — GPU/JAX lectures (currently disabled in container CI pending [lecture-jax#284](https://github.com/QuantEcon/lecture-jax/issues/284))
 
 ## Versioning
 

@@ -202,11 +202,12 @@ latex-requirements-file: 'latex-requirements.txt'  # LaTeX packages list
 ```yaml
 builder: 'html'                  # html|pdflatex|jupyter
 source-dir: 'lectures'           # Source directory
-output-dir: './'                 # Output base
+output-dir: '.'                  # Output base
 extra-args: '-W --keep-going'    # JB arguments
 html-copy-pdf: 'false'           # Copy PDFs to _build/html/_pdf/
 html-copy-notebooks: 'false'     # Copy notebooks to _build/html/_notebooks/
 upload-failure-reports: 'false'  # Upload reports on failure
+failure-artifact-name: ''        # Custom name for the failure-report artifact
 ```
 
 **Note:** Caching is handled separately via `build-jupyter-cache` and `restore-jupyter-cache`.

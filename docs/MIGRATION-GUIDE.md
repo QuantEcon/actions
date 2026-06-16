@@ -29,7 +29,7 @@ Before starting migration:
 
 ## Quick Migration: Using setup-environment
 
-**Recommended approach:**
+> **Note:** For most repositories the **container-based** workflow is the recommended path — see [templates/ci.yml](../templates/ci.yml) and the [Container Guide](./CONTAINER-GUIDE.md). The `setup-environment` example below covers standard-runner (non-container) builds, or when you need full control over the environment.
 
 ### Before (Manual Setup)
 ```yaml

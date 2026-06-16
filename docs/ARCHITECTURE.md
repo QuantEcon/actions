@@ -12,7 +12,7 @@ Our next-generation CI/CD system combines three complementary elements:
 - **Contents:** Ubuntu 24.04 LTS + TexLive (latest) + Miniconda + Anaconda 2025.12 base + Jupyter Book tools
 - **Build:** Weekly automated builds via GitHub Actions (Monday 2am UTC)
 - **Registry:** GitHub Container Registry (GHCR) - free for public repos
-- **Size:** ~2 GB (pulled once, cached by GitHub Actions runners)
+- **Size:** ~8 GB full image / ~3 GB lean `quantecon-build` (pulled once, cached by GitHub Actions runners)
 
 **Performance impact:**
 - ❌ Current: LaTeX setup takes 2-3 minutes every build
@@ -50,7 +50,7 @@ publish-gh-pages/     → Deploy to GitHub Pages
 **Layer 1: Environment Cache (Container Image)**
 - What: Python + LaTeX + all dependencies
 - Where: GitHub Container Registry
-- Size: ~2 GB
+- Size: ~3 GB (lean) / ~8 GB (full)
 - Lifespan: Weekly rebuilds
 - Pull time: ~20 seconds
 
@@ -183,7 +183,7 @@ jobs:
 - All lectures use same Python scientific stack (Anaconda base provides common packages)
 - Lecture-specific packages (quantecon, cvxpy, etc.) installed from each lecture's environment.yml
 - LaTeX requirements identical across all lectures
-- Disk space is cheap (2 GB acceptable)
+- Disk space is cheap (a few GB acceptable)
 - Massive reduction in complexity
 - Easy to update (one PR to container, lectures install their own dependencies)
 
@@ -283,11 +283,13 @@ Total: 30-40 seconds
 
 ```
 quantecon/actions/
-├── containers/quantecon/
-│   ├── Dockerfile                 # CPU: Ubuntu + LaTeX + Miniconda
-│   ├── Dockerfile.gpu             # GPU: CUDA base + same stack
-│   ├── environment.yml            # Centralized for all lectures
-│   └── environment-gpu.yml        # GPU-specific packages
+├── containers/
+│   ├── quantecon/                 # Full image (Ubuntu + LaTeX + Miniconda + Anaconda)
+│   │   ├── Dockerfile
+│   │   └── environment.yml
+│   └── quantecon-build/           # Lean image (build toolchain only)
+│       ├── Dockerfile
+│       └── environment.yml
 │
 ├── build-jupyter-cache/           # Modular action
 │   ├── action.yml                 # Generate cache on main branch

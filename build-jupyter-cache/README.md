@@ -208,8 +208,7 @@ The action generates a GitHub Actions summary showing:
 ## Workflow Templates
 
 See [templates/](../templates/) for complete workflow examples:
-- `cache.yml` - Using QuantEcon container
-- `cache-standard.yml` - Using ubuntu-latest
+- `cache.yml` - Container-based cache generation workflow
 
 ## Related Actions
 

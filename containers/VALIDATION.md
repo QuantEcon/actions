@@ -4,22 +4,11 @@ This document records validation test results for the QuantEcon containers acros
 
 ## Automated Testing
 
-**As of February 9, 2026:** Containers are now tested via a three-stage builder workflow pipeline, with artifact sharing to eliminate redundant notebook execution:
+Containers are tested by [`test-containers-lectures.yml`](../.github/workflows/test-containers-lectures.yml), which runs after the **Build QuantEcon Containers** workflow completes. Each job builds one lecture repo on one container through the full builder pipeline (HTML → pdflatex → jupyter) **sequentially**, reusing the executed notebooks across builders. Concurrency groups serialize jobs for the same repo to avoid network contention from concurrent dataset downloads; different repos run in parallel.
 
-- **Stage 1:** [`test-html-builder.yml`](../.github/workflows/test-html-builder.yml) - Execute notebooks + build HTML (8 jobs: 2 containers × 4 repos, max-parallel: 6)
-  - Uploads `_build/` artifacts for reuse
-- **Stage 2:** [`test-pdflatex-builder.yml`](../.github/workflows/test-pdflatex-builder.yml) - Build PDF from executed notebooks (8 jobs: 2 containers × 4 repos, max-parallel: 4)
-  - Downloads artifacts from Stage 1
-- **Stage 3:** [`test-jupyter-builder.yml`](../.github/workflows/test-jupyter-builder.yml) - MyST → Jupyter notebook conversion (8 jobs: 2 containers × 4 repos, max-parallel: 8)
-  - Downloads artifacts from Stage 1
+**Matrix:** 2 containers (`quantecon`, `quantecon-build`) × the QuantEcon lecture repos — `lecture-python-intro`, `lecture-python.myst`, `lecture-python-advanced.myst` (`lecture-jax` is temporarily disabled pending [lecture-jax#284](https://github.com/QuantEcon/lecture-jax/issues/284)).
 
-**Key improvements:**
-- Notebook execution: 8 times (once per container/repo) instead of 24 times
-- Intersphinx fetches: Reduced from 24 → 8 (major resilience improvement)
-- Temporal spreading: Tests run sequentially over 2-3 hours
-- Clear diagnostics: Execution failures caught in Stage 1, rendering issues in Stage 2/3
-
-**Manual testing:** [`test-all-containers.yml`](../.github/workflows/test-containers-lectures.yml) remains available for comprehensive manual testing (24 jobs total, executes notebooks 24 times).
+A companion workflow, [`test-container.yml`](../.github/workflows/test-container.yml), smoke-tests the freshly built images (XeLaTeX compile + a minimal Jupyter Book HTML/PDF build).
 
 ## Containers
 
