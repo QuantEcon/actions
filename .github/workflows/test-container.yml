@@ -1,10 +1,7 @@
 name: Test Container
 
-# Container images are pulled from the `quantecon` GHCR org by design — these
-# workflows validate QuantEcon's published containers. A fork building its own
-# images would need to change the org; github.repository_owner isn't used
-# directly because GHCR image paths must be lowercase while that expression
-# preserves the org's casing (e.g. "QuantEcon").
+# The `quantecon` GHCR org is intentionally hardcoded (GHCR image paths must be
+# lowercase, so github.repository_owner — which preserves casing — can't be substituted here).
 
 on:
   workflow_dispatch:
