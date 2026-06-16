@@ -25,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the source/output directories passed via `env` and quoted, so paths with spaces/metacharacters are
   handled safely. The `output-dir` default changed from `./` to `.` (drops the `.//_build`
   double-slash). `extra-args` is still word-split (documented in the step). (#36, M10/L17/L22)
+- **setup-environment**: Fixed standard-mode (non-container) Conda caching — the env was restored
+  from cache and then **recreated unconditionally** by `setup-miniconda`, so the cache saved
+  nothing. It now restores the cached env (`${CONDA}/envs`) and only runs `conda env update` on a
+  cache miss; dropped the deprecated `use-only-tar-bz2`. Missing LaTeX requirements now error
+  instead of silently skipping (broken env later), and the `cache-version` input documents that it
+  is standard-mode only (no effect in container mode). (#33, C3/L19/L23)
 
 ### Changed
 - **restore-jupyter-cache**: Documented the optional `save-cache` input (PR-scoped saving) and
