@@ -160,7 +160,7 @@ runs:
 
     - name: Upload execution reports on failure
       if: inputs.upload-failure-reports == 'true' && failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: ${{ inputs.failure-artifact-name != '' && inputs.failure-artifact-name || format('execution-reports-{0}', inputs.builder) }}
         path: |
