@@ -13,9 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   honest (behaviour unchanged — restore still falls through to prefix matching). (#34, H4)
 
 ### Changed
-- **restore-jupyter-cache**: Documented the optional `save-cache` input (PR-scoped saving) and the
-  `path` constraint (must match `build-jupyter-cache`'s `_build`); the README no longer claims the
-  action is strictly read-only. (#34, H5/L21)
+- **restore-jupyter-cache**: Documented the optional `save-cache` input (PR-scoped saving) and
+  clarified the `path` constraint (must match where `build-lectures` reads, `_build`) across the
+  README and `docs/QUICK-REFERENCE.md`; the docs no longer claim the action is strictly read-only.
+  (#34, H5/L21)
 - **Docs**: Documented that the build-cache key is intentionally environment-only (warm-start
   baseline; freshness handled by jupyter-cache + Sphinx incremental + the weekly cold rebuild) in
   the cache action READMEs and `docs/ARCHITECTURE.md`. (#34, H6)

@@ -24,7 +24,7 @@ read-only behaviour above.
 | Input | Description | Required | Default |
 |-------|-------------|----------|---------|
 | `cache-type` | `build` (full `_build`) or `execution` (`.jupyter_cache` only) | No | `build` |
-| `path` | Path to restore cache to. Must match where `build-jupyter-cache` saves (`_build`) — overriding it restores to a location the saved cache won't match | No | `_build` |
+| `path` | Directory to restore the cache into. Must match where `build-lectures` reads (`_build`) — pointing it elsewhere restores the cached content to a different directory, so the build steps won't see the restored state | No | `_build` |
 | `source-dir` | Source directory for lectures (used for content hash in execution cache) | No | `lectures` |
 | `environment` | Path to environment file (used for cache key hash) | No | `environment.yml` |
 | `environment-update` | Path to delta environment file for container builds (used for cache key hash) | No | `''` |

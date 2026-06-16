@@ -8,7 +8,7 @@ inputs:
     required: false
     default: 'build'
   path:
-    description: 'Path to restore cache to. Must match where build-jupyter-cache saves (_build); overriding it restores to a location the saved cache will not match.'
+    description: 'Directory to restore the cache into. Must match where build-lectures reads/writes (_build); pointing it elsewhere restores the cached _build to a directory the build steps will not use.'
     required: false
     default: '_build'
   source-dir:
