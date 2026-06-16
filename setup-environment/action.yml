@@ -96,6 +96,15 @@ runs:
     # NON-CONTAINER MODE: Full installation (existing behavior)
     # ============================================================
     
+    - name: Validate environment file (non-container mode)
+      if: steps.detect-container.outputs.container-mode == 'false'
+      shell: bash
+      run: |
+        if [ ! -f "${{ inputs.environment }}" ]; then
+          echo "::error::Environment file not found: ${{ inputs.environment }} (required in standard / non-container mode)"
+          exit 1
+        fi
+
     - name: Setup Miniconda (non-container mode)
       if: steps.detect-container.outputs.container-mode == 'false'
       uses: conda-incubator/setup-miniconda@v3
@@ -116,15 +125,18 @@ runs:
       id: conda-cache
       with:
         path: ${{ env.CONDA }}/envs
-        key: conda-${{ runner.os }}-${{ hashFiles(inputs.environment) }}-${{ inputs.cache-version }}
+        key: conda-${{ runner.os }}-${{ inputs.environment-name }}-py${{ inputs.python-version }}-${{ hashFiles(inputs.environment) }}-${{ inputs.cache-version }}
         restore-keys: |
-          conda-${{ runner.os }}-${{ hashFiles(inputs.environment) }}-
-          conda-${{ runner.os }}-
+          conda-${{ runner.os }}-${{ inputs.environment-name }}-py${{ inputs.python-version }}-${{ hashFiles(inputs.environment) }}-
+          conda-${{ runner.os }}-${{ inputs.environment-name }}-py${{ inputs.python-version }}-
 
-    - name: Create/update environment (non-container mode, cache miss)
+    - name: Create/update environment (non-container mode, no exact cache hit)
       if: steps.detect-container.outputs.container-mode == 'false' && steps.conda-cache.outputs.cache-hit != 'true'
       shell: bash -l {0}
-      run: conda env update -n ${{ inputs.environment-name }} -f ${{ inputs.environment }}
+      # Runs on a true cache miss OR a restore-keys partial match (cache-hit is
+      # exact-only). --prune removes deps dropped from environment.yml when
+      # updating an older restored env.
+      run: conda env update -n ${{ inputs.environment-name }} -f ${{ inputs.environment }} --prune
 
     - name: Install LaTeX packages (non-container mode)
       if: steps.detect-container.outputs.container-mode == 'false' && inputs.install-latex == 'true'
