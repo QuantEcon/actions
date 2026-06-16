@@ -11,10 +11,11 @@
 version: 2
 updates:
   # ── Conda environments (container images) ──────────────────────────────────
-  # The conda ecosystem (GA Dec 2025) resolves Python packages via PyPI — it
-  # tracks the `pip:` block (jupyter-book, quantecon-book-theme, the sphinx-*
-  # extensions, kaleido) and Python conda deps. Conda-only entries such as the
-  # `anaconda` metapackage and `nodejs` are not on PyPI and won't be updated.
+  # The conda ecosystem (GA Dec 2025) tracks the `pip:` block (jupyter-book,
+  # quantecon-book-theme, the sphinx-* extensions, kaleido) via PyPI, and also
+  # proposes version-range bumps for conda deps such as `nodejs` — which is why
+  # it's capped in the ignore list below. The `anaconda` metapackage is pinned
+  # to a date version (`=2025.12`), so it stays put.
   - package-ecosystem: "conda"
     directories:
       - "/containers/quantecon"
@@ -44,6 +45,9 @@ updates:
       # jupyter-book 2.x is a major rewrite — stay on 1.x until we opt in.
       - dependency-name: "jupyter-book"
         update-types: ["version-update:semver-major"]
+      # Cap node at the current LTS (24); don't propose the non-LTS 25+ lines.
+      - dependency-name: "nodejs"
+        versions: [">=25"]
 
   # ── Third-party GitHub Actions ─────────────────────────────────────────────
   # "/" covers .github/workflows/; for github-actions, composite actions in
