@@ -33,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **build-jupyter-cache**: The `_build` artifact is now uploaded only when a build fails (for
   debugging), instead of duplicating the cached `_build` into a 30-day artifact on every successful
   run. (#38, M14)
+- **Containers**: Pinned Miniconda in the full `quantecon` image to a specific version + SHA256
+  (matching the lean `quantecon-build` image) for supply-chain security and reproducibility, and
+  added `apt-get clean` for image-size parity. (#32, C2/L20)
 
 ## [0.7.0] - 2026-06-16
 

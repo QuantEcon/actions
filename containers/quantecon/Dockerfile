@@ -42,7 +42,8 @@ RUN apt-get update && \
         libpango-1.0-0 \
         libcairo2 \
         libasound2t64 \
-        && rm -rf /var/lib/apt/lists/*
+        && rm -rf /var/lib/apt/lists/* \
+        && apt-get clean
 
 # Copy FreeSerif fonts to TeX's font directory (fixes latexmk subprocess font access)
 # This ensures fonts are found even when latexmk spawns xelatex with different environment
@@ -70,8 +71,13 @@ ENV FONTCONFIG_PATH=/etc/fonts
 ENV FONTCONFIG_FILE=/etc/fonts/fonts.conf
 
 # Install Miniconda
+# Pinned to specific version with SHA256 checksum for supply-chain security
+# (kept in sync with containers/quantecon-build/Dockerfile)
 ENV CONDA_DIR=/opt/conda
-RUN curl -L https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o /tmp/miniconda.sh && \
+ENV MINICONDA_VERSION=py313_25.11.1-1
+ENV MINICONDA_SHA256=e0b10e050e8928e2eb9aad2c522ee3b5d31d30048b8a9997663a8a460d538cef
+RUN curl -L https://repo.anaconda.com/miniconda/Miniconda3-${MINICONDA_VERSION}-Linux-x86_64.sh -o /tmp/miniconda.sh && \
+    echo "${MINICONDA_SHA256}  /tmp/miniconda.sh" | sha256sum -c - && \
     bash /tmp/miniconda.sh -b -p /opt/conda && \
     rm /tmp/miniconda.sh
 
