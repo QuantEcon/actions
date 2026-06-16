@@ -20,7 +20,7 @@ inputs:
     required: false
     default: 'quantecon'
   cache-version:
-    description: 'Cache version for manual invalidation (bump to force cache rebuild)'
+    description: 'Cache version for manual invalidation of the standard-mode Conda env cache (bump to force a rebuild). No effect in container mode, which uses the pre-installed environment and has no Conda cache.'
     required: false
     default: 'v1'
   install-latex:
@@ -96,30 +96,47 @@ runs:
     # NON-CONTAINER MODE: Full installation (existing behavior)
     # ============================================================
     
-    - name: Cache Conda Environment (non-container mode)
+    - name: Validate environment file (non-container mode)
+      if: steps.detect-container.outputs.container-mode == 'false'
+      shell: bash
+      run: |
+        if [ ! -f "${{ inputs.environment }}" ]; then
+          echo "::error::Environment file not found: ${{ inputs.environment }} (required in standard / non-container mode)"
+          exit 1
+        fi
+
+    - name: Setup Miniconda (non-container mode)
+      if: steps.detect-container.outputs.container-mode == 'false'
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+        # No environment-file here: the env is restored from cache (hit) or
+        # created by the "Create/update environment" step below (miss), so a
+        # cache hit is not wastefully rebuilt. Uses the runner's pre-installed
+        # conda (kept current by auto-update-conda) so the cached env lives at
+        # a stable ${CONDA}/envs path.
+        auto-update-conda: true
+        auto-activate-base: true
+        python-version: ${{ inputs.python-version }}
+        activate-environment: ${{ inputs.environment-name }}
+
+    - name: Cache Conda environment (non-container mode)
       if: steps.detect-container.outputs.container-mode == 'false'
       uses: actions/cache@v4
       id: conda-cache
       with:
-        path: |
-          /home/runner/miniconda3/envs/${{ inputs.environment-name }}
-          /home/runner/conda_pkgs_dir
-        key: conda-${{ runner.os }}-${{ hashFiles(inputs.environment) }}-${{ inputs.cache-version }}
+        path: ${{ env.CONDA }}/envs
+        key: conda-${{ runner.os }}-${{ inputs.environment-name }}-py${{ inputs.python-version }}-${{ hashFiles(inputs.environment) }}-${{ inputs.cache-version }}
         restore-keys: |
-          conda-${{ runner.os }}-${{ hashFiles(inputs.environment) }}-
-          conda-${{ runner.os }}-
-    
-    - name: Setup Anaconda (non-container mode)
-      if: steps.detect-container.outputs.container-mode == 'false'
-      uses: conda-incubator/setup-miniconda@v3
-      with:
-        auto-update-conda: true
-        auto-activate-base: true
-        miniconda-version: 'latest'
-        python-version: ${{ inputs.python-version }}
-        environment-file: ${{ inputs.environment }}
-        activate-environment: ${{ inputs.environment-name }}
-        use-only-tar-bz2: true
+          conda-${{ runner.os }}-${{ inputs.environment-name }}-py${{ inputs.python-version }}-${{ hashFiles(inputs.environment) }}-
+          conda-${{ runner.os }}-${{ inputs.environment-name }}-py${{ inputs.python-version }}-
+
+    - name: Create/update environment (non-container mode, no exact cache hit)
+      if: steps.detect-container.outputs.container-mode == 'false' && steps.conda-cache.outputs.cache-hit != 'true'
+      shell: bash -l {0}
+      # Runs on a true cache miss OR a restore-keys partial match (cache-hit is
+      # exact-only). --prune removes deps dropped from environment.yml when
+      # updating an older restored env.
+      run: conda env update -n ${{ inputs.environment-name }} -f ${{ inputs.environment }} --prune
 
     - name: Install LaTeX packages (non-container mode)
       if: steps.detect-container.outputs.container-mode == 'false' && inputs.install-latex == 'true'
@@ -132,8 +149,8 @@ runs:
           sudo apt-get update
           sudo apt-get install -y $PACKAGES
         else
-          echo "Warning: No latex-requirements.txt found at ${{ inputs.latex-requirements-file }}"
-          echo "Skipping LaTeX installation"
+          echo "::error::install-latex is true but no LaTeX requirements file was found at ${{ inputs.latex-requirements-file }}"
+          exit 1
         fi
 
     # ============================================================
