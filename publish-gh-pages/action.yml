@@ -144,7 +144,7 @@ runs:
     - name: Upload release assets
       id: upload-release
       if: inputs.create-release-assets == 'true' && steps.create-assets.outputs.assets-created == 'true'
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
       with:
         files: |
           ${{ steps.create-assets.outputs.archive-name }}

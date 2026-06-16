@@ -59,6 +59,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **preview-netlify / preview-cloudflare**: PR-controlled values (changed file paths, deploy URL)
   are now passed to the `github-script` PR-comment step via `env` and read from `process.env`
   instead of being interpolated into the script body, closing a script-injection vector. (#35, N2)
+- **CI**: SHA-pinned the third-party GitHub Actions (`docker/*`, `softprops/action-gh-release`,
+  `conda-incubator/setup-miniconda`) to full commit SHAs (with a `# vN` comment), so a hijacked
+  upstream tag can't inject code into our workflows. First-party `actions/*` stay on major tags
+  (GitHub-maintained, per GitHub's guidance), and Dependabot keeps the SHA pins current. (#39, L18)
 
 ### Documentation
 - Swept the docs for stale references and inconsistencies (#40, D24–D34): replaced dead workflow /
