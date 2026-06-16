@@ -43,10 +43,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - uses: quantecon/actions/setup-environment@v1
+      - uses: quantecon/actions/setup-environment@v0
         # environment-update defaults to '' - uses pre-installed packages
       
-      - uses: quantecon/actions/build-lectures@v1
+      - uses: quantecon/actions/build-lectures@v0
 ```
 
 ### Container with No Extra Packages (Fastest)
@@ -57,7 +57,7 @@ If the container has all packages you need:
 container:
   image: ghcr.io/quantecon/quantecon-build:latest
 steps:
-  - uses: quantecon/actions/setup-environment@v1
+  - uses: quantecon/actions/setup-environment@v0
     # environment-update defaults to '' - uses pre-installed packages
 ```
 
@@ -67,7 +67,7 @@ If you need a few extra packages not in the container:
 
 ```yaml
 steps:
-  - uses: quantecon/actions/setup-environment@v1
+  - uses: quantecon/actions/setup-environment@v0
     with:
       environment-update: 'environment-update.yml'  # Delta packages only
 ```
@@ -83,7 +83,7 @@ dependencies:
 ### Standard Build (ubuntu-latest)
 
 ```yaml
-- uses: quantecon/actions/setup-environment@v1
+- uses: quantecon/actions/setup-environment@v0
   with:
     python-version: '3.13'
     environment: 'environment.yml'
@@ -214,12 +214,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: quantecon/actions/setup-environment@v1
+      - uses: quantecon/actions/setup-environment@v0
         with:
           environment-update: 'environment-update.yml'  # Delta packages only
         # Detects /etc/quantecon-container → skips full install
 
-      - uses: quantecon/actions/build-lectures@v1
+      - uses: quantecon/actions/build-lectures@v0
 ```
 
 ### What Container Mode Skips on AMI

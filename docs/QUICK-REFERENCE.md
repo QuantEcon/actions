@@ -38,16 +38,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: quantecon/actions/setup-environment@v1
+      - uses: quantecon/actions/setup-environment@v0
         with:
           environment-update: 'environment-update.yml'  # Optional - delta packages for container
         # Auto-detects container, installs only lecture-specific packages
-      - uses: quantecon/actions/restore-jupyter-cache@v1
+      - uses: quantecon/actions/restore-jupyter-cache@v0
         with:
           cache-type: 'build'
-      - uses: quantecon/actions/build-lectures@v1
+      - uses: quantecon/actions/build-lectures@v0
         id: build
-      - uses: quantecon/actions/preview-netlify@v1
+      - uses: quantecon/actions/preview-netlify@v0
         with:
           netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
@@ -67,12 +67,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: quantecon/actions/setup-environment@v1
+      - uses: quantecon/actions/setup-environment@v0
         with:
           install-latex: 'true'
-      - uses: quantecon/actions/build-lectures@v1
+      - uses: quantecon/actions/build-lectures@v0
         id: build
-      - uses: quantecon/actions/preview-netlify@v1
+      - uses: quantecon/actions/preview-netlify@v0
         with:
           netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
@@ -104,12 +104,12 @@ jobs:
       url: ${{ steps.deploy.outputs.page-url }}
     steps:
       - uses: actions/checkout@v4
-      - uses: quantecon/actions/setup-environment@v1
+      - uses: quantecon/actions/setup-environment@v0
         with:
           install-latex: 'true'
-      - uses: quantecon/actions/build-lectures@v1
+      - uses: quantecon/actions/build-lectures@v0
         id: build
-      - uses: quantecon/actions/publish-gh-pages@v1
+      - uses: quantecon/actions/publish-gh-pages@v0
         id: deploy
         with:
           build-dir: ${{ steps.build.outputs.build-path }}
@@ -121,11 +121,11 @@ jobs:
 ### Build PDF
 
 ```yaml
-- uses: quantecon/actions/setup-environment@v1
+- uses: quantecon/actions/setup-environment@v0
   with:
     install-latex: 'true'
 
-- uses: quantecon/actions/build-lectures@v1
+- uses: quantecon/actions/build-lectures@v0
   with:
     builder: 'pdflatex'
 ```
@@ -133,7 +133,7 @@ jobs:
 ### Build Jupyter Notebooks
 
 ```yaml
-- uses: quantecon/actions/build-lectures@v1
+- uses: quantecon/actions/build-lectures@v0
   with:
     builder: 'jupyter'
 ```
@@ -143,11 +143,11 @@ jobs:
 Add `restore-jupyter-cache` before `build-lectures` to restore cached execution state:
 
 ```yaml
-- uses: quantecon/actions/restore-jupyter-cache@v1
+- uses: quantecon/actions/restore-jupyter-cache@v0
   with:
     cache-type: 'build'
 
-- uses: quantecon/actions/build-lectures@v1
+- uses: quantecon/actions/build-lectures@v0
   id: build
 ```
 
@@ -156,7 +156,7 @@ Add `restore-jupyter-cache` before `build-lectures` to restore cached execution 
 ### Preview with Custom URL
 
 ```yaml
-- uses: quantecon/actions/preview-netlify@v1
+- uses: quantecon/actions/preview-netlify@v0
   with:
     netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
     netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
@@ -167,7 +167,7 @@ Add `restore-jupyter-cache` before `build-lectures` to restore cached execution 
 ### Force Cache Rebuild
 
 ```yaml
-- uses: quantecon/actions/setup-environment@v1
+- uses: quantecon/actions/setup-environment@v0
   with:
     cache-version: 'v2'  # Bump from v1
 ```
@@ -250,7 +250,7 @@ permissions:
 
 ```yaml
 - id: build
-  uses: quantecon/actions/build-lectures@v1
+  uses: quantecon/actions/build-lectures@v0
 
 # Access: ${{ steps.build.outputs.build-path }}
 ```
@@ -259,7 +259,7 @@ permissions:
 
 ```yaml
 - id: netlify
-  uses: quantecon/actions/preview-netlify@v1
+  uses: quantecon/actions/preview-netlify@v0
 
 # Access:
 # - ${{ steps.netlify.outputs.deploy-url }}
@@ -270,7 +270,7 @@ permissions:
 
 ```yaml
 - id: pages
-  uses: quantecon/actions/publish-gh-pages@v1
+  uses: quantecon/actions/publish-gh-pages@v0
 
 # Access: ${{ steps.pages.outputs.page-url }}
 ```
@@ -297,7 +297,7 @@ cache-version: 'v2'
 **Build too slow?**
 ```yaml
 # Use restore-jupyter-cache before build-lectures
-- uses: quantecon/actions/restore-jupyter-cache@v1
+- uses: quantecon/actions/restore-jupyter-cache@v0
   with:
     cache-type: 'build'
 ```
@@ -330,7 +330,7 @@ permissions:
 
 ```yaml
 # ML packages (JAX, PyTorch) specified in repo's environment.yml
-- uses: quantecon/actions/setup-environment@v1
+- uses: quantecon/actions/setup-environment@v0
   with:
     environment-update: 'environment-update.yml'
 ```
@@ -339,7 +339,7 @@ permissions:
 
 ```yaml
 # Standard setup
-- uses: quantecon/actions/setup-environment@v1
+- uses: quantecon/actions/setup-environment@v0
   with:
     install-latex: 'true'
 ```
@@ -348,14 +348,14 @@ permissions:
 
 ```yaml
 # Netlify only (no GH Pages)
-- uses: quantecon/actions/preview-netlify@v1
+- uses: quantecon/actions/preview-netlify@v0
 ```
 
 ### lecture-python-advanced.myst
 
 ```yaml
 # Same as programming (standard setup)
-- uses: quantecon/actions/setup-environment@v1
+- uses: quantecon/actions/setup-environment@v0
   with:
     install-latex: 'true'
 ```

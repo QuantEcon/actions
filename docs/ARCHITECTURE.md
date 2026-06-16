@@ -91,7 +91,7 @@ jobs:
       - uses: actions/checkout@v4
       
       # 7-8 minutes: Setup environment + LaTeX
-      - uses: quantecon/actions/setup-environment@v1
+      - uses: quantecon/actions/setup-environment@v0
         with:
           install-latex: 'true'
       
@@ -105,7 +105,7 @@ jobs:
       - run: jupyter-book build lectures/
       
       # Manual deployment
-      - uses: quantecon/actions/preview-netlify@v1
+      - uses: quantecon/actions/preview-netlify@v0
         with:
           # ... many configuration options
 ```
@@ -126,16 +126,16 @@ jobs:
         run: conda env update -f environment.yml
       
       # Restore cache from main branch (if available)
-      - uses: quantecon/actions/restore-jupyter-cache@v1
+      - uses: quantecon/actions/restore-jupyter-cache@v0
         with:
           cache-type: 'build'
       
       # Build (uses restored cache for incremental build)
-      - uses: quantecon/actions/build-lectures@v1
+      - uses: quantecon/actions/build-lectures@v0
         id: build
       
       # Deploy preview (PR only)
-      - uses: quantecon/actions/preview-netlify@v1
+      - uses: quantecon/actions/preview-netlify@v0
         if: github.event_name == 'pull_request'
         with:
           netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
@@ -143,7 +143,7 @@ jobs:
           build-dir: ${{ steps.build.outputs.build-path }}
       
       # Deploy production (main branch)
-      - uses: quantecon/actions/publish-gh-pages@v1
+      - uses: quantecon/actions/publish-gh-pages@v0
         if: github.ref == 'refs/heads/main'
         with:
           build-dir: ${{ steps.build.outputs.build-path }}

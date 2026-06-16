@@ -172,11 +172,16 @@ Use `build-jupyter-cache` and `restore-jupyter-cache` actions for execution cach
 
 ## Versioning
 
-We use semantic versioning with Git tags:
+We're in the `0.x` development phase (pre-1.0.0). Reference the actions with:
 
-- `@v1` - Latest stable v1.x.x release (recommended for production)
-- `@v1.0.0` - Specific version (maximum stability)
+- `@v0` - Latest `0.x` release (recommended; floating tag, moved to each new release)
+- `@v0.6.0` - Specific version (maximum reproducibility)
 - `@main` - Latest development (use for testing only)
+
+> ⚠️ During `0.x`, minor releases (`0.x.0`) may include breaking changes, so the floating
+> `@v0` tag can move across a breaking change. Pin to an exact `@v0.x.y` tag if you need
+> a guaranteed-stable reference. Floating major tags (`@v1`, `@v2`) will be introduced
+> after the 1.0.0 release.
 
 ## Documentation
 

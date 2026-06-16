@@ -48,7 +48,7 @@ Before starting migration:
 
 ### After (Unified Action)
 ```yaml
-- uses: quantecon/actions/setup-environment@v1
+- uses: quantecon/actions/setup-environment@v0
   with:
     python-version: '3.13'
     environment: 'environment.yml'
@@ -139,7 +139,7 @@ jobs:
           fetch-depth: 0
       
       # Setup environment with caching
-      - uses: quantecon/actions/setup-environment@v1
+      - uses: quantecon/actions/setup-environment@v0
         with:
           python-version: '3.13'
           environment: 'environment.yml'
@@ -147,11 +147,11 @@ jobs:
           install-latex: 'true'
       
       # Build lectures (with cache restore for fast incremental builds)
-      - uses: quantecon/actions/restore-jupyter-cache@v1
+      - uses: quantecon/actions/restore-jupyter-cache@v0
         with:
           cache-type: 'build'
       
-      - uses: quantecon/actions/build-lectures@v1
+      - uses: quantecon/actions/build-lectures@v0
         id: build
         with:
           source-dir: 'lectures'
@@ -159,7 +159,7 @@ jobs:
           upload-failure-reports: true  # Upload reports if build fails
       
       # Deploy preview
-      - uses: quantecon/actions/preview-netlify@v1
+      - uses: quantecon/actions/preview-netlify@v0
         with:
           netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
@@ -233,7 +233,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - uses: quantecon/actions/build-jupyter-cache@v1
+      - uses: quantecon/actions/build-jupyter-cache@v0
         with:
           builders: 'html'
           create-issue-on-failure: true
@@ -306,24 +306,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - uses: quantecon/actions/setup-environment@v1
+      - uses: quantecon/actions/setup-environment@v0
         with:
           install-latex: 'true'
       
       # Build PDF
-      - uses: quantecon/actions/build-lectures@v1
+      - uses: quantecon/actions/build-lectures@v0
         with:
           builder: 'pdflatex'
           upload-failure-reports: true
       
       # Build notebooks
-      - uses: quantecon/actions/build-lectures@v1
+      - uses: quantecon/actions/build-lectures@v0
         with:
           builder: 'jupyter'
           upload-failure-reports: true
       
       # Build HTML and assemble all assets
-      - uses: quantecon/actions/build-lectures@v1
+      - uses: quantecon/actions/build-lectures@v0
         id: build
         with:
           builder: 'html'
@@ -332,7 +332,7 @@ jobs:
           upload-failure-reports: true
       
       # Deploy to GitHub Pages
-      - uses: quantecon/actions/publish-gh-pages@v1
+      - uses: quantecon/actions/publish-gh-pages@v0
         id: deploy
         with:
           build-dir: ${{ steps.build.outputs.build-path }}
@@ -353,7 +353,7 @@ jobs:
 # In ci.yml, cache.yml, publish.yml:
 # ML packages (JAX, PyTorch, numpyro) are specified in the repo's
 # environment.yml or environment-update.yml, not in the action.
-- uses: quantecon/actions/setup-environment@v1
+- uses: quantecon/actions/setup-environment@v0
   with:
     environment-update: 'environment-update.yml'
 
@@ -373,7 +373,7 @@ This workflow uses a different container and may need custom handling:
 
 # Option 1: Keep as-is for now
 # Option 2: Use only build-lectures action
-- uses: quantecon/actions/build-lectures@v1
+- uses: quantecon/actions/build-lectures@v0
   with:
     build-html: 'true'
     cache-workflow: 'cache.yml'
@@ -475,15 +475,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - uses: quantecon/actions/setup-environment@v1
+      - uses: quantecon/actions/setup-environment@v0
         with:
           environment-update: 'environment-update.yml'
       
-      - uses: quantecon/actions/restore-jupyter-cache@v1
+      - uses: quantecon/actions/restore-jupyter-cache@v0
         with:
           cache-type: 'build'
       
-      - uses: quantecon/actions/build-lectures@v1
+      - uses: quantecon/actions/build-lectures@v0
         id: build
 ```
 
@@ -504,15 +504,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - uses: quantecon/actions/setup-environment@v1
+      - uses: quantecon/actions/setup-environment@v0
         with:
           environment-update: 'environment-update.yml'  # Delta packages for container
       
-      - uses: quantecon/actions/restore-jupyter-cache@v1
+      - uses: quantecon/actions/restore-jupyter-cache@v0
         with:
           cache-type: 'build'
       
-      - uses: quantecon/actions/build-lectures@v1
+      - uses: quantecon/actions/build-lectures@v0
         id: build
 ```
 
@@ -592,7 +592,7 @@ git push origin main
 ```yaml
 # In affected workflow file, comment out action and restore original:
 
-# - uses: quantecon/actions/setup-environment@v1
+# - uses: quantecon/actions/setup-environment@v0
 
 - name: Setup Anaconda
   uses: conda-incubator/setup-miniconda@v3

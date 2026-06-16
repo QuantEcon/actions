@@ -32,10 +32,14 @@ We use semantic versioning:
 
 | Tag | Purpose |
 |-----|---------|
-| `v0.5.2` | Specific release version |
+| `@v0` | Latest `0.x` release — floating tag, force-moved to each new release (recommended) |
+| `v0.6.0` | Specific release version (maximum reproducibility) |
 | `@main` | Latest development (testing only) |
 
-After 1.0.0 release, we'll add floating major tags (`v1`, `v2`) for stable references.
+During `0.x`, `@v0` is the floating reference. Because minor releases (`0.x.0`) may include
+breaking changes, `@v0` can move across a breaking change — consumers needing strict stability
+should pin an exact `v0.x.y` tag. After the 1.0.0 release, we'll add floating major tags
+(`v1`, `v2`) for stable references.
 
 ### Creating a Release
 
@@ -44,13 +48,19 @@ After 1.0.0 release, we'll add floating major tags (`v1`, `v2`) for stable refer
    - Add release date
    - For breaking changes in 0.x, mark with ⚠️ **BREAKING**
 
-2. **Create and push tags:**
+2. **Create and push the version tag:**
    ```bash
    git tag -a v0.x.y -m "Release v0.x.y - Description"
    git push origin v0.x.y
    ```
 
-3. **Create GitHub Release** at https://github.com/QuantEcon/actions/releases/new
+3. **Move the floating `v0` tag to this release** so `@v0` consumers pick it up:
+   ```bash
+   git tag -f v0 v0.x.y
+   git push origin v0 --force
+   ```
+
+4. **Create GitHub Release** at https://github.com/QuantEcon/actions/releases/new
    - Copy changelog entry as release notes
    - Attach any relevant artifacts
 

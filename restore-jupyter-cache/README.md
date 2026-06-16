@@ -64,15 +64,15 @@ Restores only `.jupyter_cache` directory containing cached notebook execution ou
 ### Basic Usage (Build Cache)
 
 ```yaml
-- uses: quantecon/actions/restore-jupyter-cache@v1
+- uses: quantecon/actions/restore-jupyter-cache@v0
 
-- uses: quantecon/actions/build-lectures@v1
+- uses: quantecon/actions/build-lectures@v0
 ```
 
 ### Execution Cache Only
 
 ```yaml
-- uses: quantecon/actions/restore-jupyter-cache@v1
+- uses: quantecon/actions/restore-jupyter-cache@v0
   with:
     cache-type: 'execution'
 ```
@@ -81,18 +81,18 @@ Restores only `.jupyter_cache` directory containing cached notebook execution ou
 
 ```yaml
 # Restore once at start
-- uses: quantecon/actions/restore-jupyter-cache@v1
+- uses: quantecon/actions/restore-jupyter-cache@v0
 
 # All builds share restored state
-- uses: quantecon/actions/build-lectures@v1
+- uses: quantecon/actions/build-lectures@v0
   with:
     builder: 'jupyter'
 
-- uses: quantecon/actions/build-lectures@v1
+- uses: quantecon/actions/build-lectures@v0
   with:
     builder: 'pdflatex'
 
-- uses: quantecon/actions/build-lectures@v1
+- uses: quantecon/actions/build-lectures@v0
   with:
     builder: 'html'
     html-copy-pdf: true
@@ -102,7 +102,7 @@ Restores only `.jupyter_cache` directory containing cached notebook execution ou
 ### Require Cache (Fail if Missing)
 
 ```yaml
-- uses: quantecon/actions/restore-jupyter-cache@v1
+- uses: quantecon/actions/restore-jupyter-cache@v0
   with:
     fail-on-miss: true
 ```

@@ -75,13 +75,13 @@ jobs:
       image: ghcr.io/quantecon/quantecon:latest
     steps:
       - uses: actions/checkout@v4
-      - uses: quantecon/actions/build-jupyter-cache@v1
+      - uses: quantecon/actions/build-jupyter-cache@v0
 ```
 
 ### All Builders with PDF
 
 ```yaml
-- uses: quantecon/actions/build-jupyter-cache@v1
+- uses: quantecon/actions/build-jupyter-cache@v0
   with:
     builders: 'jupyter,pdflatex,html'
 ```
@@ -89,7 +89,7 @@ jobs:
 ### Custom Issue Settings
 
 ```yaml
-- uses: quantecon/actions/build-jupyter-cache@v1
+- uses: quantecon/actions/build-jupyter-cache@v0
   with:
     builders: 'jupyter,html'
     create-issue-on-failure: true
@@ -100,7 +100,7 @@ jobs:
 ### Without Issue Creation
 
 ```yaml
-- uses: quantecon/actions/build-jupyter-cache@v1
+- uses: quantecon/actions/build-jupyter-cache@v0
   with:
     create-issue-on-failure: false
 ```
@@ -167,7 +167,7 @@ jobs:
       image: ghcr.io/quantecon/quantecon:latest
     steps:
       - uses: actions/checkout@v4
-      - uses: quantecon/actions/build-jupyter-cache@v1
+      - uses: quantecon/actions/build-jupyter-cache@v0
 ```
 
 Benefits:
@@ -183,7 +183,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: quantecon/actions/build-jupyter-cache@v1
+      - uses: quantecon/actions/build-jupyter-cache@v0
         with:
           builders: 'jupyter,pdflatex,html'
 ```

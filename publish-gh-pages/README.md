@@ -46,7 +46,7 @@ This action uses GitHub's native Pages deployment (via artifacts) instead of pus
 ### Basic Deployment
 
 ```yaml
-- uses: quantecon/actions/publish-gh-pages@v1
+- uses: quantecon/actions/publish-gh-pages@v0
   with:
     build-dir: '_build/html'
 ```
@@ -54,7 +54,7 @@ This action uses GitHub's native Pages deployment (via artifacts) instead of pus
 ### With Custom Domain
 
 ```yaml
-- uses: quantecon/actions/publish-gh-pages@v1
+- uses: quantecon/actions/publish-gh-pages@v0
   with:
     build-dir: '_build/html'
     cname: 'python.quantecon.org'
@@ -63,7 +63,7 @@ This action uses GitHub's native Pages deployment (via artifacts) instead of pus
 ### Using Page URL
 
 ```yaml
-- uses: quantecon/actions/publish-gh-pages@v1
+- uses: quantecon/actions/publish-gh-pages@v0
   id: pages
   with:
     build-dir: '_build/html'
@@ -78,7 +78,7 @@ This action uses GitHub's native Pages deployment (via artifacts) instead of pus
 Create downloadable archives attached to GitHub releases:
 
 ```yaml
-- uses: quantecon/actions/publish-gh-pages@v1
+- uses: quantecon/actions/publish-gh-pages@v0
   with:
     build-dir: '_build/html'
     cname: 'python.quantecon.org'
@@ -214,14 +214,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - uses: quantecon/actions/setup-environment@v1
+      - uses: quantecon/actions/setup-environment@v0
         with:
           install-latex: 'true'
       
-      - uses: quantecon/actions/build-lectures@v1
+      - uses: quantecon/actions/build-lectures@v0
         id: build
       
-      - uses: quantecon/actions/publish-gh-pages@v1
+      - uses: quantecon/actions/publish-gh-pages@v0
         id: deploy
         with:
           build-dir: ${{ steps.build.outputs.build-path }}
@@ -236,7 +236,7 @@ jobs:
 Deploy only on main branch:
 
 ```yaml
-- uses: quantecon/actions/publish-gh-pages@v1
+- uses: quantecon/actions/publish-gh-pages@v0
   if: github.ref == 'refs/heads/main'
   with:
     build-dir: '_build/html'
@@ -268,7 +268,7 @@ If migrating from peaceiris/actions-gh-pages or similar:
        target-branch: 'gh-pages'
    
    # After
-   - uses: quantecon/actions/publish-gh-pages@v1
+   - uses: quantecon/actions/publish-gh-pages@v0
      with:
        build-dir: '_build/html'
    ```
