@@ -1,0 +1,26 @@
+# Dependabot keeps the container conda environments' Python packages current.
+#
+# The conda ecosystem (GA Dec 2025) resolves Python packages via PyPI — it
+# tracks the `pip:` block (jupyter-book, quantecon-book-theme, the sphinx-*
+# extensions, kaleido) and Python conda deps. Conda-only entries such as the
+# `anaconda` metapackage and `nodejs` are not on PyPI and won't be updated.
+#
+# Dependabot PRs run as `dependabot[bot]`, which the preview-* actions already
+# skip (no secret access), so these PRs won't trigger preview deploys.
+version: 2
+updates:
+  - package-ecosystem: "conda"
+    directories:
+      - "/containers/quantecon"
+      - "/containers/quantecon-build"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "maintenance"
+    commit-message:
+      prefix: "deps"
+    # Python is pinned deliberately (matched to the image base); let us bump it
+    # manually rather than via automated PRs.
+    ignore:
+      - dependency-name: "python"
