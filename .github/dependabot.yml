@@ -3,11 +3,11 @@
 # Dependabot PRs run as `dependabot[bot]`, which the preview-* actions already
 # skip (no secret access), so these PRs won't trigger preview deploys.
 #
-# Each ecosystem groups its minor/patch updates into one pull request (a grouped
-# PR per ecosystem) to cut noise; major updates come through as individual PRs
-# so each can be reviewed and accepted on its own. When this config takes
-# effect, Dependabot supersedes and closes the existing individual minor/patch
-# PRs, replacing them with the grouped ones.
+# Each ecosystem uses two groups so updates land as at most two PRs (no
+# per-directory duplicates):
+#   - "<eco>"        — minor/patch updates (low risk; safe to merge together)
+#   - "<eco>-major"  — major updates (review carefully before merging)
+# Specific updates we're not ready for are blocked outright via `ignore`.
 version: 2
 updates:
   # ── Conda environments (container images) ──────────────────────────────────
@@ -33,6 +33,11 @@ updates:
         update-types:
           - "minor"
           - "patch"
+      conda-major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
     ignore:
       # Python is pinned deliberately (matched to the image base); bump manually.
       - dependency-name: "python"
@@ -43,7 +48,8 @@ updates:
   # ── Third-party GitHub Actions ─────────────────────────────────────────────
   # "/" covers .github/workflows/; for github-actions, composite actions in
   # subdirectories must each be listed explicitly (Dependabot only scans the
-  # given directory's action.yml, not nested ones).
+  # given directory's action.yml, not nested ones). The two groups collapse the
+  # same action repeated across these directories into a single PR.
   - package-ecosystem: "github-actions"
     directories:
       - "/"
@@ -68,12 +74,14 @@ updates:
         update-types:
           - "minor"
           - "patch"
+      github-actions-major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
     ignore:
       # Don't propose bumps to our own internal sibling references (floating @v0).
       - dependency-name: "quantecon/actions*"
-    # NOTE: action major bumps (actions/checkout, actions/upload-artifact,
-    # docker/*, ...) are intentionally NOT ignored — they arrive as individual
-    # PRs to review one at a time.
 
   # ── Container base image ───────────────────────────────────────────────────
   # Tracks the `FROM ubuntu:24.04` base in each Dockerfile (not the Miniconda
@@ -96,6 +104,11 @@ updates:
         update-types:
           - "minor"
           - "patch"
+      docker-major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
     ignore:
       # Stay on the 24.04 LTS base; bump deliberately when moving to the next LTS.
       - dependency-name: "ubuntu"
