@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CI**: Container test workflows (`test-container.yml`, `test-containers-lectures.yml`) now check
   out the commit that built the image (`workflow_run.head_sha`, falling back to `github.sha`)
   instead of the default branch, so tests run against the matching commit. (#37, M11/M12)
+- **build-jupyter-cache**: Internal sibling action calls are pinned from `@main` to `@v0`, so a
+  pinned `build-jupyter-cache` no longer transitively executes unreleased `main` code. (Relative
+  `./` paths can't be used — in a composite action they resolve against the consumer's workspace,
+  not this repo.) (#38, H8)
+- **publish-gh-pages**: Release tarball is written to `$RUNNER_TEMP` (outside `build-dir`) so the
+  archive can't recurse into itself (#38, M15); `create-release-assets` now skips off-tag and fails
+  fast when `github-token` is missing, instead of erroring mid-upload (#38, M16).
 
 ### Changed
 - **restore-jupyter-cache**: Documented the optional `save-cache` input (PR-scoped saving) and
@@ -23,6 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Docs**: Documented that the build-cache key is intentionally environment-only (warm-start
   baseline; freshness handled by jupyter-cache + Sphinx incremental + the weekly cold rebuild) in
   the cache action READMEs and `docs/ARCHITECTURE.md`. (#34, H6)
+- **build-jupyter-cache**: The `_build` artifact is now uploaded only when a build fails (for
+  debugging), instead of duplicating the cached `_build` into a 30-day artifact on every successful
+  run. (#38, M14)
 
 ## [0.7.0] - 2026-06-16
 

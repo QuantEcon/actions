@@ -20,7 +20,7 @@ inputs:
     required: false
     default: 'lectures'
   upload-artifact:
-    description: 'Upload _build directory as artifact for inspection'
+    description: 'Upload the _build directory as an artifact when a build fails (for debugging; on success the cache already holds it). Set false to suppress even that.'
     required: false
     default: 'true'
   artifact-retention-days:
@@ -129,7 +129,7 @@ runs:
     
     - name: Setup environment
       id: setup-env
-      uses: quantecon/actions/setup-environment@main
+      uses: quantecon/actions/setup-environment@v0
       with:
         environment: ${{ inputs.environment }}
         environment-update: ${{ inputs.environment-update }}
@@ -144,7 +144,7 @@ runs:
       id: build-jupyter
       if: steps.parse-builders.outputs.run-jupyter == 'true'
       continue-on-error: true
-      uses: quantecon/actions/build-lectures@main
+      uses: quantecon/actions/build-lectures@v0
       with:
         builder: 'jupyter'
         source-dir: ${{ inputs.source-dir }}
@@ -153,7 +153,7 @@ runs:
       id: build-pdflatex
       if: steps.parse-builders.outputs.run-pdflatex == 'true'
       continue-on-error: true
-      uses: quantecon/actions/build-lectures@main
+      uses: quantecon/actions/build-lectures@v0
       with:
         builder: 'pdflatex'
         source-dir: ${{ inputs.source-dir }}
@@ -162,7 +162,7 @@ runs:
       id: build-html
       if: steps.parse-builders.outputs.run-html == 'true'
       continue-on-error: true
-      uses: quantecon/actions/build-lectures@main
+      uses: quantecon/actions/build-lectures@v0
       with:
         builder: 'html'
         source-dir: ${{ inputs.source-dir }}
@@ -266,8 +266,11 @@ runs:
     # UPLOAD ARTIFACT
     # ============================================================
     
-    - name: Upload build artifact
-      if: inputs.upload-artifact == 'true'
+    - name: Upload build artifact (on failure, for debugging)
+      # On success the GHA cache already holds _build, so skip the redundant
+      # 30-day artifact; only upload when a build failed (the cache is not saved
+      # then), making the artifact the sole copy for debugging.
+      if: inputs.upload-artifact == 'true' && steps.verify-builds.outputs.all-passed != 'true'
       uses: actions/upload-artifact@v4
       with:
         name: build-cache-${{ github.run_id }}
