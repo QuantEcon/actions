@@ -56,7 +56,7 @@ jobs:
 
     steps:
       - name: Checkout actions repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           # Use the composite actions from the commit that built the container
           # under test. workflow_run checks out the default branch by default;
@@ -65,7 +65,7 @@ jobs:
           path: actions-repo
 
       - name: Checkout lecture repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ${{ matrix.repo.owner }}/${{ matrix.repo.repo }}
           path: lecture-repo
