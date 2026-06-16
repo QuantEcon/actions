@@ -106,7 +106,7 @@ jobs:
           docker images ghcr.io/quantecon/quantecon-build:latest --format "quantecon-build (lean): {{.Size}}"
 
       - name: Upload test artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-outputs-lean
