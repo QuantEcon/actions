@@ -8,11 +8,11 @@ Our next-generation CI/CD system combines three complementary elements:
 
 **Pre-built Docker images solve the LaTeX bottleneck:**
 
-- **Images:** `ghcr.io/quantecon/quantecon:latest` (CPU only - Phase 1)
+- **Images:** `ghcr.io/quantecon/quantecon:latest` (full) and `ghcr.io/quantecon/quantecon-build:latest` (lean) — CPU only
 - **Contents:** Ubuntu 24.04 LTS + TexLive (latest) + Miniconda + Anaconda 2025.12 base + Jupyter Book tools
 - **Build:** Weekly automated builds via GitHub Actions (Monday 2am UTC)
 - **Registry:** GitHub Container Registry (GHCR) - free for public repos
-- **Size:** ~8.3 GB full / ~7.1 GB lean `quantecon-build` on disk (~3 GB compressed pull; cached once by GitHub Actions runners)
+- **Size:** full ~8.3 GB / lean ~7.1 GB on disk (~3 GB compressed pull, fetched each run on GitHub-hosted runners)
 
 **Performance impact:**
 - ❌ Current: LaTeX setup takes 2-3 minutes every build
@@ -52,7 +52,7 @@ publish-gh-pages/     → Deploy to GitHub Pages
 - Where: GitHub Container Registry
 - Size: ~7.1 GB (lean) / ~8.3 GB (full) on disk; ~3 GB compressed pull
 - Lifespan: Weekly rebuilds
-- Pull time: ~20 seconds
+- Pull time: ~1-2 min on GitHub-hosted runners (~3 GB compressed, fetched each run); near-instant on self-hosted runners with the image pre-cached
 
 **Layer 2: Build Cache (GitHub Actions Cache)**
 - What: `_build/` directory from Jupyter Book
@@ -117,7 +117,7 @@ jobs:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    container: ghcr.io/quantecon/quantecon:latest  # 20 sec
+    container: ghcr.io/quantecon/quantecon:latest  # ~1-2 min pull
     steps:
       - uses: actions/checkout@v4
       
@@ -237,6 +237,8 @@ Total: 15-18 minutes
 ```
 
 ### Target Performance (Container + Cache)
+
+> These breakdowns assume the container image is already present locally (self-hosted or a warm/pre-cached runner, ~20 s). On GitHub-hosted runners add ~1-2 min for the per-run image pull.
 
 **First build (cold cache):**
 ```
