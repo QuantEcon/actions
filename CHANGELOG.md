@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **restore-jupyter-cache**: Read-only restore no longer uses a fake `-00000000` primary key that
   could never match; it now uses the content/env prefix directly, so the logged "Requested Key" is
   honest (behaviour unchanged — restore still falls through to prefix matching). (#34, H4)
+- **CI**: Container test workflows (`test-container.yml`, `test-containers-lectures.yml`) now check
+  out the commit that built the image (`workflow_run.head_sha`, falling back to `github.sha`)
+  instead of the default branch, so tests run against the matching commit. (#37, M11/M12)
 
 ### Changed
 - **restore-jupyter-cache**: Documented the optional `save-cache` input (PR-scoped saving) and
