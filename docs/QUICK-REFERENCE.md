@@ -9,7 +9,7 @@ A cheat sheet for using QuantEcon composite actions in your workflows.
 | `setup-environment` | Conda + Python + LaTeX | ~5-6 min (cached) |
 | `build-lectures` | Jupyter Book builds | Varies (cached execution) |
 | `build-jupyter-cache` | Weekly cache generation (main branch) | Enables 80% faster CI |
-| `restore-jupyter-cache` | Read-only cache restore (PRs) | ~14 min (avoids full rebuild) |
+| `restore-jupyter-cache` | Cache restore for PRs (read-only by default; optional `save-cache`) | ~14 min (avoids full rebuild) |
 | `preview-netlify` | PR preview deployment (Netlify) | ~1 min |
 | `preview-cloudflare` | PR preview deployment (Cloudflare) | ~1 min |
 | `publish-gh-pages` | GitHub Pages deployment | ~30 sec |
@@ -140,7 +140,7 @@ jobs:
 
 ### Fast PR Builds (with Execution Cache)
 
-Add `restore-jupyter-cache` before `build-lectures` to restore cached execution state:
+Add `restore-jupyter-cache` before `build-lectures` to restore cached execution state. The restore is **read-only** by default; set `save-cache: true` to also save an updated cache at job end, scoped to the PR branch (speeds up later runs on the same PR):
 
 ```yaml
 - uses: quantecon/actions/restore-jupyter-cache@v0

@@ -8,7 +8,7 @@ inputs:
     required: false
     default: 'build'
   path:
-    description: 'Path to restore cache to'
+    description: 'Directory to restore the cache into. Must match where build-lectures reads/writes (_build); pointing it elsewhere restores the cached _build to a directory the build steps will not use.'
     required: false
     default: '_build'
   source-dir:
@@ -61,7 +61,11 @@ runs:
           if [ "${{ inputs.save-cache }}" = "true" ]; then
             KEY="jupyter-cache-${{ hashFiles(format('{0}/**/*.md', inputs.source-dir)) }}-${{ github.run_id }}"
           else
-            KEY="jupyter-cache-${{ hashFiles(format('{0}/**/*.md', inputs.source-dir)) }}-00000000"
+            # Read-only restore: use the content prefix as the key. Saved keys
+            # carry a -{run_id} suffix, so this never exact-matches and the
+            # restore falls through to restore-keys prefix matching — same
+            # result, but the "Requested Key" report is honest.
+            KEY="jupyter-cache-${{ hashFiles(format('{0}/**/*.md', inputs.source-dir)) }}-"
           fi
           echo "key=$KEY" >> $GITHUB_OUTPUT
           echo "restore-keys<<EOF" >> $GITHUB_OUTPUT
@@ -76,7 +80,8 @@ runs:
           if [ "${{ inputs.save-cache }}" = "true" ]; then
             KEY="build-${ENV_HASH}-${UPDATE_HASH}-${{ github.run_id }}"
           else
-            KEY="build-${ENV_HASH}-${UPDATE_HASH}-00000000"
+            # Read-only restore: use the content prefix as the key (see note above).
+            KEY="build-${ENV_HASH}-${UPDATE_HASH}-"
           fi
           echo "key=$KEY" >> $GITHUB_OUTPUT
           echo "restore-keys<<EOF" >> $GITHUB_OUTPUT
