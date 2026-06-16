@@ -50,63 +50,11 @@ runs:
       id: detect-changes
       if: steps.check-trust.outputs.skip != 'true' && inputs.lectures-dir != '' && github.event_name == 'pull_request'
       shell: bash
-      run: |
-        echo "Detecting changed lecture files in ${{ inputs.lectures-dir }}..."
-        
-        # Fetch base and head commits
-        git fetch origin ${{ github.event.pull_request.base.sha }}:refs/remotes/origin/pr-base 2>/dev/null || true
-        git fetch origin ${{ github.event.pull_request.head.sha }}:refs/remotes/origin/pr-head 2>/dev/null || true
-        
-        # Get changed files
-        all_changed=$(git diff --name-status ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }} 2>/dev/null || echo "")
-        
-        if [ -z "$all_changed" ]; then
-          echo "No changes detected"
-          echo "changed-files=" >> $GITHUB_OUTPUT
-          exit 0
-        fi
-        
-        # Filter for lecture files (Added or Modified, not Deleted)
-        lectures_dir="${{ inputs.lectures-dir }}"
-        changed_lecture_files=""
-        
-        while IFS=$'\t' read -r status file; do
-          [ -z "$status" ] && continue
-          
-          # Only include Added (A) or Modified (M) files in lectures dir
-          if [[ "$status" =~ ^[AM] ]] && [[ "$file" =~ ^${lectures_dir}/.*\.md$ ]] && [[ ! "$file" =~ ^${lectures_dir}/_ ]] && [[ "$file" != "${lectures_dir}/intro.md" ]]; then
-            if [ -f "$file" ]; then
-              # Verify actual content changes
-              content_diff=$(git diff ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }} -- "$file" | grep -E '^[+-]' | grep -v '^[+-]{3}' | wc -l)
-              if [ "$content_diff" -gt 0 ]; then
-                echo "✓ Changed: $file"
-                if [ -z "$changed_lecture_files" ]; then
-                  changed_lecture_files="$file"
-                else
-                  changed_lecture_files="$changed_lecture_files"$'\n'"$file"
-                fi
-              fi
-            fi
-          fi
-        done <<< "$all_changed"
-        
-        if [ -n "$changed_lecture_files" ]; then
-          echo "changed-files<<EOF" >> $GITHUB_OUTPUT
-          echo "$changed_lecture_files" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-        else
-          echo "changed-files=" >> $GITHUB_OUTPUT
-        fi
-        
-        # Detect if _toc.yml is inside lectures-dir (strip dir from URL) or at root (keep dir)
-        # If _toc.yml is inside lectures-dir, Jupyter Book builds relative to that dir
-        if [ -f "${lectures_dir}/_toc.yml" ]; then
-          echo "strip-lectures-dir=true" >> $GITHUB_OUTPUT
-          echo "📁 _toc.yml found in ${lectures_dir}/ - will strip directory from URLs"
-        else
-          echo "strip-lectures-dir=false" >> $GITHUB_OUTPUT
-          echo "📁 _toc.yml not in ${lectures_dir}/ - will keep directory in URLs"
-        fi
+      env:
+        LECTURES_DIR: ${{ inputs.lectures-dir }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      run: bash "$GITHUB_ACTION_PATH/../scripts/detect-changed-lectures.sh"
 
     - name: Install Wrangler CLI
       if: steps.check-trust.outputs.skip != 'true'
@@ -166,15 +114,23 @@ runs:
     - name: Comment on PR
       if: steps.check-trust.outputs.skip != 'true' && github.event_name == 'pull_request' && steps.deploy.outputs.deploy-url != ''
       uses: actions/github-script@v7
+      env:
+        DEPLOY_URL: ${{ steps.deploy.outputs.deploy-url }}
+        CHANGED_FILES: ${{ steps.detect-changes.outputs.changed-files }}
+        LECTURES_DIR: ${{ inputs.lectures-dir }}
+        STRIP_LECTURES_DIR: ${{ steps.detect-changes.outputs.strip-lectures-dir }}
+        COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
       with:
         github-token: ${{ github.token }}
         script: |
-          const deployUrl = '${{ steps.deploy.outputs.deploy-url }}';
-          const changedFiles = `${{ steps.detect-changes.outputs.changed-files }}`;
-          const lecturesDir = '${{ inputs.lectures-dir }}';
-          const stripLecturesDir = '${{ steps.detect-changes.outputs.strip-lectures-dir }}' === 'true';
+          // Untrusted PR data (file paths, deploy URL) is read from env, never
+          // interpolated into the script body (avoids script injection).
+          const deployUrl = process.env.DEPLOY_URL || '';
+          const changedFiles = process.env.CHANGED_FILES || '';
+          const lecturesDir = process.env.LECTURES_DIR || '';
+          const stripLecturesDir = process.env.STRIP_LECTURES_DIR === 'true';
           const prNumber = context.issue.number;
-          const commitSha = '${{ github.event.pull_request.head.sha }}';
+          const commitSha = process.env.COMMIT_SHA || '';
           const shortSha = commitSha.substring(0, 7);
           const commitUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/commit/${commitSha}`;
           

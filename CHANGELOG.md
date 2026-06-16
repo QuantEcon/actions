@@ -36,6 +36,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Containers**: Pinned Miniconda in the full `quantecon` image to a specific version + SHA256
   (matching the lean `quantecon-build` image) for supply-chain security and reproducibility, and
   added `apt-get clean` for image-size parity. (#32, C2/L20)
+- **preview-netlify / preview-cloudflare**: De-duplicated the change-detection logic into a shared
+  `scripts/detect-changed-lectures.sh`, and made it treat `lectures-dir` as a literal path instead
+  of a regex (a dir name with `.`/`+` etc. no longer misbehaves). The per-file "has changes" test
+  now uses `git diff --quiet` rather than parsing diff text, fixing a pre-existing edge case where a
+  file whose only changes were `---`/`+++`-style lines (e.g. front-matter delimiters) was wrongly
+  excluded. (#35, M9/H7)
+
+### Security
+- **preview-netlify / preview-cloudflare**: PR-controlled values (changed file paths, deploy URL)
+  are now passed to the `github-script` PR-comment step via `env` and read from `process.env`
+  instead of being interpolated into the script body, closing a script-injection vector. (#35, N2)
 
 ## [0.7.0] - 2026-06-16
 
