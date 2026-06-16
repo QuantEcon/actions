@@ -6,7 +6,7 @@ Reusable composite GitHub Actions for building QuantEcon lecture repositories.
 
 This repository provides a set of composite actions that standardize and optimize the build process for QuantEcon lecture websites. These actions include intelligent caching strategies that significantly reduce build times.
 
-**Status:** Stable; current release `v0.7.0` (see the [CHANGELOG](./CHANGELOG.md)).
+**Status:** Stable; current release `v0.8.0` (see the [CHANGELOG](./CHANGELOG.md)).
 
 📋 **See:** [docs/CONTAINER-GUIDE.md](./docs/CONTAINER-GUIDE.md) for quick start, [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for design overview.
 
@@ -172,7 +172,7 @@ The lecture repositories that consume these actions are tracked centrally in [Qu
 We're in the `0.x` development phase (pre-1.0.0). Reference the actions with:
 
 - `@v0` - Latest `0.x` release (recommended; floating tag, moved to each new release)
-- `@v0.7.0` - Specific version (maximum reproducibility)
+- `@v0.8.0` - Specific version (maximum reproducibility)
 - `@main` - Latest development (use for testing only)
 
 > ⚠️ During `0.x`, minor releases (`0.x.0`) may include breaking changes, so the floating
