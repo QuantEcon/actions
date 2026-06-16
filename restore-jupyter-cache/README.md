@@ -4,25 +4,33 @@ Restores Jupyter Book build cache from GitHub Actions cache. Designed for PR wor
 
 ## Design Philosophy
 
-This action is **read-only** - it only restores cache, never saves. This ensures:
+By default this action is **read-only** - it restores cache but never saves. This ensures:
 
-- **Single source of truth**: Cache is always from main branch
+- **Single source of truth**: Cache comes from the main-branch `build-jupyter-cache` build
 - **No conflicts**: Multiple PRs don't overwrite each other's cache
 - **Predictable state**: You always know where cache came from
 
-For cache generation, use the `build-jupyter-cache` action in your cache.yml workflow.
+For cache generation on main, use the `build-jupyter-cache` action in your cache.yml workflow.
+
+### Optional PR-scoped saving (`save-cache`)
+
+Set `save-cache: true` to also **save** an updated cache at the end of the job. GitHub Actions
+scopes caches by ref, so the saved cache is visible only to subsequent runs on the same PR
+branch — it cannot affect other PRs or `main`. Leave it `false` (the default) to keep the strict
+read-only behaviour above.
 
 ## Inputs
 
 | Input | Description | Required | Default |
 |-------|-------------|----------|---------|
 | `cache-type` | `build` (full `_build`) or `execution` (`.jupyter_cache` only) | No | `build` |
-| `path` | Path to restore cache to | No | `_build` |
+| `path` | Path to restore cache to. Must match where `build-jupyter-cache` saves (`_build`) — overriding it restores to a location the saved cache won't match | No | `_build` |
 | `source-dir` | Source directory for lectures (used for content hash in execution cache) | No | `lectures` |
 | `environment` | Path to environment file (used for cache key hash) | No | `environment.yml` |
 | `environment-update` | Path to delta environment file for container builds (used for cache key hash) | No | `''` |
 | `key` | Custom cache key (auto-generated if not specified) | No | Auto |
 | `fail-on-miss` | Fail workflow if no cache found | No | `false` |
+| `save-cache` | Also save an updated cache at job end, scoped to the PR branch (see Design Philosophy) | No | `false` |
 
 ## Outputs
 
@@ -36,14 +44,31 @@ For cache generation, use the `build-jupyter-cache` action in your cache.yml wor
 The action uses **prefix matching** to find the most recently saved cache:
 
 **Build cache** (default):
-- Saves as: `build-{env-hash}-{run-id}`
-- Restores using prefix: `build-{env-hash}-` → finds most recent
+- Saves as: `build-{env-hash}-{update-hash}-{run-id}`
+- Restores using prefix: `build-{env-hash}-{update-hash}-` → finds most recent
 
 **Execution cache**:
 - Saves as: `jupyter-cache-{content-hash}-{run-id}`  
 - Restores using prefix: `jupyter-cache-{content-hash}-` → finds most recent
 
 This ensures PRs always get the latest successful cache without conflicts.
+
+### Why the build-cache key is keyed on the environment, not lecture content
+
+The build-cache key intentionally hashes only the environment, **not** `lectures/**/*.md`. The
+`_build` cache is a stable **warm-start baseline** from `main`, and freshness is handled
+downstream — so a content hash would only hurt:
+
+- **jupyter-cache** (inside `_build/.jupyter_cache`) is content-addressed per notebook — it
+  re-executes only notebooks whose code changed, regardless of the cache key.
+- **Sphinx** rebuilds incrementally, re-rendering only the pages that changed.
+- The weekly cold `build-jupyter-cache` run rebuilds `_build` from scratch, clearing any drift.
+
+Hashing lecture content into the key would miss the cache on essentially every PR (each PR edits
+some `.md`) and force a cold, full re-execution — defeating the warm-start for no correctness gain.
+The one side effect of incremental builds — Sphinx not deleting output for removed/renamed sources
+— leaves only **orphaned** pages (absent from `_toc.yml`, unreachable in navigation), which the
+weekly rebuild clears.
 
 ## Cache Types
 

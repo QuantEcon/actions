@@ -219,6 +219,11 @@ jobs:
 - Build cache eliminates unnecessary rebuilds (~3-8 min)
 - Combined effect: 10x faster on cached builds
 
+**Why the build cache is keyed on the environment, not lecture content:**
+- `_build` is a stable warm-start baseline from `main`; a content hash would miss the cache on every PR (each edits some `.md`) and force a cold, full re-execution.
+- Freshness is handled elsewhere: jupyter-cache re-executes only changed notebooks (content-addressed per notebook), Sphinx rebuilds incrementally, and the weekly cold rebuild clears any drift.
+- Trade-off: Sphinx incremental doesn't delete output for removed sources, so deleted/renamed lectures can leave *orphaned* pages — but they're unreachable in navigation (absent from `_toc.yml`) and cleared by the weekly rebuild.
+
 ---
 
 ## Performance Targets

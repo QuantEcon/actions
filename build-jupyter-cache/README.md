@@ -44,6 +44,12 @@ This ensures PRs always have a working cache to restore, even when the weekly bu
 
 Each successful build creates a new cache entry. Old caches expire automatically after 7 days of no access (GitHub's default).
 
+> **Why no lecture-content hash?** The key is intentionally environment-only. `_build` is a
+> warm-start baseline; freshness is handled by jupyter-cache (per-notebook, content-addressed),
+> Sphinx incremental rebuilds, and this weekly cold rebuild. Adding a content hash would miss the
+> cache on nearly every PR and force a cold rebuild for no correctness gain. See the *Cache Key
+> Strategy* section of [restore-jupyter-cache](../restore-jupyter-cache/) for the full rationale.
+
 **Restore key pattern** (used by `restore-jupyter-cache`):
 ```yaml
 restore-keys: |
