@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-06-16
+
 ### Fixed
 - **restore-jupyter-cache**: Read-only restore no longer uses a fake `-00000000` primary key that
   could never match; it now uses the content/env prefix directly, so the logged "Requested Key" is
@@ -306,7 +308,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History
 
-- **v0**: Tracks latest stable release (currently v0.1.1)
+- **v0**: Tracks latest stable release (currently v0.8.0)
 - **v0.x.x**: Development/testing releases
 
 ## Migration from Legacy Workflows

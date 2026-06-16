@@ -130,7 +130,7 @@ gh run view RUN_ID --log > /tmp/gh-logs.txt && cat /tmp/gh-logs.txt
 
 - **Created:** November 2025
 - **Updated:** June 16, 2026
-- **Current Phase:** Infrastructure complete, ready for production migration (latest release: v0.7.0)
+- **Current Phase:** Infrastructure complete, ready for production migration (latest release: v0.8.0)
 - **Containers:** ghcr.io/quantecon/quantecon:latest (full, ~8GB), ghcr.io/quantecon/quantecon-build:latest (lean, ~3GB)
 - **Actions:** 7 composite actions complete and tested
 - **Next:** Begin Phase 1 migration with lecture-dp repo
