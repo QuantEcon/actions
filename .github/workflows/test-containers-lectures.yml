@@ -8,11 +8,8 @@ name: Test Container Builds
 # simultaneously, avoiding network contention from concurrent dataset
 # downloads. Different repos can run in parallel.
 #
-# Scope: container images come from the `quantecon` GHCR org and the matrix
-# targets QuantEcon's public lecture repos — these tests are QuantEcon-specific
-# by design. github.repository_owner can't be used for the job-level container
-# image because GHCR requires a lowercase path while the expression preserves
-# the org's casing, so a fork would need to set the org explicitly.
+# The `quantecon` GHCR org is intentionally hardcoded (GHCR image paths must be
+# lowercase, so github.repository_owner — which preserves casing — can't be substituted here).
 
 on:
   workflow_run:
