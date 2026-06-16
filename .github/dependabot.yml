@@ -2,6 +2,11 @@
 #
 # Dependabot PRs run as `dependabot[bot]`, which the preview-* actions already
 # skip (no secret access), so these PRs won't trigger preview deploys.
+#
+# Each ecosystem groups all of its updates into ONE pull request (a grouped PR
+# per ecosystem) instead of opening a separate PR per dependency. When this
+# config takes effect Dependabot supersedes and closes any existing individual
+# PRs, replacing them with the grouped ones.
 version: 2
 updates:
   # ── Conda environments (container images) ──────────────────────────────────
@@ -20,6 +25,10 @@ updates:
       - "maintenance"
     commit-message:
       prefix: "deps"
+    groups:
+      conda:
+        patterns:
+          - "*"
     # Python is pinned deliberately (matched to the image base); let us bump it
     # manually rather than via automated PRs.
     ignore:
@@ -46,6 +55,10 @@ updates:
       - "maintenance"
     commit-message:
       prefix: "ci"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
     ignore:
       # Don't propose bumps to our own internal sibling references (floating @v0).
       - dependency-name: "quantecon/actions*"
@@ -64,3 +77,7 @@ updates:
       - "maintenance"
     commit-message:
       prefix: "deps"
+    groups:
+      docker:
+        patterns:
+          - "*"
