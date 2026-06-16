@@ -12,7 +12,7 @@ Our next-generation CI/CD system combines three complementary elements:
 - **Contents:** Ubuntu 24.04 LTS + TexLive (latest) + Miniconda + Anaconda 2025.12 base + Jupyter Book tools
 - **Build:** Weekly automated builds via GitHub Actions (Monday 2am UTC)
 - **Registry:** GitHub Container Registry (GHCR) - free for public repos
-- **Size:** ~8 GB full image / ~3 GB lean `quantecon-build` (pulled once, cached by GitHub Actions runners)
+- **Size:** ~8.3 GB full / ~7.1 GB lean `quantecon-build` on disk (~3 GB compressed pull; cached once by GitHub Actions runners)
 
 **Performance impact:**
 - ❌ Current: LaTeX setup takes 2-3 minutes every build
@@ -50,7 +50,7 @@ publish-gh-pages/     → Deploy to GitHub Pages
 **Layer 1: Environment Cache (Container Image)**
 - What: Python + LaTeX + all dependencies
 - Where: GitHub Container Registry
-- Size: ~3 GB (lean) / ~8 GB (full)
+- Size: ~7.1 GB (lean) / ~8.3 GB (full) on disk; ~3 GB compressed pull
 - Lifespan: Weekly rebuilds
 - Pull time: ~20 seconds
 
@@ -183,7 +183,7 @@ jobs:
 - All lectures use same Python scientific stack (Anaconda base provides common packages)
 - Lecture-specific packages (quantecon, cvxpy, etc.) installed from each lecture's environment.yml
 - LaTeX requirements identical across all lectures
-- Disk space is cheap (a few GB acceptable)
+- Disk space is cheap (~7-8 GB acceptable)
 - Massive reduction in complexity
 - Easy to update (one PR to container, lectures install their own dependencies)
 

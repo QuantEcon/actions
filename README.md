@@ -144,8 +144,8 @@ jobs:
 
 ### Container-Based Setup
 - Pre-built container images with LaTeX and Python environment
-- `ghcr.io/quantecon/quantecon:latest` - Full container (~8GB)
-- `ghcr.io/quantecon/quantecon-build:latest` - Lean container (~3GB)
+- `ghcr.io/quantecon/quantecon:latest` - Full image (~8.3 GB on disk, ~3.2 GB compressed pull)
+- `ghcr.io/quantecon/quantecon-build:latest` - Lean image (~7.1 GB on disk, ~2.9 GB compressed pull); drops the full Anaconda metapackage, so it's only modestly smaller
 - Setup time: ~2-3 minutes (container pull + lecture-specific packages)
 - Weekly automated builds (Monday 2am UTC) for security updates
 
@@ -165,12 +165,7 @@ Use `build-jupyter-cache` and `restore-jupyter-cache` actions for execution cach
 
 ## Usage by Repository
 
-These actions are used across the QuantEcon lecture repositories, including those exercised by the container test matrix:
-
-- **lecture-python-intro**
-- **lecture-python.myst**
-- **lecture-python-advanced.myst**
-- **lecture-jax** — GPU/JAX lectures (currently disabled in container CI pending [lecture-jax#284](https://github.com/QuantEcon/lecture-jax/issues/284))
+The lecture repositories that consume these actions are tracked centrally in [QuantEcon/meta#321](https://github.com/QuantEcon/meta/issues/321) (avoids maintaining a duplicate list here).
 
 ## Versioning
 

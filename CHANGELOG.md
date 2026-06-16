@@ -56,11 +56,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Swept the docs for stale references and inconsistencies (#40, D24–D34): replaced dead workflow /
   template / file references (`containers/VALIDATION.md`'s fictional builder pipeline → the real
   `test-containers-lectures.yml`; `cache-standard.yml`; `Dockerfile.gpu` / `environment-gpu.yml`);
-  standardised the container sizes (~3 GB lean / ~8 GB full) across README / ARCHITECTURE /
-  CONTAINER-GUIDE and documented the lean image in the Container Guide; refreshed the README status
-  line and switched its usage examples from `@main` to `@v0`; documented `failure-artifact-name` in
-  QUICK-REFERENCE; clarified in MIGRATION-GUIDE that the container workflow is the recommended path;
-  and fixed a mangled code fence in TESTING.md.
+  corrected the container sizes from measured values (lean ~7.1 GB / full ~8.3 GB on disk, ~2.9 /
+  ~3.2 GB compressed pull — the old docs mixed compressed and on-disk metrics) across README /
+  ARCHITECTURE / CONTAINER-GUIDE and documented the lean image in the Container Guide; refreshed the
+  README status line and switched its usage examples from `@main` to `@v0`; documented
+  `failure-artifact-name` in QUICK-REFERENCE; clarified in MIGRATION-GUIDE that the container
+  workflow is the recommended path; replaced the README "Usage by Repository" list with a pointer to
+  [QuantEcon/meta#321](https://github.com/QuantEcon/meta/issues/321); and fixed a mangled code fence
+  in TESTING.md.
 
 ## [0.7.0] - 2026-06-16
 
