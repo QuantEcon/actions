@@ -18,9 +18,9 @@ inputs:
   output-dir:
     description: 'Output directory for build artifacts'
     required: false
-    default: './'
+    default: '.'
   extra-args:
-    description: 'Extra arguments to pass to jupyter-book build'
+    description: 'Extra arguments to pass to jupyter-book build. Passed unquoted so multiple flags word-split (e.g. "-W --keep-going"); quoted arguments containing spaces are not supported.'
     required: false
     default: '-W --keep-going'
   html-copy-pdf:
@@ -89,42 +89,49 @@ runs:
     - name: Build lectures
       id: build
       shell: bash -l {0}
+      env:
+        BUILDER: ${{ inputs.builder }}
+        SOURCE_DIR: ${{ inputs.source-dir }}
+        OUTPUT_DIR: ${{ inputs.output-dir }}
+        EXTRA_ARGS: ${{ inputs.extra-args }}
       run: |
-        echo "Building with builder: ${{ inputs.builder }}"
-        
-        # Set build command based on builder type
-        if [ "${{ inputs.builder }}" = "html" ]; then
-          BUILD_CMD="jb build ${{ inputs.source-dir }} --path-output ${{ inputs.output-dir }} ${{ inputs.extra-args }}"
-        elif [ "${{ inputs.builder }}" = "pdflatex" ]; then
-          BUILD_CMD="jb build ${{ inputs.source-dir }} --builder pdflatex --path-output ${{ inputs.output-dir }} -n ${{ inputs.extra-args }}"
-        elif [ "${{ inputs.builder }}" = "jupyter" ]; then
-          BUILD_CMD="jb build ${{ inputs.source-dir }} --path-output ${{ inputs.output-dir }} --builder=custom --custom-builder=jupyter -n ${{ inputs.extra-args }}"
-        else
-          # Custom builder
-          BUILD_CMD="jb build ${{ inputs.source-dir }} --builder ${{ inputs.builder }} --path-output ${{ inputs.output-dir }} ${{ inputs.extra-args }}"
-        fi
-        
+        echo "Building with builder: $BUILDER"
+
+        # Builder-specific flags as an array — no eval, and paths stay quoted.
+        case "$BUILDER" in
+          html)     builder_args=() ;;
+          pdflatex) builder_args=(--builder pdflatex -n) ;;
+          jupyter)  builder_args=(--builder=custom --custom-builder=jupyter -n) ;;
+          *)        builder_args=(--builder "$BUILDER") ;;
+        esac
+
+        # EXTRA_ARGS is intentionally left unquoted so it word-splits into
+        # separate flags (e.g. "-W --keep-going"); quoted args with embedded
+        # spaces inside EXTRA_ARGS are not supported.
         echo "::group::Build Command"
-        echo "$BUILD_CMD"
+        echo "jb build $SOURCE_DIR --path-output $OUTPUT_DIR ${builder_args[*]} $EXTRA_ARGS"
         echo "::endgroup::"
-        
+
         # Execute build and capture exit code
         set +e
-        eval $BUILD_CMD
+        jb build "$SOURCE_DIR" --path-output "$OUTPUT_DIR" "${builder_args[@]}" $EXTRA_ARGS
         BUILD_EXIT_CODE=$?
         set -e
-        
-        # Set output paths regardless of success/failure
-        if [ "${{ inputs.builder }}" = "html" ]; then
-          echo "build-path=${{ inputs.output-dir }}/_build/html" >> $GITHUB_OUTPUT
-        elif [ "${{ inputs.builder }}" = "pdflatex" ]; then
-          echo "build-path=${{ inputs.output-dir }}/_build/latex" >> $GITHUB_OUTPUT
-        elif [ "${{ inputs.builder }}" = "jupyter" ]; then
-          echo "build-path=${{ inputs.output-dir }}/_build/jupyter" >> $GITHUB_OUTPUT
-        else
-          echo "build-path=${{ inputs.output-dir }}/_build" >> $GITHUB_OUTPUT
-        fi
-        
+
+        # Set output path regardless of success/failure (compute once; write
+        # with the heredoc delimiter form so it's robust to odd characters).
+        case "$BUILDER" in
+          html)     build_path="${OUTPUT_DIR}/_build/html" ;;
+          pdflatex) build_path="${OUTPUT_DIR}/_build/latex" ;;
+          jupyter)  build_path="${OUTPUT_DIR}/_build/jupyter" ;;
+          *)        build_path="${OUTPUT_DIR}/_build" ;;
+        esac
+        {
+          echo "build-path<<EOF"
+          echo "$build_path"
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
+
         # Exit with build exit code
         exit $BUILD_EXIT_CODE
 

@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **publish-gh-pages**: Release tarball is written to `$RUNNER_TEMP` (outside `build-dir`) so the
   archive can't recurse into itself (#38, M15); `create-release-assets` now skips off-tag and fails
   fast when `github-token` is missing, instead of erroring mid-upload (#38, M16).
+- **build-lectures**: The build command no longer uses `eval`; it invokes `jb build` directly with
+  the source/output directories passed via `env` and quoted, so paths with spaces/metacharacters are
+  handled safely. The `output-dir` default changed from `./` to `.` (drops the `.//_build`
+  double-slash). `extra-args` is still word-split (documented in the step). (#36, M10/L17/L22)
 
 ### Changed
 - **restore-jupyter-cache**: Documented the optional `save-cache` input (PR-scoped saving) and

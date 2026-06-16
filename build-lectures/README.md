@@ -21,8 +21,8 @@ Builds QuantEcon lectures using Jupyter Book.
 |-------|-------------|----------|---------|
 | `builder` | Jupyter Book builder (html/pdflatex/jupyter) | No | `html` |
 | `source-dir` | Directory containing lecture files | No | `lectures` |
-| `output-dir` | Base output directory | No | `./` |
-| `extra-args` | Extra jupyter-book build arguments | No | `-W --keep-going` |
+| `output-dir` | Base output directory | No | `.` |
+| `extra-args` | Extra jupyter-book build arguments (passed unquoted, so multiple flags word-split; quoted args with spaces are not supported) | No | `-W --keep-going` |
 | `html-copy-pdf` | Copy PDFs to `_build/html/_pdf/` (HTML only) | No | `false` |
 | `html-copy-notebooks` | Copy notebooks to `_build/html/_notebooks/` (HTML only) | No | `false` |
 | `upload-failure-reports` | Upload execution reports on failure | No | `false` |
