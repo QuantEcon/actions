@@ -291,8 +291,9 @@ Track before/after migration:
 **Issue:** Conda solve fails or package conflicts
 
 **Debug:**
-    echo "Cache key: conda-${{ runner.os }}-${{ hashFiles('environment.yml') }}-v1"
-    ls -la ~/.conda/pkgs || echo "No conda cache"
+```bash
+echo "Cache key: conda-${{ runner.os }}-${{ hashFiles('environment.yml') }}-v1"
+ls -la ~/.conda/pkgs || echo "No conda cache"
 ```
 
 **Solution:** Check cache key format, verify paths
