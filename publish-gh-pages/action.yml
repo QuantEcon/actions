@@ -66,16 +66,16 @@ runs:
         echo "✅ Preparation complete"
 
     - name: Setup Pages
-      uses: actions/configure-pages@v4
+      uses: actions/configure-pages@v6
 
     - name: Upload Pages artifact
-      uses: actions/upload-pages-artifact@v3
+      uses: actions/upload-pages-artifact@v5
       with:
         path: ${{ inputs.build-dir }}
 
     - name: Deploy to GitHub Pages
       id: deployment
-      uses: actions/deploy-pages@v4
+      uses: actions/deploy-pages@v5
 
     - name: Create release assets
       id: create-assets
@@ -144,7 +144,7 @@ runs:
     - name: Upload release assets
       id: upload-release
       if: inputs.create-release-assets == 'true' && steps.create-assets.outputs.assets-created == 'true'
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@v3
       with:
         files: |
           ${{ steps.create-assets.outputs.archive-name }}

@@ -250,14 +250,14 @@ runs:
     
     - name: Save build cache
       if: steps.verify-builds.outputs.all-passed == 'true'
-      uses: actions/cache/save@v4
+      uses: actions/cache/save@v5
       with:
         path: _build
         key: ${{ steps.cache-key.outputs.key }}
 
     - name: Save execution cache
       if: steps.verify-builds.outputs.all-passed == 'true'
-      uses: actions/cache/save@v4
+      uses: actions/cache/save@v5
       with:
         path: _build/.jupyter_cache
         key: jupyter-cache-${{ hashFiles(format('{0}/**/*.md', inputs.source-dir)) }}-${{ github.run_id }}
@@ -271,7 +271,7 @@ runs:
       # 30-day artifact; only upload when a build failed (the cache is not saved
       # then), making the artifact the sole copy for debugging.
       if: inputs.upload-artifact == 'true' && steps.verify-builds.outputs.all-passed != 'true'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: build-cache-${{ github.run_id }}
         path: _build

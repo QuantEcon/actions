@@ -107,7 +107,7 @@ runs:
 
     - name: Setup Miniconda (non-container mode)
       if: steps.detect-container.outputs.container-mode == 'false'
-      uses: conda-incubator/setup-miniconda@v3
+      uses: conda-incubator/setup-miniconda@v4
       with:
         # No environment-file here: the env is restored from cache (hit) or
         # created by the "Create/update environment" step below (miss), so a
@@ -121,7 +121,7 @@ runs:
 
     - name: Cache Conda environment (non-container mode)
       if: steps.detect-container.outputs.container-mode == 'false'
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       id: conda-cache
       with:
         path: ${{ env.CONDA }}/envs
