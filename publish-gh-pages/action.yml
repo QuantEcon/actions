@@ -81,7 +81,22 @@ runs:
       id: create-assets
       if: inputs.create-release-assets == 'true'
       shell: bash
+      env:
+        RELEASE_TOKEN: ${{ inputs.github-token }}
       run: |
+        # Guard: release assets need a tag trigger and a token. Skip cleanly
+        # off-tag; fail fast on a missing token (clear misconfiguration) so the
+        # upload step does not error mid-flight.
+        if [ "$GITHUB_REF_TYPE" != "tag" ]; then
+          echo "::warning::create-release-assets is enabled but this run was not triggered by a tag (GITHUB_REF_TYPE='$GITHUB_REF_TYPE'); skipping release assets."
+          echo "assets-created=false" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+        if [ -z "$RELEASE_TOKEN" ]; then
+          echo "::error::create-release-assets is enabled but 'github-token' is empty. Pass a token via the github-token input (e.g. secrets.GITHUB_TOKEN)."
+          exit 1
+        fi
+
         # Determine asset name
         ASSET_NAME="${{ inputs.asset-name }}"
         if [ -z "$ASSET_NAME" ]; then
@@ -95,14 +110,20 @@ runs:
         echo "📦 Creating release assets..."
         echo "   Archive: $ARCHIVE_NAME"
         
+        # Write assets to a temp dir OUTSIDE build-dir so the growing tarball
+        # can't recurse into itself when build-dir is the cwd or a parent.
+        ARCHIVE_PATH="${RUNNER_TEMP}/${ARCHIVE_NAME}"
+        CHECKSUM_PATH="${RUNNER_TEMP}/${ASSET_NAME}-checksum.txt"
+        MANIFEST_PATH="${RUNNER_TEMP}/${ASSET_NAME}-manifest.json"
+
         # Create tarball
-        tar -czf "$ARCHIVE_NAME" -C "${{ inputs.build-dir }}" .
-        
-        # Create checksum
-        sha256sum "$ARCHIVE_NAME" > "${ASSET_NAME}-checksum.txt"
-        
+        tar -czf "$ARCHIVE_PATH" -C "${{ inputs.build-dir }}" .
+
+        # Create checksum (reference just the archive filename, not the path)
+        ( cd "${RUNNER_TEMP}" && sha256sum "$ARCHIVE_NAME" > "$CHECKSUM_PATH" )
+
         # Create manifest
-        cat > "${ASSET_NAME}-manifest.json" << EOF
+        cat > "$MANIFEST_PATH" << EOF
         {
           "name": "$ASSET_NAME",
           "tag": "$TAG_NAME",
@@ -114,14 +135,15 @@ runs:
         }
         EOF
         
-        echo "archive-name=$ARCHIVE_NAME" >> $GITHUB_OUTPUT
-        echo "checksum-name=${ASSET_NAME}-checksum.txt" >> $GITHUB_OUTPUT
-        echo "manifest-name=${ASSET_NAME}-manifest.json" >> $GITHUB_OUTPUT
+        echo "assets-created=true" >> $GITHUB_OUTPUT
+        echo "archive-name=$ARCHIVE_PATH" >> $GITHUB_OUTPUT
+        echo "checksum-name=$CHECKSUM_PATH" >> $GITHUB_OUTPUT
+        echo "manifest-name=$MANIFEST_PATH" >> $GITHUB_OUTPUT
         echo "✅ Release assets created"
 
     - name: Upload release assets
       id: upload-release
-      if: inputs.create-release-assets == 'true'
+      if: inputs.create-release-assets == 'true' && steps.create-assets.outputs.assets-created == 'true'
       uses: softprops/action-gh-release@v2
       with:
         files: |
@@ -140,7 +162,7 @@ runs:
         if [ -n "${{ inputs.cname }}" ]; then
           echo "🌐 Custom domain: ${{ inputs.cname }}"
         fi
-        if [ "${{ inputs.create-release-assets }}" == "true" ]; then
+        if [ "${{ steps.create-assets.outputs.assets-created }}" == "true" ]; then
           echo "📦 Release assets uploaded to: https://github.com/$GITHUB_REPOSITORY/releases/tag/$GITHUB_REF_NAME"
         fi
         echo "::endgroup::"
