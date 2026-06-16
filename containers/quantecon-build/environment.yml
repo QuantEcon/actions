@@ -50,7 +50,7 @@ dependencies:
   - pyyaml
   
   # Build tools
-  - nodejs>=20,<21  # Required for some Jupyter extensions
+  - nodejs>=20,<26.0.0  # Required for some Jupyter extensions
   
   - pip
   - pip:
