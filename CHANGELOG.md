@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **Containers**: Upgraded `quantecon-book-theme` from 0.10.1 to 0.18.0
 - **CI**: Temporarily disabled lecture-jax in container tests until JAX installation commands are added ([lecture-jax#284](https://github.com/QuantEcon/lecture-jax/issues/284))
+- **Docs**: Standardised all template and documentation action references on the floating `@v0`
+  tag (was `@v1`, which never existed and broke any copied template). Documented the `@v0`
+  convention in `README.md` and added a step to move the floating `v0` tag on each release in
+  `CONTRIBUTING.md`.
 
 ## [0.6.0] - 2026-02-09
 

@@ -38,13 +38,13 @@ Builds QuantEcon lectures using Jupyter Book.
 ### HTML Build (Default)
 
 ```yaml
-- uses: quantecon/actions/build-lectures@v1
+- uses: quantecon/actions/build-lectures@v0
 ```
 
 ### PDF Build
 
 ```yaml
-- uses: quantecon/actions/build-lectures@v1
+- uses: quantecon/actions/build-lectures@v0
   with:
     builder: 'pdflatex'
 ```
@@ -52,7 +52,7 @@ Builds QuantEcon lectures using Jupyter Book.
 ### Jupyter Notebook Build
 
 ```yaml
-- uses: quantecon/actions/build-lectures@v1
+- uses: quantecon/actions/build-lectures@v0
   with:
     builder: 'jupyter'
 ```
@@ -60,7 +60,7 @@ Builds QuantEcon lectures using Jupyter Book.
 ### Custom Build Arguments
 
 ```yaml
-- uses: quantecon/actions/build-lectures@v1
+- uses: quantecon/actions/build-lectures@v0
   with:
     builder: 'html'
     extra-args: '-W --keep-going -v'
@@ -69,7 +69,7 @@ Builds QuantEcon lectures using Jupyter Book.
 ### Using Build Output
 
 ```yaml
-- uses: quantecon/actions/build-lectures@v1
+- uses: quantecon/actions/build-lectures@v0
   id: build
 
 - name: Upload artifacts
@@ -85,17 +85,17 @@ Build PDF and notebooks first, then HTML with asset assembly:
 
 ```yaml
 # Build PDF
-- uses: quantecon/actions/build-lectures@v1
+- uses: quantecon/actions/build-lectures@v0
   with:
     builder: 'pdflatex'
 
 # Build notebooks  
-- uses: quantecon/actions/build-lectures@v1
+- uses: quantecon/actions/build-lectures@v0
   with:
     builder: 'jupyter'
 
 # Build HTML and assemble all assets
-- uses: quantecon/actions/build-lectures@v1
+- uses: quantecon/actions/build-lectures@v0
   id: build
   with:
     builder: 'html'
@@ -117,7 +117,7 @@ _build/html/
 ### Upload Reports on Build Failure
 
 ```yaml
-- uses: quantecon/actions/build-lectures@v1
+- uses: quantecon/actions/build-lectures@v0
   with:
     upload-failure-reports: true
 ```
@@ -247,11 +247,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - uses: quantecon/actions/setup-environment@v1
+      - uses: quantecon/actions/setup-environment@v0
         with:
           install-latex: 'true'
       
-      - uses: quantecon/actions/build-lectures@v1
+      - uses: quantecon/actions/build-lectures@v0
         id: build
       
       - uses: actions/upload-artifact@v4
@@ -268,8 +268,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: quantecon/actions/setup-environment@v1
-      - uses: quantecon/actions/build-lectures@v1
+      - uses: quantecon/actions/setup-environment@v0
+      - uses: quantecon/actions/build-lectures@v0
         with:
           builder: 'html'
 
@@ -277,10 +277,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: quantecon/actions/setup-environment@v1
+      - uses: quantecon/actions/setup-environment@v0
         with:
           install-latex: 'true'
-      - uses: quantecon/actions/build-lectures@v1
+      - uses: quantecon/actions/build-lectures@v0
         with:
           builder: 'pdflatex'
 ```

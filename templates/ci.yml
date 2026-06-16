@@ -10,7 +10,7 @@
 #   2. Netlify site created for PR previews
 #   3. Repository secrets: NETLIFY_AUTH_TOKEN, NETLIFY_SITE_ID
 #
-# Action versions: Pin to @v1 for stability. Check for latest at:
+# Action versions: @v0 = latest 0.x release (floating); pin @v0.x.y for reproducibility. Latest at:
 #   https://github.com/quantecon/actions/releases
 
 name: CI
@@ -48,7 +48,7 @@ jobs:
 
       # ─── Environment Setup ───────────────────────────────────────
       - name: Setup environment
-        uses: quantecon/actions/setup-environment@v1
+        uses: quantecon/actions/setup-environment@v0
         # Container mode auto-detected — no setup needed unless you
         # have extra packages beyond the container's base environment.
         # with:
@@ -67,7 +67,7 @@ jobs:
       # This gives Jupyter Book pre-executed notebooks so the PR
       # build only re-runs changed content (seconds instead of hours).
       - name: Restore build cache
-        uses: quantecon/actions/restore-jupyter-cache@v1
+        uses: quantecon/actions/restore-jupyter-cache@v0
         with:
           cache-type: 'build'          # Full _build directory (default)
           # save-cache: 'true'         # Save updated cache scoped to this PR branch
@@ -75,7 +75,7 @@ jobs:
 
       # ─── Build ───────────────────────────────────────────────────
       - name: Build lectures (HTML)
-        uses: quantecon/actions/build-lectures@v1
+        uses: quantecon/actions/build-lectures@v0
         with:
           builder: 'html'
           source-dir: 'lectures'
@@ -88,7 +88,7 @@ jobs:
       # Deploys the built site to Netlify and posts a comment on the
       # PR with the preview URL and links to changed lecture pages.
       - name: Deploy PR preview
-        uses: quantecon/actions/preview-netlify@v1
+        uses: quantecon/actions/preview-netlify@v0
         with:
           netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
@@ -100,7 +100,7 @@ jobs:
       # Secrets needed: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
       #
       # - name: Deploy PR preview
-      #   uses: quantecon/actions/preview-cloudflare@v1
+      #   uses: quantecon/actions/preview-cloudflare@v0
       #   with:
       #     cloudflare-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       #     cloudflare-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

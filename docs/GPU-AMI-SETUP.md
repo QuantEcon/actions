@@ -300,12 +300,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - uses: quantecon/actions/setup-environment@v1
+      - uses: quantecon/actions/setup-environment@v0
         with:
           environment-update: 'environment-update.yml'
         # Detects /etc/quantecon-container marker → skips Miniconda/LaTeX install
       
-      - uses: quantecon/actions/build-lectures@v1
+      - uses: quantecon/actions/build-lectures@v0
 ```
 
 **Repo's `environment-update.yml` specifies ML packages:**

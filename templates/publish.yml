@@ -11,7 +11,7 @@
 #   2. GitHub Pages enabled: Settings → Pages → Source → "GitHub Actions"
 #   3. (Optional) Custom domain configured in Settings → Pages → Custom domain
 #
-# Action versions: Pin to @v1 for stability. Check for latest at:
+# Action versions: @v0 = latest 0.x release (floating); pin @v0.x.y for reproducibility. Latest at:
 #   https://github.com/quantecon/actions/releases
 
 name: Publish
@@ -55,7 +55,7 @@ jobs:
 
       # ─── Environment Setup ───────────────────────────────────────
       - name: Setup environment
-        uses: quantecon/actions/setup-environment@v1
+        uses: quantecon/actions/setup-environment@v0
         # with:
         #   environment-update: 'environment.yml'   # Delta packages for container
         #   install-latex: 'true'                    # Required for pdflatex builds
@@ -69,7 +69,7 @@ jobs:
 
       # ─── Cache Restore ───────────────────────────────────────────
       - name: Restore build cache
-        uses: quantecon/actions/restore-jupyter-cache@v1
+        uses: quantecon/actions/restore-jupyter-cache@v0
 
       # ─── Build ───────────────────────────────────────────────────
       # Build HTML (and optionally other formats). The cache gives
@@ -78,20 +78,20 @@ jobs:
 
       # Optional: Build notebooks for download links
       # - name: Build notebooks
-      #   uses: quantecon/actions/build-lectures@v1
+      #   uses: quantecon/actions/build-lectures@v0
       #   with:
       #     builder: 'jupyter'
       #     source-dir: 'lectures'
 
       # Optional: Build PDF for download link
       # - name: Build PDF
-      #   uses: quantecon/actions/build-lectures@v1
+      #   uses: quantecon/actions/build-lectures@v0
       #   with:
       #     builder: 'pdflatex'
       #     source-dir: 'lectures'
 
       - name: Build HTML
-        uses: quantecon/actions/build-lectures@v1
+        uses: quantecon/actions/build-lectures@v0
         with:
           builder: 'html'
           source-dir: 'lectures'
@@ -103,7 +103,7 @@ jobs:
       # ─── Publish ─────────────────────────────────────────────────
       - name: Publish to GitHub Pages
         id: publish
-        uses: quantecon/actions/publish-gh-pages@v1
+        uses: quantecon/actions/publish-gh-pages@v0
         with:
           build-dir: '_build/html'
           # cname: 'lectures.example.org'   # Custom domain (adds CNAME file)

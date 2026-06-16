@@ -13,7 +13,7 @@ Deploys QuantEcon lecture builds to Netlify for PR previews with smart comments 
 ## Usage
 
 ```yaml
-- uses: quantecon/actions/preview-netlify@v1
+- uses: quantecon/actions/preview-netlify@v0
   with:
     netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
     netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
@@ -88,7 +88,7 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Environment
-        uses: quantecon/actions/setup-environment@v1
+        uses: quantecon/actions/setup-environment@v0
         with:
           environment: environment.yml
 
@@ -96,7 +96,7 @@ jobs:
         run: jb build lectures --path-output ./
 
       - name: Deploy Preview
-        uses: quantecon/actions/preview-netlify@v1
+        uses: quantecon/actions/preview-netlify@v0
         with:
           netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}

@@ -13,7 +13,7 @@ Deploys QuantEcon lecture builds to Cloudflare Pages for PR previews with smart 
 ## Usage
 
 ```yaml
-- uses: quantecon/actions/preview-cloudflare@v1
+- uses: quantecon/actions/preview-cloudflare@v0
   with:
     cloudflare-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     cloudflare-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -90,7 +90,7 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Environment
-        uses: quantecon/actions/setup-environment@v1
+        uses: quantecon/actions/setup-environment@v0
         with:
           environment: environment.yml
 
@@ -98,7 +98,7 @@ jobs:
         run: jb build lectures --path-output ./
 
       - name: Deploy Preview
-        uses: quantecon/actions/preview-cloudflare@v1
+        uses: quantecon/actions/preview-cloudflare@v0
         with:
           cloudflare-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           cloudflare-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
