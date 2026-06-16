@@ -44,6 +44,9 @@ updates:
       # jupyter-book 2.x is a major rewrite — stay on 1.x until we opt in.
       - dependency-name: "jupyter-book"
         update-types: ["version-update:semver-major"]
+      # Cap node at the current LTS (24); don't propose the non-LTS 25+ lines.
+      - dependency-name: "nodejs"
+        versions: [">=25"]
 
   # ── Third-party GitHub Actions ─────────────────────────────────────────────
   # "/" covers .github/workflows/; for github-actions, composite actions in

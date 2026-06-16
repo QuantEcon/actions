@@ -48,6 +48,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Containers**: Pinned Miniconda in the full `quantecon` image to a specific version + SHA256
   (matching the lean `quantecon-build` image) for supply-chain security and reproducibility, and
   added `apt-get clean` for image-size parity. (#32, C2/L20)
+- **Containers**: Capped `nodejs` at the current LTS (`>=20,<25`, i.e. ≤ node 24) in both container
+  environments, and added a matching Dependabot `ignore` (node ≥ 25), so the non-LTS node 25 line
+  Dependabot's `<26` would have allowed is excluded.
 - **preview-netlify / preview-cloudflare**: De-duplicated the change-detection logic into a shared
   `scripts/detect-changed-lectures.sh`, and made it treat `lectures-dir` as a literal path instead
   of a regex (a dir name with `.`/`+` etc. no longer misbehaves). The per-file "has changes" test
