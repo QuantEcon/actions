@@ -3,9 +3,10 @@
 # Dependabot PRs run as `dependabot[bot]`, which the preview-* actions already
 # skip (no secret access), so these PRs won't trigger preview deploys.
 #
-# Each ecosystem groups all of its updates into ONE pull request (a grouped PR
-# per ecosystem) instead of opening a separate PR per dependency. When this
-# config takes effect Dependabot supersedes and closes any existing individual
+# Each ecosystem groups its minor/patch updates into one pull request (a grouped
+# PR per ecosystem) to cut noise; major updates come through as individual PRs
+# so each can be reviewed and accepted on its own. When this config takes
+# effect, Dependabot supersedes and closes the existing individual minor/patch
 # PRs, replacing them with the grouped ones.
 version: 2
 updates:
@@ -20,7 +21,7 @@ updates:
       - "/containers/quantecon-build"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 10
     labels:
       - "maintenance"
     commit-message:
@@ -29,10 +30,15 @@ updates:
       conda:
         patterns:
           - "*"
-    # Python is pinned deliberately (matched to the image base); let us bump it
-    # manually rather than via automated PRs.
+        update-types:
+          - "minor"
+          - "patch"
     ignore:
+      # Python is pinned deliberately (matched to the image base); bump manually.
       - dependency-name: "python"
+      # jupyter-book 2.x is a major rewrite — stay on 1.x until we opt in.
+      - dependency-name: "jupyter-book"
+        update-types: ["version-update:semver-major"]
 
   # ── Third-party GitHub Actions ─────────────────────────────────────────────
   # "/" covers .github/workflows/; for github-actions, composite actions in
@@ -50,7 +56,7 @@ updates:
       - "/publish-gh-pages"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 10
     labels:
       - "maintenance"
     commit-message:
@@ -59,9 +65,15 @@ updates:
       github-actions:
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
     ignore:
       # Don't propose bumps to our own internal sibling references (floating @v0).
       - dependency-name: "quantecon/actions*"
+    # NOTE: action major bumps (actions/checkout, actions/upload-artifact,
+    # docker/*, ...) are intentionally NOT ignored — they arrive as individual
+    # PRs to review one at a time.
 
   # ── Container base image ───────────────────────────────────────────────────
   # Tracks the `FROM ubuntu:24.04` base in each Dockerfile (not the Miniconda
@@ -72,7 +84,7 @@ updates:
       - "/containers/quantecon-build"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 10
     labels:
       - "maintenance"
     commit-message:
@@ -81,3 +93,9 @@ updates:
       docker:
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      # Stay on the 24.04 LTS base; bump deliberately when moving to the next LTS.
+      - dependency-name: "ubuntu"
