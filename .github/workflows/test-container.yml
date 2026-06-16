@@ -1,5 +1,11 @@
 name: Test Container
 
+# Container images are pulled from the `quantecon` GHCR org by design — these
+# workflows validate QuantEcon's published containers. A fork building its own
+# images would need to change the org; github.repository_owner isn't used
+# directly because GHCR image paths must be lowercase while that expression
+# preserves the org's casing (e.g. "QuantEcon").
+
 on:
   workflow_dispatch:
   workflow_run:
@@ -15,6 +21,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Test files must match the commit that built the image. For
+          # workflow_run events checkout defaults to the default branch, not the
+          # triggering commit; fall back to github.sha for workflow_dispatch.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
@@ -56,6 +67,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Test files must match the commit that built the image. For
+          # workflow_run events checkout defaults to the default branch, not the
+          # triggering commit; fall back to github.sha for workflow_dispatch.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3

@@ -7,6 +7,12 @@ name: Test Container Builds
 # Concurrency groups ensure the same repo never builds on two containers
 # simultaneously, avoiding network contention from concurrent dataset
 # downloads. Different repos can run in parallel.
+#
+# Scope: container images come from the `quantecon` GHCR org and the matrix
+# targets QuantEcon's public lecture repos — these tests are QuantEcon-specific
+# by design. github.repository_owner can't be used for the job-level container
+# image because GHCR requires a lowercase path while the expression preserves
+# the org's casing, so a fork would need to set the org explicitly.
 
 on:
   workflow_run:
@@ -55,6 +61,10 @@ jobs:
       - name: Checkout actions repository
         uses: actions/checkout@v4
         with:
+          # Use the composite actions from the commit that built the container
+          # under test. workflow_run checks out the default branch by default;
+          # fall back to github.sha for manual workflow_dispatch runs.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           path: actions-repo
 
       - name: Checkout lecture repository
