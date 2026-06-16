@@ -30,10 +30,10 @@
 
 We use semantic versioning:
 
-| Tag | Purpose |
-|-----|---------|
+| Reference | Purpose |
+|-----------|---------|
 | `@v0` | Latest `0.x` release — floating tag, force-moved to each new release (recommended) |
-| `v0.6.0` | Specific release version (maximum reproducibility) |
+| `@v0.x.y` | A specific pinned release (maximum reproducibility) |
 | `@main` | Latest development (testing only) |
 
 During `0.x`, `@v0` is the floating reference. Because minor releases (`0.x.0`) may include

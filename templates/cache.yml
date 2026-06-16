@@ -11,7 +11,7 @@
 #   - Manual dispatch — on-demand rebuild
 #   - Push to main (environment.yml changes) — update cache after env change
 #
-# Action versions: Pin to @v0 for stability. Check for latest at:
+# Action versions: @v0 = latest 0.x release (floating); pin @v0.x.y for reproducibility. Latest at:
 #   https://github.com/quantecon/actions/releases
 
 name: Build Cache

@@ -10,7 +10,7 @@
 #   2. Netlify site created for PR previews
 #   3. Repository secrets: NETLIFY_AUTH_TOKEN, NETLIFY_SITE_ID
 #
-# Action versions: Pin to @v0 for stability. Check for latest at:
+# Action versions: @v0 = latest 0.x release (floating); pin @v0.x.y for reproducibility. Latest at:
 #   https://github.com/quantecon/actions/releases
 
 name: CI
