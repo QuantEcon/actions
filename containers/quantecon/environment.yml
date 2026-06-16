@@ -13,7 +13,7 @@ dependencies:
   - pip
   - pip:
     # Jupyter Book build tools
-    - jupyter-book==1.0.4post1
+    - jupyter-book==2.1.5
     - quantecon-book-theme==0.18.0
     - sphinx-tojupyter==0.6.0
     - sphinxext-rediraffe==0.3.0
