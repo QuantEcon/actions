@@ -175,7 +175,7 @@ Use `build-jupyter-cache` and `restore-jupyter-cache` actions for execution cach
 We're in the `0.x` development phase (pre-1.0.0). Reference the actions with:
 
 - `@v0` - Latest `0.x` release (recommended; floating tag, moved to each new release)
-- `@v0.6.0` - Specific version (maximum reproducibility)
+- `@v0.7.0` - Specific version (maximum reproducibility)
 - `@main` - Latest development (use for testing only)
 
 > ⚠️ During `0.x`, minor releases (`0.x.0`) may include breaking changes, so the floating

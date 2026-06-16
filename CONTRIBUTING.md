@@ -54,9 +54,11 @@ should pin an exact `v0.x.y` tag. After the 1.0.0 release, we'll add floating ma
    git push origin v0.x.y
    ```
 
-3. **Move the floating `v0` tag to this release** so `@v0` consumers pick it up:
+3. **Move the floating `v0` tag to this release** so `@v0` consumers pick it up.
+   The `^{}` peels the annotated tag so `v0` points at the release **commit** directly
+   (a lightweight tag), not at the `v0.x.y` tag object:
    ```bash
-   git tag -f v0 v0.x.y
+   git tag -f v0 "v0.x.y^{}"
    git push origin v0 --force
    ```
 
