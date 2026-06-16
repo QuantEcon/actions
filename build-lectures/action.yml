@@ -20,7 +20,7 @@ inputs:
     required: false
     default: '.'
   extra-args:
-    description: 'Extra arguments to pass to jupyter-book build'
+    description: 'Extra arguments to pass to jupyter-book build. Passed unquoted so multiple flags word-split (e.g. "-W --keep-going"); quoted arguments containing spaces are not supported.'
     required: false
     default: '-W --keep-going'
   html-copy-pdf:
@@ -118,13 +118,19 @@ runs:
         BUILD_EXIT_CODE=$?
         set -e
 
-        # Set output paths regardless of success/failure
+        # Set output path regardless of success/failure (compute once; write
+        # with the heredoc delimiter form so it's robust to odd characters).
         case "$BUILDER" in
-          html)     echo "build-path=${OUTPUT_DIR}/_build/html" >> "$GITHUB_OUTPUT" ;;
-          pdflatex) echo "build-path=${OUTPUT_DIR}/_build/latex" >> "$GITHUB_OUTPUT" ;;
-          jupyter)  echo "build-path=${OUTPUT_DIR}/_build/jupyter" >> "$GITHUB_OUTPUT" ;;
-          *)        echo "build-path=${OUTPUT_DIR}/_build" >> "$GITHUB_OUTPUT" ;;
+          html)     build_path="${OUTPUT_DIR}/_build/html" ;;
+          pdflatex) build_path="${OUTPUT_DIR}/_build/latex" ;;
+          jupyter)  build_path="${OUTPUT_DIR}/_build/jupyter" ;;
+          *)        build_path="${OUTPUT_DIR}/_build" ;;
         esac
+        {
+          echo "build-path<<EOF"
+          echo "$build_path"
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
 
         # Exit with build exit code
         exit $BUILD_EXIT_CODE
