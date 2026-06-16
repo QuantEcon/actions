@@ -46,11 +46,10 @@ if [ -n "$all_changed" ]; then
     [[ "$file" != "$lectures_dir/intro.md" ]] || continue
     [ -f "$file" ] || continue
 
-    # Require actual content changes (ignore pure rename/metadata diffs).
-    content_diff=$(git diff "${BASE_SHA}..${HEAD_SHA}" -- "$file" \
-      | grep -E '^[+-]' | grep -vE '^[+-]{3}' | wc -l)
-    content_diff=$(echo "$content_diff" | tr -d '[:space:]')
-    if [ "${content_diff:-0}" -gt 0 ]; then
+    # Include the file if it has any real diff between the two commits.
+    # (Don't parse diff text: a content line such as a '---' front-matter
+    # delimiter shows up as '+---' and could be mis-filtered as a header.)
+    if ! git diff --quiet "${BASE_SHA}..${HEAD_SHA}" -- "$file"; then
       echo "✓ Changed: $file"
       if [ -z "$changed_lecture_files" ]; then
         changed_lecture_files="$file"

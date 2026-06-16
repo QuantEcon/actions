@@ -38,7 +38,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   added `apt-get clean` for image-size parity. (#32, C2/L20)
 - **preview-netlify / preview-cloudflare**: De-duplicated the change-detection logic into a shared
   `scripts/detect-changed-lectures.sh`, and made it treat `lectures-dir` as a literal path instead
-  of a regex (a dir name with `.`/`+` etc. no longer misbehaves). (#35, M9/H7)
+  of a regex (a dir name with `.`/`+` etc. no longer misbehaves). The per-file "has changes" test
+  now uses `git diff --quiet` rather than parsing diff text, fixing a pre-existing edge case where a
+  file whose only changes were `---`/`+++`-style lines (e.g. front-matter delimiters) was wrongly
+  excluded. (#35, M9/H7)
 
 ### Security
 - **preview-netlify / preview-cloudflare**: PR-controlled values (changed file paths, deploy URL)
