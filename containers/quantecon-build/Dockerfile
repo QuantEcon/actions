@@ -84,8 +84,6 @@ ENV PATH=$CONDA_DIR/bin:$PATH
 COPY environment.yml /tmp/environment.yml
 RUN conda tos accept && \
     conda env create -f /tmp/environment.yml && \
-    # Install Chrome for kaleido (Plotly static image export)
-    /opt/conda/envs/quantecon/bin/python -c "import kaleido; kaleido.get_chrome_sync()" && \
     # Aggressive cleanup to reduce size
     conda clean -afy && \
     find /opt/conda -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true && \
