@@ -9,17 +9,23 @@ dependencies:
   # Python
   - python=3.13
   
-  # Core scientific stack (used by most lectures)
-  - numpy
-  - scipy
-  - pandas
-  - matplotlib
-  - seaborn
-  - sympy
-  - numba
-  - networkx
-  - statsmodels
-  - scikit-learn
+  # Core scientific stack — pinned to the Anaconda 2025.12 baseline that every
+  # QuantEcon lecture repo builds against (they pin `anaconda=2025.12`), keeping
+  # this lean image reproducible and consistent with the full `quantecon` image
+  # and the source repos. Left unpinned, the stack drifted ahead of that baseline
+  # and produced non-reproducible images that broke notebook execution downstream
+  # (e.g. un_insure.md's fsolve call; see #28).
+  # Bump as a set when the lecture repos move to a newer anaconda release.
+  - numpy=2.3.5
+  - scipy=1.16.3
+  - pandas=2.3.3
+  - matplotlib=3.10.6
+  - seaborn=0.13.2
+  - sympy=1.14.0
+  - numba=0.62.1
+  - networkx=3.5
+  - statsmodels=0.14.5
+  - scikit-learn=1.7.2
   
   # CPU acceleration (Intel MKL for optimized linear algebra)
   - mkl

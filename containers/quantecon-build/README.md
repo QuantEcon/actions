@@ -23,7 +23,8 @@ ghcr.io/quantecon/quantecon-build:latest
 
 ### Python Packages (Superset for all QuantEcon lectures)
 
-Core scientific stack:
+Core scientific stack (pinned to the Anaconda 2025.12 baseline, matching the
+versions the lecture repos build against):
 - numpy, scipy, pandas, matplotlib, seaborn
 - sympy, numba, networkx, statsmodels
 - jupyter, jupyterlab, ipywidgets
@@ -78,7 +79,7 @@ docker pull ghcr.io/quantecon/quantecon:latest
 | Size | ~8GB | ~3GB |
 | Pull time | ~2-3 min | ~1 min |
 | Packages | ~450 | ~100 |
-| Anaconda | Full 2025.12 | Explicit list |
+| Anaconda | Full 2025.12 | Explicit list (science stack pinned to 2025.12) |
 | TexLive | Full | Minimal |
 | Best for | Development | CI/CD |
 
