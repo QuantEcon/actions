@@ -17,6 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   likely trigger being numpy 2.4.0's stricter array-to-scalar conversion, though the exact breaking
   combination is no longer reproducible on current packages). The full `quantecon` image already
   pins `anaconda=2025.12` and was unaffected. (#28)
+- **Containers**: Pinned `kaleido<1.0` in both images and dropped the build-time
+  `kaleido.get_chrome_sync()` step. Unpinned, `kaleido` resolved to v1.x, which dropped the bundled
+  chromium and requires a separately provisioned Chrome; the build-time download landed in `/root`
+  but CI container jobs run with `HOME=/github/home`, so Plotly static-image export failed at runtime
+  with `ChromeNotFoundError` (e.g. `BCG_complete_mkts.md`, `BCG_incomplete_mkts.md`,
+  `knowing_forecasts_of_others.md`). kaleido 0.2.x bundles its own chromium (location-independent)
+  and still exports PNGs on the current plotly. (Migrating to kaleido v1 with system-provisioned
+  Chrome is a future follow-up.)
 
 ## [0.8.0] - 2026-06-16
 

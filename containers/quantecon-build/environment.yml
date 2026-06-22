@@ -73,5 +73,9 @@ dependencies:
     - quantecon-book-networks
     
     # Additional build dependencies
-    - kaleido  # Plotly static image export
+    # Pinned <1.0: kaleido v1 dropped the bundled chromium and needs a separately
+    # provisioned Chrome, which isn't found at runtime in CI (container jobs set
+    # HOME=/github/home, not the build-time /root). v0.2.x bundles its own
+    # chromium (location-independent) and still works with current plotly. (#28-class)
+    - kaleido<1.0  # Plotly static image export
     - prettytable
