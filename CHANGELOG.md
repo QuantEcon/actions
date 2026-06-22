@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Containers (quantecon-build)**: Pinned the lean image's core scientific stack (numpy, scipy,
+  pandas, matplotlib, seaborn, sympy, numba, networkx, statsmodels, scikit-learn) to the Anaconda
+  2025.12 baseline that every lecture repo builds against (via `anaconda=2025.12`), instead of
+  resolving to "latest at build time". The unpinned stack drifted ahead of that baseline, yielding
+  non-reproducible images that diverged from what the lectures are tested against; downstream this
+  surfaced as a `CellExecutionError` in `un_insure.md` on repos building on the lean image (the
+  likely trigger being numpy 2.4.0's stricter array-to-scalar conversion, though the exact breaking
+  combination is no longer reproducible on current packages). The full `quantecon` image already
+  pins `anaconda=2025.12` and was unaffected. (#28)
+
 ## [0.8.0] - 2026-06-16
 
 ### Fixed
