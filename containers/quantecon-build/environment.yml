@@ -16,16 +16,16 @@ dependencies:
   # and produced non-reproducible images that broke notebook execution downstream
   # (e.g. un_insure.md's fsolve call; see #28).
   # Bump as a set when the lecture repos move to a newer anaconda release.
-  - numpy=2.3.5
-  - scipy=1.16.3
+  - numpy=2.4.6
+  - scipy=1.17.1
   - pandas=2.3.3
-  - matplotlib=3.10.6
+  - matplotlib=3.10.9
   - seaborn=0.13.2
   - sympy=1.14.0
-  - numba=0.62.1
-  - networkx=3.5
-  - statsmodels=0.14.5
-  - scikit-learn=1.7.2
+  - numba=0.65.1
+  - networkx=3.6.1
+  - statsmodels=0.14.6
+  - scikit-learn=1.9.0
   
   # CPU acceleration (Intel MKL for optimized linear algebra)
   - mkl
