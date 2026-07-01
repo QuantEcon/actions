@@ -189,7 +189,7 @@ We're in the `0.x` development phase (pre-1.0.0). Reference the actions with:
 - **[docs/GPU-AMI-SETUP.md](./docs/GPU-AMI-SETUP.md)** - Building RunsOn GPU AMI
 - **[docs/FUTURE-DEVELOPMENT.md](./docs/FUTURE-DEVELOPMENT.md)** - GPU support and roadmap
 - **[TESTING.md](./TESTING.md)** - Testing strategy
-- **[PLAN.md](./PLAN.md)** - Migration plan and feature parity status
+- **[PLAN.md](./PLAN.md)** - Current work plan, backlog, and rollout status
 
 ## Getting Started
 
