@@ -190,6 +190,7 @@ We're in the `0.x` development phase (pre-1.0.0). Reference the actions with:
 - **[docs/FUTURE-DEVELOPMENT.md](./docs/FUTURE-DEVELOPMENT.md)** - GPU support and roadmap
 - **[TESTING.md](./TESTING.md)** - Testing strategy
 - **[PLAN.md](./PLAN.md)** - Current work plan, backlog, and rollout status
+- **[PROJECT-OPTIMIZE-PREVIEWS.md](./PROJECT-OPTIMIZE-PREVIEWS.md)** - Fast preview builds: research, design, and phased roadmap (tracking: [#92](https://github.com/QuantEcon/actions/issues/92))
 
 ## Getting Started
 
