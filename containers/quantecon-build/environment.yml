@@ -18,7 +18,7 @@ dependencies:
   # Bump as a set when the lecture repos move to a newer anaconda release.
   - numpy=2.3.5
   - scipy=1.16.3
-  - pandas=2.3.3
+  - pandas=3.0.3
   - matplotlib=3.10.6
   - seaborn=0.13.2
   - sympy=1.14.0
