@@ -14,8 +14,10 @@ updates:
   # The conda ecosystem (GA Dec 2025) tracks the `pip:` block (jupyter-book,
   # quantecon-book-theme, the sphinx-* extensions, kaleido) via PyPI, and also
   # proposes version-range bumps for conda deps such as `nodejs` — which is why
-  # it's capped in the ignore list below. The `anaconda` metapackage is pinned
-  # to a date version (`=2025.12`), so it stays put.
+  # it's capped in the ignore list below. The core scientific stack (numpy, scipy,
+  # pandas, … and the `anaconda` metapackage) is held at the 2026.06 baseline via
+  # `ignore` below — a date-pin like `=2026.06` does NOT stop Dependabot proposing
+  # the next release, so each is listed explicitly.
   - package-ecosystem: "conda"
     directories:
       - "/containers/quantecon"
@@ -42,6 +44,24 @@ updates:
     ignore:
       # Python is pinned deliberately (matched to the image base); bump manually.
       - dependency-name: "python"
+      # Core scientific stack — held at the Anaconda 2026.06 baseline the lecture
+      # repos build against (see containers/quantecon-build/environment.yml, issue
+      # #28 / PR #84). Pinned individually in the lean image and via the `anaconda`
+      # metapackage in the full image; bump them together, manually, in step with
+      # the lecture repos on the next Anaconda release. Ignore every update type so
+      # Dependabot neither drifts them individually (minor/patch, e.g. numpy past
+      # 2.4.6) nor jumps the next major ahead of that coordinated bump.
+      - dependency-name: "numpy"
+      - dependency-name: "scipy"
+      - dependency-name: "pandas"
+      - dependency-name: "matplotlib"
+      - dependency-name: "seaborn"
+      - dependency-name: "sympy"
+      - dependency-name: "numba"
+      - dependency-name: "networkx"
+      - dependency-name: "statsmodels"
+      - dependency-name: "scikit-learn"
+      - dependency-name: "anaconda"
       # jupyter-book 2.x is a major rewrite — stay on 1.x until we opt in.
       - dependency-name: "jupyter-book"
         update-types: ["version-update:semver-major"]
