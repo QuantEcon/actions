@@ -121,7 +121,7 @@ runs:
 
     - name: Cache Conda environment (non-container mode)
       if: steps.detect-container.outputs.container-mode == 'false'
-      uses: actions/cache@v5
+      uses: actions/cache@v6
       id: conda-cache
       with:
         path: ${{ env.CONDA }}/envs
