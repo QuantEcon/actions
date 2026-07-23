@@ -117,6 +117,7 @@ runs:
         jb build "$SOURCE_DIR" --path-output "$OUTPUT_DIR" "${builder_args[@]}" $EXTRA_ARGS
         BUILD_EXIT_CODE=$?
         set -e
+        echo "[debug-temp] jb exit code: $BUILD_EXIT_CODE"
 
         # Set output path regardless of success/failure (compute once; write
         # with the heredoc delimiter form so it's robust to odd characters).
@@ -133,6 +134,7 @@ runs:
         } >> "$GITHUB_OUTPUT"
 
         # Exit with build exit code
+        echo "[debug-temp] reached exit, code: $BUILD_EXIT_CODE"
         exit $BUILD_EXIT_CODE
 
     - name: Report build failure
