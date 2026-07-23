@@ -135,6 +135,10 @@ runs:
 
         # Exit with build exit code
         echo "[debug-temp] reached exit, code: $BUILD_EXIT_CODE"
+        echo "[debug-temp] SHLVL=$SHLVL login_shell=$(shopt -q login_shell && echo yes || echo no)"
+        ls -l /usr/bin/clear_console 2>&1 || true
+        cat /etc/bash.bash_logout 2>/dev/null | sed 's/^/[debug-temp] etc-logout: /' || true
+        cat ~/.bash_logout 2>/dev/null | sed 's/^/[debug-temp] home-logout: /' || true
         exit $BUILD_EXIT_CODE
 
     - name: Report build failure

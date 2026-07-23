@@ -424,6 +424,20 @@ jobs:
           python -m jupyter_book build harness/lectures --path-output dbg5 -W --keep-going > /dev/null 2>&1
           echo "run 5 exit: $?"
 
+      - name: Context probe (workflow step, bash -l)
+        shell: bash -l {0}
+        run: |
+          echo "SHLVL=$SHLVL login_shell=$(shopt -q login_shell && echo yes || echo no)"
+          ls -l /usr/bin/clear_console 2>&1 || true
+          set +e
+          printf 'exit 0\n' > /tmp/s1.sh; bash -l /tmp/s1.sh; echo "L1 explicit exit 0 -> $?"
+          printf 'echo hi > /dev/null\n' > /tmp/s2.sh; bash -l /tmp/s2.sh; echo "L2 EOF after echo -> $?"
+          # shellcheck disable=SC2016
+          printf '{ echo "x<<EOF"; echo v; echo EOF; } >> "$GITHUB_OUTPUT"\nexit 0\n' > /tmp/s3.sh; GITHUB_OUTPUT=/tmp/go bash -l /tmp/s3.sh; echo "L3 heredoc+exit 0 -> $?"
+          printf 'false\nexit 0\n' > /tmp/s4.sh; bash -l /tmp/s4.sh; echo "L4 false then exit 0 -> $?"
+          env -u SHLVL bash -l /tmp/s1.sh; echo "L5 no-SHLVL explicit exit 0 -> $?"
+          SHLVL=0 bash -l /tmp/s1.sh; echo "L6 SHLVL=0 explicit exit 0 -> $?"
+
       # Same command, but through the composite — the context where it fails.
       - name: Run build-lectures composite (expected to fail?)
         id: composite
