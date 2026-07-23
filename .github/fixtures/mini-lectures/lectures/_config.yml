@@ -1,0 +1,16 @@
+title: QuantEcon Actions Harness
+author: QuantEcon
+logo: ""
+# Ignore files outside _toc.yml — the harness drops a per-run salt file into
+# lectures/ to make cache keys unique, and it must not trigger a "document not
+# in any toctree" warning (builds run with -W).
+only_build_toc_files: true
+
+execute:
+  # "cache" (not "off") so a real .jupyter_cache is produced — the execution
+  # cache path is one of the things the harness exists to exercise.
+  execute_notebooks: cache
+
+sphinx:
+  config:
+    html_theme: sphinx_book_theme
