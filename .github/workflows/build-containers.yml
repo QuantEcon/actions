@@ -16,14 +16,26 @@ on:
         required: false
         default: 'all'
 
+# Both jobs push `:latest`, and every consumer pins `:latest`. Without this the
+# older of two overlapping runs can finish last and win the tag.
+concurrency:
+  group: build-containers-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   REGISTRY: ghcr.io
+  # GHCR image paths must be lowercase, so `github.repository_owner` (which
+  # preserves the `QuantEcon` casing) cannot be substituted into an image ref.
+  # buildx treats a rejected cache ref as non-fatal, so getting this wrong makes
+  # every build silently cold rather than failing.
+  IMAGE_NAMESPACE: quantecon
 
 jobs:
   build-quantecon:
     name: Build quantecon (Full)
     runs-on: ubuntu-latest
     if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.container == 'all' || github.event.inputs.container == 'quantecon' }}
+    timeout-minutes: 60
     permissions:
       contents: read
       packages: write
@@ -45,7 +57,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
-          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/quantecon
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/quantecon
           tags: |
             type=raw,value=latest
             type=sha,prefix={{branch}}-
@@ -58,13 +70,14 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/quantecon:latest
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/quantecon:latest
           cache-to: type=inline
 
   build-quantecon-build:
     name: Build quantecon-build (Lean)
     runs-on: ubuntu-latest
     if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.container == 'all' || github.event.inputs.container == 'quantecon-build' }}
+    timeout-minutes: 60
     permissions:
       contents: read
       packages: write
@@ -86,7 +99,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
-          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/quantecon-build
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/quantecon-build
           tags: |
             type=raw,value=latest
             type=sha,prefix={{branch}}-
@@ -99,5 +112,28 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/quantecon-build:latest
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/quantecon-build:latest
           cache-to: type=inline
+
+  notify-failure:
+    name: Report failure
+    runs-on: ubuntu-latest
+    needs: [build-quantecon, build-quantecon-build]
+    # Scheduled and push runs have nobody watching them. Manual dispatches do.
+    if: ${{ failure() && github.event_name != 'workflow_dispatch' }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      actions: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Open or update the failure tracking issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_LABELS: bug,infrastructure
+        run: ./scripts/create-ci-failure-issue.sh

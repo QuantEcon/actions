@@ -4,9 +4,17 @@ name: Test Container Builds
 # Architecture: Each job builds one repo × one container through the full
 # builder pipeline (html → pdflatex → jupyter) sequentially.
 #
-# Concurrency groups ensure the same repo never builds on two containers
-# simultaneously, avoiding network contention from concurrent dataset
+# The job-level concurrency group ensures the same repo never builds on two
+# containers simultaneously, avoiding network contention from concurrent dataset
 # downloads. Different repos can run in parallel.
+#
+# That group is scoped by run id on purpose. A concurrency group holds one
+# running job plus one pending job — a third arrival evicts the pending one — so
+# an unscoped group let a second run silently cancel the first run's queued
+# matrix legs, and `cancelled` does not read as a regression. Run-id scoping caps
+# each group at the number of containers in the matrix; keep that at two, or the
+# eviction returns. Overlapping runs are handled by the workflow-level group
+# below instead, where superseding is explicit.
 #
 # The `quantecon` GHCR org is intentionally hardcoded (GHCR image paths must be
 # lowercase, so github.repository_owner — which preserves casing — can't be substituted here).
@@ -18,15 +26,25 @@ on:
       - completed
   workflow_dispatch:
 
+concurrency:
+  group: test-containers-lectures-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     timeout-minutes: 120
 
-    # Serialize containers for the same repo to avoid concurrent downloads
+    permissions:
+      contents: read
+      packages: read
+
+    # Serialize containers for the same repo to avoid concurrent downloads.
+    # Scoped by run id so queued legs are never evicted by a later run — see the
+    # note at the top of this file.
     concurrency:
-      group: test-build-${{ matrix.repo.repo }}
+      group: test-build-${{ github.run_id }}-${{ matrix.repo.repo }}
       cancel-in-progress: false
 
     strategy:
@@ -110,3 +128,27 @@ jobs:
           name: build-${{ matrix.container }}-${{ matrix.repo.repo }}
           path: lecture-repo/_build
           retention-days: 3
+
+  notify-failure:
+    name: Report failure
+    runs-on: ubuntu-latest
+    needs: [test]
+    # This workflow runs unattended off the weekly container build. Manual
+    # dispatches have someone watching them.
+    if: ${{ failure() && github.event_name != 'workflow_dispatch' }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      actions: read
+    steps:
+      - name: Checkout actions repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Open or update the failure tracking issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_LABELS: bug,infrastructure
+        run: ./scripts/create-ci-failure-issue.sh
