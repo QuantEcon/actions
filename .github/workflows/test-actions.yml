@@ -373,6 +373,57 @@ jobs:
           [ -f harness/_build/.jupyter_cache/global.db ] || { echo "::error::_build/.jupyter_cache/global.db missing — execution cache was not populated"; exit 1; }
           echo "✅ build-lectures produced an executed site from the cache-restored env"
 
+  # TEMPORARY diagnostic job — remove before merge. jb build exits 1 on the
+  # runner after printing a full success banner; not reproducible locally on
+  # macOS, linux/arm64, linux/amd64 (venv or conda). This isolates where.
+  debug-jb-exit:
+    name: 'DEBUG: jb silent exit 1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: env-seed
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Recreate salted fixture
+        run: |
+          cp -r .github/fixtures/mini-lectures harness
+          printf '\n# harness-salt: %s-book\n' "$SALT" >> harness/environment.yml
+          printf '%% harness salt: %s-book\n' "$SALT" > harness/lectures/salt.md
+
+      - name: Setup environment
+        uses: ./setup-environment
+        with:
+          environment: 'harness/environment.yml'
+
+      - name: Diagnose
+        shell: bash -l {0}
+        run: |
+          echo "=== interpreter and packages"
+          which python jb || true
+          python -VV
+          pip list 2>/dev/null | grep -iE 'ipykernel|jupyter|pyzmq|nbclient|sphinx|myst|click|traitlets' || true
+
+          set +e
+          echo "=== run 1: plain -W --keep-going (fresh execution, output visible)"
+          jb build harness/lectures --path-output dbg1 -W --keep-going
+          echo "run 1 exit: $?"
+
+          echo "=== run 2: same path again (execution served from cache, no kernel launch)"
+          jb build harness/lectures --path-output dbg1 -W --keep-going > /dev/null 2>&1
+          echo "run 2 exit: $?"
+
+          echo "=== run 3: fresh dir, dev mode + faulthandler (teardown diagnostics to stderr)"
+          PYTHONDEVMODE=1 PYTHONFAULTHANDLER=1 jb build harness/lectures --path-output dbg3 -W --keep-going
+          echo "run 3 exit: $?"
+
+          echo "=== run 4: fresh dir, no -W/--keep-going"
+          jb build harness/lectures --path-output dbg4 > /dev/null 2>&1
+          echo "run 4 exit: $?"
+
+          echo "=== run 5: fresh dir, python -m jupyter_book (bypass console script)"
+          python -m jupyter_book build harness/lectures --path-output dbg5 -W --keep-going > /dev/null 2>&1
+          echo "run 5 exit: $?"
+
   # ==========================================================================
   # build-jupyter-cache — smoke + round-trip into restore-jupyter-cache.
   # Its internal setup-environment/build-lectures calls run @v0 (see header).
