@@ -19,6 +19,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   publish/preview coverage and the `@v0` sibling-pin chain remain with the post-release canary
   proposed there. (#100)
 
+### Fixed
+- **setup-environment**: the standard-mode Conda environment cache could be saved but **never
+  restored** on hosted runners. The cache was rooted at `${CONDA}/envs`, whose parent directory
+  is root-owned on the runner image, so every restore died in tar (`Cannot utime` / `Cannot
+  change mode: Operation not permitted`) and `actions/cache` reported a miss — every run paid
+  the full environment solve, and a partial extraction could leave a mangled env behind for
+  `conda env update` to patch. The cache is now rooted at the runner-owned
+  `${CONDA}/envs/<environment-name>` directory, which round-trips cleanly. Existing caches under
+  the old path become unreachable (the `path` input is part of the cache version); the first run
+  after upgrading re-saves under the new path. Caught by the new action harness on its first run
+  — this is the #33/#78 path that PLAN item 9 noted had never been confirmed by CI. (#100)
+
 ## [0.9.0] - 2026-07-23
 
 ### Added
