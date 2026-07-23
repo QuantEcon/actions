@@ -17,6 +17,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   watching. (#103)
 
 ### Fixed
+- **restore-jupyter-cache**: Every output, and the `fail-on-miss` guard, now work with
+  `save-cache: 'true'`. The save-mode step used the top-level `actions/cache@v6`, which declares
+  `cache-hit` alone — `cache-matched-key` exists only on `actions/cache/restore` — so the outputs
+  bound to it always came back empty: `cache-hit` was `false` on a perfect restore, `cache-key` was
+  blank, the status report announced "⚠️ No cache found" immediately after logging a successful
+  restore, and `fail-on-miss: 'true'` failed the job unconditionally. The restore now always runs
+  through `actions/cache/restore@v6`, and save mode adds an `actions/cache@v6` step with
+  `lookup-only: true` whose only job is to register the job-end save `post:` hook. ⚠️ This is the
+  mode the preview-optimisation work rolls out (#92). (#104)
+- **restore-jupyter-cache**: Dropped the bare `build-` restore-key fallback, which made the build
+  cache impossible to miss — an `environment.yml` change silently restored a `_build` produced by
+  the old environment instead of missing and rebuilding, contradicting the action's own documented
+  behaviour. The `build-{env-hash}-{update-hash}-` and `build-{env-hash}-` fallbacks remain, so a
+  warm start is still found within the same environment. The execution cache keeps its bare
+  `jupyter-cache-` fallback: `.jupyter_cache` is content-addressed per notebook and revalidates
+  itself, whereas `_build` carries no record of what produced it. (#104)
 - **CI**: The buildx registry layer cache in `build-containers.yml` now resolves. Both `cache-from`
   refs interpolated `github.repository_owner`, which preserves the `QuantEcon` casing; buildx
   rejects `ghcr.io/QuantEcon/...` as "repository name must be lowercase" and treats a failed cache
