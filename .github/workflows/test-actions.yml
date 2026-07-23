@@ -373,88 +373,6 @@ jobs:
           [ -f harness/_build/.jupyter_cache/global.db ] || { echo "::error::_build/.jupyter_cache/global.db missing — execution cache was not populated"; exit 1; }
           echo "✅ build-lectures produced an executed site from the cache-restored env"
 
-  # TEMPORARY diagnostic job — remove before merge. jb build exits 1 on the
-  # runner after printing a full success banner; not reproducible locally on
-  # macOS, linux/arm64, linux/amd64 (venv or conda). This isolates where.
-  debug-jb-exit:
-    name: 'DEBUG: jb silent exit 1'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    needs: env-seed
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Recreate salted fixture
-        run: |
-          cp -r .github/fixtures/mini-lectures harness
-          printf '\n# harness-salt: %s-book\n' "$SALT" >> harness/environment.yml
-          printf '%% harness salt: %s-book\n' "$SALT" > harness/lectures/salt.md
-
-      - name: Setup environment
-        uses: ./setup-environment
-        with:
-          environment: 'harness/environment.yml'
-
-      - name: Diagnose
-        shell: bash -l {0}
-        run: |
-          echo "=== interpreter and packages"
-          which python jb || true
-          python -VV
-          pip list 2>/dev/null | grep -iE 'ipykernel|jupyter|pyzmq|nbclient|sphinx|myst|click|traitlets' || true
-
-          set +e
-          echo "=== run 1: plain -W --keep-going (fresh execution, output visible)"
-          jb build harness/lectures --path-output dbg1 -W --keep-going
-          echo "run 1 exit: $?"
-
-          echo "=== run 2: same path again (execution served from cache, no kernel launch)"
-          jb build harness/lectures --path-output dbg1 -W --keep-going > /dev/null 2>&1
-          echo "run 2 exit: $?"
-
-          echo "=== run 3: fresh dir, dev mode + faulthandler (teardown diagnostics to stderr)"
-          PYTHONDEVMODE=1 PYTHONFAULTHANDLER=1 jb build harness/lectures --path-output dbg3 -W --keep-going
-          echo "run 3 exit: $?"
-
-          echo "=== run 4: fresh dir, no -W/--keep-going"
-          jb build harness/lectures --path-output dbg4 > /dev/null 2>&1
-          echo "run 4 exit: $?"
-
-          echo "=== run 5: fresh dir, python -m jupyter_book (bypass console script)"
-          python -m jupyter_book build harness/lectures --path-output dbg5 -W --keep-going > /dev/null 2>&1
-          echo "run 5 exit: $?"
-
-      - name: Context probe (workflow step, bash -l)
-        shell: bash -l {0}
-        run: |
-          echo "SHLVL=$SHLVL login_shell=$(shopt -q login_shell && echo yes || echo no)"
-          ls -l /usr/bin/clear_console 2>&1 || true
-          set +e
-          printf 'exit 0\n' > /tmp/s1.sh; bash -l /tmp/s1.sh; echo "L1 explicit exit 0 -> $?"
-          printf 'echo hi > /dev/null\n' > /tmp/s2.sh; bash -l /tmp/s2.sh; echo "L2 EOF after echo -> $?"
-          # shellcheck disable=SC2016
-          printf '{ echo "x<<EOF"; echo v; echo EOF; } >> "$GITHUB_OUTPUT"\nexit 0\n' > /tmp/s3.sh; GITHUB_OUTPUT=/tmp/go bash -l /tmp/s3.sh; echo "L3 heredoc+exit 0 -> $?"
-          printf 'false\nexit 0\n' > /tmp/s4.sh; bash -l /tmp/s4.sh; echo "L4 false then exit 0 -> $?"
-          env -u SHLVL bash -l /tmp/s1.sh; echo "L5 no-SHLVL explicit exit 0 -> $?"
-          SHLVL=0 bash -l /tmp/s1.sh; echo "L6 SHLVL=0 explicit exit 0 -> $?"
-
-      # Same command, but through the composite — the context where it fails.
-      - name: Run build-lectures composite (expected to fail?)
-        id: composite
-        continue-on-error: true
-        uses: ./build-lectures
-        with:
-          builder: 'html'
-          source-dir: 'harness/lectures'
-          output-dir: 'dbg-composite'
-
-      - name: Report composite outcome
-        env:
-          OUTCOME: ${{ steps.composite.outcome }}
-        run: |
-          echo "composite outcome: $OUTCOME"
-          ls dbg-composite/_build/html/index.html 2>/dev/null && echo "html produced" || echo "no html"
-
   # ==========================================================================
   # build-jupyter-cache — smoke + round-trip into restore-jupyter-cache.
   # Its internal setup-environment/build-lectures calls run @v0 (see header).
@@ -476,6 +394,15 @@ jobs:
           cp -r .github/fixtures/mini-lectures harness
           printf '\n# harness-salt: %s-book\n' "$SALT" >> harness/environment.yml
           printf '%% harness salt: %s-book\n' "$SALT" > harness/lectures/salt.md
+
+      # The internal build-lectures@v0 still ends its login-shell build step
+      # with the exit builtin, which ~/.bash_logout corrupts on hosted runners
+      # (clear_console fails at SHLVL=1 and overrides the status — the bug
+      # fixed in this repo's build-lectures). The pinned @v0 copy can't pick
+      # that fix up until the tag moves, so neutralize the logout hook for
+      # this job. Drop this step once v0 includes the build-lectures fix.
+      - name: Remove ~/.bash_logout (workaround for pre-fix build-lectures@v0)
+        run: rm -f ~/.bash_logout
 
       - name: Build and cache
         id: bjc

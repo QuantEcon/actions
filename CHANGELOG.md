@@ -20,6 +20,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   proposed there. (#100)
 
 ### Fixed
+- **build-lectures**: on hosted (non-container) runners, a **successful build failed the step
+  anyway**. The build step runs in a login shell (`bash -l`, required for conda activation) and
+  ended with `exit $BUILD_EXIT_CODE`; the exit builtin triggers `~/.bash_logout` processing,
+  where Ubuntu's `clear_console` fails on a headless runner at `SHLVL=1` and its status
+  overrides the one passed to `exit` — so `jb build` printed its success banner and the step
+  still returned 1. The step now returns its status by ending the script instead of calling
+  `exit`. Container builds were never affected (root has no `~/.bash_logout`), which is why
+  production lecture builds never surfaced this. Caught by the new action harness. (#100)
 - **setup-environment**: the standard-mode Conda environment cache could be saved but **never
   restored** on hosted runners. The cache was rooted at `${CONDA}/envs`, whose parent directory
   is root-owned on the runner image, so every restore died in tar (`Cannot utime` / `Cannot
