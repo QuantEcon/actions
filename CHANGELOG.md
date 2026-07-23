@@ -70,14 +70,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (#103)
 - **Containers (quantecon-build)**: Pinned the lean image's core scientific stack (numpy, scipy,
   pandas, matplotlib, seaborn, sympy, numba, networkx, statsmodels, scikit-learn) to the Anaconda
-  2025.12 baseline that every lecture repo builds against (via `anaconda=2025.12`), instead of
+  2025.12 baseline the lecture repos built against at the time (via `anaconda=2025.12`), instead of
   resolving to "latest at build time". The unpinned stack drifted ahead of that baseline, yielding
   non-reproducible images that diverged from what the lectures are tested against; downstream this
   surfaced as a `CellExecutionError` in `un_insure.md` on repos building on the lean image (the
   likely trigger being numpy 2.4.0's stricter array-to-scalar conversion, though the exact breaking
   combination is no longer reproducible on current packages). The full `quantecon` image already
-  pins `anaconda=2025.12` and was unaffected. (#28) — note both images have since moved to the
-  2026.06 baseline within this same release; see **Changed** above (#95).
+  pinned `anaconda=2025.12` and was unaffected. (#28) — both images have since moved to the 2026.06
+  baseline within this same release; see **Changed** above (#95).
 - **Containers**: Pinned `kaleido<1.0` in both images and dropped the build-time
   `kaleido.get_chrome_sync()` step. Unpinned, `kaleido` resolved to v1.x, which dropped the bundled
   chromium and requires a separately provisioned Chrome; the build-time download landed in `/root`
@@ -388,7 +388,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History
 
-- **v0**: Tracks latest stable release (currently v0.9.0)
+- **v0**: Tracks the latest stable release — the topmost dated section above
 - **v0.x.x**: Development/testing releases
 
 ## Migration from Legacy Workflows
