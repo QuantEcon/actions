@@ -7,7 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **CI**: `test-containers-lectures.yml` and `build-containers.yml` now open (or comment on) a
+  deduplicated tracking issue when they fail, via the new
+  `scripts/create-ci-failure-issue.sh`. Both run unattended — off a weekly schedule and off
+  `workflow_run` — and had no alert path: container validation was red for nine consecutive weeks
+  in Feb–Apr 2026 with nothing surfacing it. One open issue is kept per workflow; repeat failures
+  are appended as comments. Manual `workflow_dispatch` runs are excluded, since those have someone
+  watching. (#103)
+
 ### Fixed
+- **CI**: The buildx registry layer cache in `build-containers.yml` now resolves. Both `cache-from`
+  refs interpolated `github.repository_owner`, which preserves the `QuantEcon` casing; buildx
+  rejects `ghcr.io/QuantEcon/...` as "repository name must be lowercase" and treats a failed cache
+  import as non-fatal, so every container build since the cache was added has been cold — and green.
+  The namespace is now a lowercase `IMAGE_NAMESPACE` env var used by both jobs. (#103)
+- **CI**: Added a workflow-level `concurrency` group to `build-containers.yml`. Both jobs push
+  `:latest` and every consumer pins `:latest`, but nothing serialised the workflow — on 2026-07-08
+  two overlapping runs meant the *older* commit's build finished last and won the tag. (#103)
+- **CI**: `test-containers-lectures.yml` no longer silently cancels most of its matrix. The
+  job-level group `test-build-${{ matrix.repo.repo }}` was shared across runs, and a concurrency
+  group holds only one running plus one pending job, so a later run evicted the earlier run's queued
+  legs — all three runs on 2026-07-08 concluded `cancelled`, which does not read as a regression.
+  The group is now scoped by run id, with superseding handled explicitly by a workflow-level group.
+  This is the only workflow that exercises `setup-environment` and `build-lectures` against real
+  lecture content. (#103)
+- **CI**: Added `permissions:` and `timeout-minutes` to the workflows that declared neither
+  (`test-container.yml`, `check-latex-versions.yml`), `permissions:` to
+  `test-containers-lectures.yml`, and `timeout-minutes` to the `build-containers.yml` build jobs.
+  (#103)
 - **Containers (quantecon-build)**: Pinned the lean image's core scientific stack (numpy, scipy,
   pandas, matplotlib, seaborn, sympy, numba, networkx, statsmodels, scikit-learn) to the Anaconda
   2025.12 baseline that every lecture repo builds against (via `anaconda=2025.12`), instead of
