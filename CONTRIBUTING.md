@@ -66,6 +66,14 @@ should pin an exact `v0.x.y` tag. After the 1.0.0 release, we'll add floating ma
    - Copy changelog entry as release notes
    - Attach any relevant artifacts
 
+5. **Drop any `@v0` workarounds the release makes obsolete.** `build-jupyter-cache` calls
+   `setup-environment` and `build-lectures` at the pinned `@v0` ref (GitHub forbids expressions
+   in `uses:`), so a fix to a sibling action only reaches that chain when `v0` moves in step 3.
+   The action harness carries explicit workarounds for that window; grep
+   `.github/workflows/test-actions.yml` for `@v0` and remove any that this release resolves.
+   Currently outstanding: the `rm -f ~/.bash_logout` step in `bjc-smoke`, which compensates for
+   the pre-fix `exit`-builtin pattern in `build-lectures@v0`.
+
 ### Breaking Changes
 
 **During 0.x phase (current):**
