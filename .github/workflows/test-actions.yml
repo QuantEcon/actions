@@ -373,6 +373,61 @@ jobs:
           [ -f harness/_build/.jupyter_cache/global.db ] || { echo "::error::_build/.jupyter_cache/global.db missing — execution cache was not populated"; exit 1; }
           echo "✅ build-lectures produced an executed site from the cache-restored env"
 
+  build-fail-guard:
+    # The negative half of the build-lectures contract. env-hit-build proves a
+    # successful build reports success; this proves a *failed* build still
+    # fails the step. Both directions matter, and this one guards the fix in
+    # this PR: build-lectures returns its status by ending the script rather
+    # than via the exit builtin (see build-lectures/action.yml), and any future
+    # edit that drops that trailing `(exit "$BUILD_EXIT_CODE")` — or appends a
+    # command after it — would silently discard the status and turn every
+    # broken consumer build into a pass. Nothing else in the harness notices.
+    name: 'build-lectures: a failing build fails the step'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: env-seed
+    steps:
+      - uses: actions/checkout@v7
+
+      # Same salt as env-seed, so the conda env restores from its cache.
+      - name: Recreate salted fixture with a deliberately broken page
+        run: |
+          cp -r .github/fixtures/mini-lectures harness
+          printf '\n# harness-salt: %s-book\n' "$SALT" >> harness/environment.yml
+          printf '%% harness salt: %s-book\n' "$SALT" > harness/lectures/salt.md
+          # Derive the broken page from the good one so its frontmatter and
+          # kernelspec stay valid — the build must fail on the raised
+          # AssertionError, not on a malformed document.
+          sed -e 's/^# An Executed Lecture$/# A Deliberately Broken Lecture/' \
+              -e 's/^assert total == 285$/assert total == 0, "harness: deliberate build failure"/' \
+              harness/lectures/lecture1.md > harness/lectures/broken.md
+          printf '  - file: broken\n' >> harness/lectures/_toc.yml
+          grep -q 'assert total == 0' harness/lectures/broken.md \
+            || { echo "::error::fixture setup failed — broken.md has no failing cell"; exit 1; }
+
+      - name: Setup environment
+        uses: ./setup-environment
+        with:
+          environment: 'harness/environment.yml'
+
+      # Expect ::error:: annotations from build-lectures' own failure reporter
+      # in this job's log — they are the action working correctly.
+      - name: Build lectures (expected to fail)
+        id: build
+        continue-on-error: true
+        uses: ./build-lectures
+        with:
+          builder: 'html'
+          source-dir: 'harness/lectures'
+          output-dir: 'harness'
+
+      - name: Assert the build failure propagated
+        env:
+          OUTCOME: ${{ steps.build.outcome }}
+        run: |
+          [ "$OUTCOME" = "failure" ] || { echo "::error::build-lectures reported [$OUTCOME] for a build whose execution raised — a failing build must fail the step"; exit 1; }
+          echo "✅ a failing build fails the step (exit status propagates)"
+
   # ==========================================================================
   # build-jupyter-cache — smoke + round-trip into restore-jupyter-cache.
   # Its internal setup-environment/build-lectures calls run @v0 (see header).
@@ -519,6 +574,7 @@ jobs:
       - unit-exec-restore-save
       - env-seed
       - env-hit-build
+      - build-fail-guard
       - bjc-smoke
       - bjc-restore-build
       - bjc-restore-exec

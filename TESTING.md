@@ -30,7 +30,7 @@ Fixtures are salted with `run_id`-`run_attempt` so cache keys are unique per run
 |---|---|
 | `restore-jupyter-cache` | Both cache types × both modes: seed/miss, read-only restore, save-mode restore (the #104 scenario), `fail-on-miss` firing and staying quiet, payload round-trip |
 | `setup-environment` | Standard-mode conda cache, two-run miss→hit chain (the #33/#78 path, previously never confirmed by CI) |
-| `build-lectures` | Real HTML build of the fixture on the cache-restored conda env, executed-cell output asserted |
+| `build-lectures` | Real HTML build of the fixture on the cache-restored conda env, executed-cell output asserted; plus the negative direction — a page whose code cell raises must fail the step, so a regression that swallows the build status cannot pass silently |
 | `build-jupyter-cache` | Smoke build + outputs, then a full round-trip into `restore-jupyter-cache` for both cache types. ⚠️ Its internal `setup-environment`/`build-lectures` calls run `@v0`, not the PR — GitHub forbids expressions in `uses:`, so that chain is untestable pre-release by construction (see #100) |
 | `publish-gh-pages`, `preview-netlify`, `preview-cloudflare` | ❌ Not covered — need real deploy targets and secrets; owned by the post-release canary repo (stage 2+ of #100) |
 

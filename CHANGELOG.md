@@ -12,7 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tests for the action logic itself, run against the PR's code via `./` local paths. Covers
   `restore-jupyter-cache` (both cache types × both modes, `fail-on-miss` both ways — the #104
   defect class), the standard-mode conda cache in `setup-environment` (two-run miss→hit chain,
-  the #33/#78 path CI had never confirmed), a real executed `build-lectures` HTML build, and a
+  the #33/#78 path CI had never confirmed), a real executed `build-lectures` HTML build in both
+  directions (a good build passes; a build whose code cell raises must fail the step), and a
   `build-jupyter-cache` → `restore-jupyter-cache` round-trip. Ships a committed
   `.github/fixtures/mini-lectures/` fixture that, unlike the container test book, executes a
   real code cell so `_build/.jupyter_cache` is genuinely populated. First stage of #100;
