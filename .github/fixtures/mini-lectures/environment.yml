@@ -1,0 +1,9 @@
+name: quantecon
+channels:
+  - defaults
+dependencies:
+  - python=3.13
+  - pip
+  - pip:
+    - jupyter-book==1.0.4post1
+    - ipykernel

@@ -1,0 +1,589 @@
+# Action-level PR harness (issue #100, stage 1).
+#
+# Exercises the composite actions in this repo via `uses: ./<action>` — the
+# code on the PR, not a released ref — and asserts on their outputs and on the
+# filesystem. This is the permanent form of the throwaway harness that verified
+# the #104 fix (restore-jupyter-cache save-mode outputs dead on arrival).
+#
+# Determinism: every job seeds its fixture with a salt derived from
+# run_id + run_attempt, so cache keys are unique per run and a "miss"
+# assertion can never be polluted by caches from earlier runs, re-runs, or
+# other branches. Jobs that must see each other's caches recreate the fixture
+# byte-for-byte and are ordered with `needs:` (actions/cache saves are visible
+# across jobs of the same run).
+#
+# Two constraints shape what this harness can and cannot assert:
+#
+#   1. actions/cache matches a key only when the cache "version" (a hash of
+#      the `path` input) also matches — so every restore here uses the same
+#      path the corresponding save used.
+#   2. The execution cache keeps a bare `jupyter-cache-` restore-key fallback
+#      (deliberately — .jupyter_cache is content-addressed and revalidates
+#      itself), so a *genuine miss* for the execution type is not constructible
+#      once any execution cache exists in scope. Miss assertions therefore use
+#      the build type, whose fallbacks all include the salted env hash.
+#
+# Structural limitation (see #100 for the full argument): build-jupyter-cache
+# calls setup-environment and build-lectures at the pinned @v0 ref, and
+# GitHub does not allow expressions in `uses:`. The bjc-smoke job below runs
+# the PR's build-jupyter-cache logic, but its internal sibling calls execute
+# @v0 regardless. Pre-release coverage of that chain is impossible in-repo by
+# construction; the post-release canary (stage 2 of #100) owns it.
+
+name: Test Actions
+
+on:
+  pull_request:
+    paths:
+      - 'restore-jupyter-cache/**'
+      - 'build-jupyter-cache/**'
+      - 'setup-environment/**'
+      - 'build-lectures/**'
+      - '.github/workflows/test-actions.yml'
+      - '.github/fixtures/mini-lectures/**'
+  push:
+    branches:
+      - main
+    paths:
+      - 'restore-jupyter-cache/**'
+      - 'build-jupyter-cache/**'
+      - 'setup-environment/**'
+      - 'build-lectures/**'
+      - '.github/workflows/test-actions.yml'
+      - '.github/fixtures/mini-lectures/**'
+  workflow_dispatch:
+
+concurrency:
+  group: test-actions-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  SALT: ${{ github.run_id }}-${{ github.run_attempt }}
+
+jobs:
+  # ==========================================================================
+  # restore-jupyter-cache — unit jobs (synthetic fixtures, no conda, seconds)
+  # ==========================================================================
+
+  unit-build-seed:
+    name: 'restore-jupyter-cache: seed build cache (save mode, genuine miss)'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Create salted fixture
+        run: |
+          mkdir -p harness
+          printf 'harness-env-salt: %s-unit-build\n' "$SALT" > harness/environment.yml
+
+      - name: Restore (save mode, expecting a miss)
+        id: restore
+        uses: ./restore-jupyter-cache
+        with:
+          cache-type: 'build'
+          environment: 'harness/environment.yml'
+          save-cache: 'true'
+
+      - name: Assert outputs report a miss
+        env:
+          CACHE_HIT: ${{ steps.restore.outputs.cache-hit }}
+          CACHE_KEY: ${{ steps.restore.outputs.cache-key }}
+        run: |
+          [ "$CACHE_HIT" = "false" ] || { echo "::error::cache-hit: expected [false], got [$CACHE_HIT]"; exit 1; }
+          [ -z "$CACHE_KEY" ] || { echo "::error::cache-key: expected empty, got [$CACHE_KEY]"; exit 1; }
+          echo "✅ miss reported correctly (cache-hit=false, cache-key empty)"
+
+      # Written after the action ran: the save happens in a post: hook at job
+      # end, so this payload is what gets cached under build-{hash}--{run_id}.
+      - name: Write payload for downstream restore jobs
+        run: |
+          mkdir -p _build/html
+          echo "<html>harness</html>" > _build/html/index.html
+          printf '%s-unit-build\n' "$SALT" > _build/STAMP
+
+  unit-build-restore:
+    name: 'restore-jupyter-cache: build cache read-only restore + quiet guard'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: unit-build-seed
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Recreate salted fixture
+        run: |
+          mkdir -p harness
+          printf 'harness-env-salt: %s-unit-build\n' "$SALT" > harness/environment.yml
+
+      # fail-on-miss on a hit doubles as the "guard stays quiet" scenario.
+      - name: Restore (read-only)
+        id: restore
+        uses: ./restore-jupyter-cache
+        with:
+          cache-type: 'build'
+          environment: 'harness/environment.yml'
+          fail-on-miss: 'true'
+
+      - name: Assert hit, matched key, and payload
+        env:
+          CACHE_HIT: ${{ steps.restore.outputs.cache-hit }}
+          CACHE_KEY: ${{ steps.restore.outputs.cache-key }}
+          EXPECTED_KEY: build-${{ hashFiles('harness/environment.yml') }}--${{ github.run_id }}
+        run: |
+          [ "$CACHE_HIT" = "true" ] || { echo "::error::cache-hit: expected [true], got [$CACHE_HIT]"; exit 1; }
+          [ "$CACHE_KEY" = "$EXPECTED_KEY" ] || { echo "::error::cache-key: expected [$EXPECTED_KEY], got [$CACHE_KEY]"; exit 1; }
+          [ "$(cat _build/STAMP)" = "$SALT-unit-build" ] || { echo "::error::payload STAMP mismatch: got [$(cat _build/STAMP)]"; exit 1; }
+          [ -f _build/html/index.html ] || { echo "::error::restored payload is missing _build/html/index.html"; exit 1; }
+          echo "✅ read-only restore reported the hit and delivered the payload"
+
+  unit-build-restore-save:
+    # The #104 regression scenario: save mode must still report the hit.
+    name: 'restore-jupyter-cache: build cache restore in save mode (#104)'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: unit-build-seed
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Recreate salted fixture
+        run: |
+          mkdir -p harness
+          printf 'harness-env-salt: %s-unit-build\n' "$SALT" > harness/environment.yml
+
+      - name: Restore (save mode)
+        id: restore
+        uses: ./restore-jupyter-cache
+        with:
+          cache-type: 'build'
+          environment: 'harness/environment.yml'
+          save-cache: 'true'
+
+      - name: Assert hit, matched key, and payload
+        env:
+          CACHE_HIT: ${{ steps.restore.outputs.cache-hit }}
+          CACHE_KEY: ${{ steps.restore.outputs.cache-key }}
+          EXPECTED_KEY: build-${{ hashFiles('harness/environment.yml') }}--${{ github.run_id }}
+        run: |
+          [ "$CACHE_HIT" = "true" ] || { echo "::error::cache-hit: expected [true], got [$CACHE_HIT] — this is the exact #104 failure mode"; exit 1; }
+          [ "$CACHE_KEY" = "$EXPECTED_KEY" ] || { echo "::error::cache-key: expected [$EXPECTED_KEY], got [$CACHE_KEY]"; exit 1; }
+          [ "$(cat _build/STAMP)" = "$SALT-unit-build" ] || { echo "::error::payload STAMP mismatch: got [$(cat _build/STAMP)]"; exit 1; }
+          echo "✅ save-mode restore reported the hit (outputs alive, #104 stays fixed)"
+
+  unit-build-miss-guard:
+    name: 'restore-jupyter-cache: fail-on-miss fires on a genuine miss'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Create salted fixture (distinct salt — nothing ever saved for it)
+        run: |
+          mkdir -p harness
+          printf 'harness-env-salt: %s-unit-miss\n' "$SALT" > harness/environment.yml
+
+      - name: Restore with fail-on-miss (expected to fail)
+        id: restore
+        continue-on-error: true
+        uses: ./restore-jupyter-cache
+        with:
+          cache-type: 'build'
+          environment: 'harness/environment.yml'
+          fail-on-miss: 'true'
+
+      - name: Assert the guard fired
+        env:
+          OUTCOME: ${{ steps.restore.outcome }}
+        run: |
+          [ "$OUTCOME" = "failure" ] || { echo "::error::fail-on-miss did not fail the action on a genuine miss (outcome=[$OUTCOME])"; exit 1; }
+          [ ! -d _build ] || { echo "::error::_build exists after a supposed miss — something was restored"; exit 1; }
+          echo "✅ fail-on-miss guard fired on a genuine miss"
+
+  unit-exec-seed:
+    name: 'restore-jupyter-cache: seed execution cache (save mode)'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Create salted fixture
+        run: |
+          mkdir -p harness/lectures
+          printf '%% harness salt: %s-unit-exec\n' "$SALT" > harness/lectures/note.md
+
+      # No miss assertion here: the bare `jupyter-cache-` fallback (see header)
+      # can legitimately restore an older cache. The payload STAMP written
+      # below is what downstream jobs assert on, so a wrong restore cannot
+      # produce a false pass.
+      - name: Restore (save mode)
+        uses: ./restore-jupyter-cache
+        with:
+          cache-type: 'execution'
+          source-dir: 'harness/lectures'
+          save-cache: 'true'
+
+      - name: Write payload for downstream restore jobs
+        run: |
+          mkdir -p _build/.jupyter_cache
+          printf '%s-unit-exec\n' "$SALT" > _build/.jupyter_cache/STAMP
+
+  unit-exec-restore:
+    name: 'restore-jupyter-cache: execution cache read-only restore + quiet guard'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: unit-exec-seed
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Recreate salted fixture
+        run: |
+          mkdir -p harness/lectures
+          printf '%% harness salt: %s-unit-exec\n' "$SALT" > harness/lectures/note.md
+
+      - name: Restore (read-only)
+        id: restore
+        uses: ./restore-jupyter-cache
+        with:
+          cache-type: 'execution'
+          source-dir: 'harness/lectures'
+          fail-on-miss: 'true'
+
+      - name: Assert hit, matched key, and payload
+        env:
+          CACHE_HIT: ${{ steps.restore.outputs.cache-hit }}
+          CACHE_KEY: ${{ steps.restore.outputs.cache-key }}
+          EXPECTED_KEY: jupyter-cache-${{ hashFiles('harness/lectures/**/*.md') }}-${{ github.run_id }}
+        run: |
+          [ "$CACHE_HIT" = "true" ] || { echo "::error::cache-hit: expected [true], got [$CACHE_HIT]"; exit 1; }
+          [ "$CACHE_KEY" = "$EXPECTED_KEY" ] || { echo "::error::cache-key: expected [$EXPECTED_KEY], got [$CACHE_KEY]"; exit 1; }
+          [ "$(cat _build/.jupyter_cache/STAMP)" = "$SALT-unit-exec" ] || { echo "::error::payload STAMP mismatch: got [$(cat _build/.jupyter_cache/STAMP)]"; exit 1; }
+          echo "✅ execution cache read-only restore verified"
+
+  unit-exec-restore-save:
+    name: 'restore-jupyter-cache: execution cache restore in save mode'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: unit-exec-seed
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Recreate salted fixture
+        run: |
+          mkdir -p harness/lectures
+          printf '%% harness salt: %s-unit-exec\n' "$SALT" > harness/lectures/note.md
+
+      - name: Restore (save mode)
+        id: restore
+        uses: ./restore-jupyter-cache
+        with:
+          cache-type: 'execution'
+          source-dir: 'harness/lectures'
+          save-cache: 'true'
+
+      - name: Assert hit, matched key, and payload
+        env:
+          CACHE_HIT: ${{ steps.restore.outputs.cache-hit }}
+          CACHE_KEY: ${{ steps.restore.outputs.cache-key }}
+          EXPECTED_KEY: jupyter-cache-${{ hashFiles('harness/lectures/**/*.md') }}-${{ github.run_id }}
+        run: |
+          [ "$CACHE_HIT" = "true" ] || { echo "::error::cache-hit: expected [true], got [$CACHE_HIT]"; exit 1; }
+          [ "$CACHE_KEY" = "$EXPECTED_KEY" ] || { echo "::error::cache-key: expected [$EXPECTED_KEY], got [$CACHE_KEY]"; exit 1; }
+          [ "$(cat _build/.jupyter_cache/STAMP)" = "$SALT-unit-exec" ] || { echo "::error::payload STAMP mismatch: got [$(cat _build/.jupyter_cache/STAMP)]"; exit 1; }
+          echo "✅ execution cache save-mode restore verified"
+
+  # ==========================================================================
+  # setup-environment — standard-mode conda cache, two-run miss→hit chain
+  # (PLAN item 9: the #33/#78 cache fix had never been confirmed by CI)
+  # ==========================================================================
+
+  env-seed:
+    name: 'setup-environment: standard mode, cold conda cache'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Create salted fixture
+        run: |
+          cp -r .github/fixtures/mini-lectures harness
+          printf '\n# harness-salt: %s-book\n' "$SALT" >> harness/environment.yml
+          printf '%% harness salt: %s-book\n' "$SALT" > harness/lectures/salt.md
+
+      - name: Setup environment
+        id: setup
+        uses: ./setup-environment
+        with:
+          environment: 'harness/environment.yml'
+
+      - name: Assert standard mode and no exact cache hit
+        env:
+          CONTAINER_MODE: ${{ steps.setup.outputs.container-mode }}
+          CONDA_CACHE_HIT: ${{ steps.setup.outputs.conda-cache-hit }}
+        run: |
+          [ "$CONTAINER_MODE" = "false" ] || { echo "::error::container-mode: expected [false], got [$CONTAINER_MODE]"; exit 1; }
+          [ "$CONDA_CACHE_HIT" != "true" ] || { echo "::error::conda-cache-hit=true on a salted (never-cached) environment"; exit 1; }
+          echo "✅ cold run: environment created fresh (conda cache saves at job end)"
+
+  env-hit-build:
+    name: 'setup-environment: warm conda cache + build-lectures on the restored env'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: env-seed
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Recreate salted fixture
+        run: |
+          cp -r .github/fixtures/mini-lectures harness
+          printf '\n# harness-salt: %s-book\n' "$SALT" >> harness/environment.yml
+          printf '%% harness salt: %s-book\n' "$SALT" > harness/lectures/salt.md
+
+      - name: Setup environment
+        id: setup
+        uses: ./setup-environment
+        with:
+          environment: 'harness/environment.yml'
+
+      - name: Assert exact conda cache hit
+        env:
+          CONDA_CACHE_HIT: ${{ steps.setup.outputs.conda-cache-hit }}
+        run: |
+          [ "$CONDA_CACHE_HIT" = "true" ] || { echo "::error::conda-cache-hit: expected [true] on second run, got [$CONDA_CACHE_HIT] — conda env caching is broken (#33/#78 regression)"; exit 1; }
+          echo "✅ warm run: conda environment restored from cache"
+
+      # Building on the restored (not freshly created) env is the point: it
+      # proves the cached environment is functional, not just present.
+      - name: Build lectures (html)
+        id: build
+        uses: ./build-lectures
+        with:
+          builder: 'html'
+          source-dir: 'harness/lectures'
+          output-dir: 'harness'
+
+      - name: Assert build output and executed cell
+        env:
+          BUILD_PATH: ${{ steps.build.outputs.build-path }}
+        run: |
+          [ "$BUILD_PATH" = "harness/_build/html" ] || { echo "::error::build-path: expected [harness/_build/html], got [$BUILD_PATH]"; exit 1; }
+          [ -f harness/_build/html/index.html ] || { echo "::error::no index.html produced"; exit 1; }
+          grep -q "sum of squares: 285" harness/_build/html/lecture1.html || { echo "::error::executed cell output missing from HTML — execution did not run"; exit 1; }
+          [ -f harness/_build/.jupyter_cache/global.db ] || { echo "::error::_build/.jupyter_cache/global.db missing — execution cache was not populated"; exit 1; }
+          echo "✅ build-lectures produced an executed site from the cache-restored env"
+
+  build-fail-guard:
+    # The negative half of the build-lectures contract. env-hit-build proves a
+    # successful build reports success; this proves a *failed* build still
+    # fails the step. Both directions matter, and this one guards the fix in
+    # this PR: build-lectures returns its status by ending the script rather
+    # than via the exit builtin (see build-lectures/action.yml), and any future
+    # edit that drops that trailing `(exit "$BUILD_EXIT_CODE")` — or appends a
+    # command after it — would silently discard the status and turn every
+    # broken consumer build into a pass. Nothing else in the harness notices.
+    name: 'build-lectures: a failing build fails the step'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: env-seed
+    steps:
+      - uses: actions/checkout@v7
+
+      # Same salt as env-seed, so the conda env restores from its cache.
+      - name: Recreate salted fixture with a deliberately broken page
+        run: |
+          cp -r .github/fixtures/mini-lectures harness
+          printf '\n# harness-salt: %s-book\n' "$SALT" >> harness/environment.yml
+          printf '%% harness salt: %s-book\n' "$SALT" > harness/lectures/salt.md
+          # Derive the broken page from the good one so its frontmatter and
+          # kernelspec stay valid — the build must fail on the raised
+          # AssertionError, not on a malformed document.
+          sed -e 's/^# An Executed Lecture$/# A Deliberately Broken Lecture/' \
+              -e 's/^assert total == 285$/assert total == 0, "harness: deliberate build failure"/' \
+              harness/lectures/lecture1.md > harness/lectures/broken.md
+          printf '  - file: broken\n' >> harness/lectures/_toc.yml
+          grep -q 'assert total == 0' harness/lectures/broken.md \
+            || { echo "::error::fixture setup failed — broken.md has no failing cell"; exit 1; }
+
+      - name: Setup environment
+        uses: ./setup-environment
+        with:
+          environment: 'harness/environment.yml'
+
+      # Expect ::error:: annotations from build-lectures' own failure reporter
+      # in this job's log — they are the action working correctly.
+      - name: Build lectures (expected to fail)
+        id: build
+        continue-on-error: true
+        uses: ./build-lectures
+        with:
+          builder: 'html'
+          source-dir: 'harness/lectures'
+          output-dir: 'harness'
+
+      - name: Assert the build failure propagated
+        env:
+          OUTCOME: ${{ steps.build.outcome }}
+        run: |
+          [ "$OUTCOME" = "failure" ] || { echo "::error::build-lectures reported [$OUTCOME] for a build whose execution raised — a failing build must fail the step"; exit 1; }
+          echo "✅ a failing build fails the step (exit status propagates)"
+
+  # ==========================================================================
+  # build-jupyter-cache — smoke + round-trip into restore-jupyter-cache.
+  # Its internal setup-environment/build-lectures calls run @v0 (see header).
+  # ==========================================================================
+
+  bjc-smoke:
+    name: 'build-jupyter-cache: html build of the fixture, caches saved'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Ordered after env-seed so the internal setup-environment@v0 can reuse the
+    # conda cache (same key format today). If the formats ever diverge it just
+    # solves fresh — slower, still correct.
+    needs: env-seed
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Recreate salted fixture
+        run: |
+          cp -r .github/fixtures/mini-lectures harness
+          printf '\n# harness-salt: %s-book\n' "$SALT" >> harness/environment.yml
+          printf '%% harness salt: %s-book\n' "$SALT" > harness/lectures/salt.md
+
+      # The internal build-lectures@v0 still ends its login-shell build step
+      # with the exit builtin, which ~/.bash_logout corrupts on hosted runners
+      # (clear_console fails at SHLVL=1 and overrides the status — the bug
+      # fixed in this repo's build-lectures). The pinned @v0 copy can't pick
+      # that fix up until the tag moves, so neutralize the logout hook for
+      # this job. Drop this step once v0 includes the build-lectures fix.
+      - name: Remove ~/.bash_logout (workaround for pre-fix build-lectures@v0)
+        run: rm -f ~/.bash_logout
+
+      - name: Build and cache
+        id: bjc
+        uses: ./build-jupyter-cache
+        with:
+          builders: 'html'
+          environment: 'harness/environment.yml'
+          source-dir: 'harness/lectures'
+          create-issue-on-failure: 'false'
+          upload-artifact: 'false'
+
+      - name: Assert outputs and build artifacts
+        env:
+          BUILD_SUCCESS: ${{ steps.bjc.outputs.build-success }}
+          CACHE_SAVED: ${{ steps.bjc.outputs.cache-saved }}
+          CACHE_KEY: ${{ steps.bjc.outputs.cache-key }}
+          HTML_STATUS: ${{ steps.bjc.outputs.html-status }}
+          JUPYTER_STATUS: ${{ steps.bjc.outputs.jupyter-status }}
+          PDFLATEX_STATUS: ${{ steps.bjc.outputs.pdflatex-status }}
+          EXPECTED_KEY: build-${{ hashFiles('harness/environment.yml') }}--${{ github.run_id }}
+        run: |
+          [ "$BUILD_SUCCESS" = "true" ] || { echo "::error::build-success: expected [true], got [$BUILD_SUCCESS]"; exit 1; }
+          [ "$CACHE_SAVED" = "true" ] || { echo "::error::cache-saved: expected [true], got [$CACHE_SAVED]"; exit 1; }
+          [ "$CACHE_KEY" = "$EXPECTED_KEY" ] || { echo "::error::cache-key: expected [$EXPECTED_KEY], got [$CACHE_KEY]"; exit 1; }
+          [ "$HTML_STATUS" = "success" ] || { echo "::error::html-status: expected [success], got [$HTML_STATUS]"; exit 1; }
+          [ "$JUPYTER_STATUS" = "skipped" ] || { echo "::error::jupyter-status: expected [skipped], got [$JUPYTER_STATUS]"; exit 1; }
+          [ "$PDFLATEX_STATUS" = "skipped" ] || { echo "::error::pdflatex-status: expected [skipped], got [$PDFLATEX_STATUS]"; exit 1; }
+          [ -f _build/html/index.html ] || { echo "::error::no _build/html/index.html produced"; exit 1; }
+          [ -f _build/.jupyter_cache/global.db ] || { echo "::error::execution cache not populated by the build"; exit 1; }
+          echo "✅ build-jupyter-cache built the fixture and saved both caches"
+
+  bjc-restore-build:
+    name: 'round-trip: restore-jupyter-cache reads build-jupyter-cache (build)'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: bjc-smoke
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Recreate salted fixture
+        run: |
+          cp -r .github/fixtures/mini-lectures harness
+          printf '\n# harness-salt: %s-book\n' "$SALT" >> harness/environment.yml
+          printf '%% harness salt: %s-book\n' "$SALT" > harness/lectures/salt.md
+
+      # The real consumer flow: cache.yml populates on main, ci.yml restores
+      # in a PR. fail-on-miss guards the whole chain.
+      - name: Restore build cache
+        id: restore
+        uses: ./restore-jupyter-cache
+        with:
+          cache-type: 'build'
+          environment: 'harness/environment.yml'
+          fail-on-miss: 'true'
+
+      - name: Assert the built site round-tripped
+        env:
+          CACHE_KEY: ${{ steps.restore.outputs.cache-key }}
+          EXPECTED_KEY: build-${{ hashFiles('harness/environment.yml') }}--${{ github.run_id }}
+        run: |
+          [ "$CACHE_KEY" = "$EXPECTED_KEY" ] || { echo "::error::cache-key: expected [$EXPECTED_KEY], got [$CACHE_KEY]"; exit 1; }
+          [ -f _build/html/index.html ] || { echo "::error::restored cache is missing _build/html/index.html"; exit 1; }
+          grep -q "sum of squares: 285" _build/html/lecture1.html || { echo "::error::executed cell output missing from restored HTML"; exit 1; }
+          echo "✅ full build cache round-trip: build-jupyter-cache → restore-jupyter-cache"
+
+  bjc-restore-exec:
+    name: 'round-trip: restore-jupyter-cache reads build-jupyter-cache (execution)'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: bjc-smoke
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Recreate salted fixture
+        run: |
+          cp -r .github/fixtures/mini-lectures harness
+          printf '\n# harness-salt: %s-book\n' "$SALT" >> harness/environment.yml
+          printf '%% harness salt: %s-book\n' "$SALT" > harness/lectures/salt.md
+
+      - name: Restore execution cache
+        id: restore
+        uses: ./restore-jupyter-cache
+        with:
+          cache-type: 'execution'
+          source-dir: 'harness/lectures'
+          fail-on-miss: 'true'
+
+      - name: Assert only the execution cache round-tripped
+        env:
+          CACHE_KEY: ${{ steps.restore.outputs.cache-key }}
+          EXPECTED_KEY: jupyter-cache-${{ hashFiles('harness/lectures/**/*.md') }}-${{ github.run_id }}
+        run: |
+          [ "$CACHE_KEY" = "$EXPECTED_KEY" ] || { echo "::error::cache-key: expected [$EXPECTED_KEY], got [$CACHE_KEY]"; exit 1; }
+          [ -f _build/.jupyter_cache/global.db ] || { echo "::error::restored execution cache is missing global.db"; exit 1; }
+          [ ! -d _build/html ] || { echo "::error::_build/html present — the build cache leaked into an execution-type restore"; exit 1; }
+          echo "✅ execution cache round-trip: build-jupyter-cache → restore-jupyter-cache"
+
+  # ==========================================================================
+  # Single anchor for branch protection
+  # ==========================================================================
+
+  harness-summary:
+    name: 'Action harness: all checks'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: always()
+    needs:
+      - unit-build-seed
+      - unit-build-restore
+      - unit-build-restore-save
+      - unit-build-miss-guard
+      - unit-exec-seed
+      - unit-exec-restore
+      - unit-exec-restore-save
+      - env-seed
+      - env-hit-build
+      - build-fail-guard
+      - bjc-smoke
+      - bjc-restore-build
+      - bjc-restore-exec
+    steps:
+      - name: Fail unless every harness job succeeded
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          echo "$RESULTS" | jq -e 'all(.[]; .result == "success")' > /dev/null \
+            || { echo "::error::One or more harness jobs did not succeed"; exit 1; }
+          echo "✅ action harness green"

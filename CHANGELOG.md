@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **CI**: Action-level PR harness (`.github/workflows/test-actions.yml`) — the first automated
+  tests for the action logic itself, run against the PR's code via `./` local paths. Covers
+  `restore-jupyter-cache` (both cache types × both modes, `fail-on-miss` both ways — the #104
+  defect class), the standard-mode conda cache in `setup-environment` (two-run miss→hit chain,
+  the #33/#78 path CI had never confirmed), a real executed `build-lectures` HTML build in both
+  directions (a good build passes; a build whose code cell raises must fail the step), and a
+  `build-jupyter-cache` → `restore-jupyter-cache` round-trip. Ships a committed
+  `.github/fixtures/mini-lectures/` fixture that, unlike the container test book, executes a
+  real code cell so `_build/.jupyter_cache` is genuinely populated. First stage of #100;
+  publish/preview coverage and the `@v0` sibling-pin chain remain with the post-release canary
+  proposed there. (#100)
+
+### Fixed
+- **build-lectures**: on hosted (non-container) runners, a **successful build failed the step
+  anyway**. The build step runs in a login shell (`bash -l`, required for conda activation) and
+  ended with `exit $BUILD_EXIT_CODE`; the exit builtin triggers `~/.bash_logout` processing,
+  where Ubuntu's `clear_console` fails on a headless runner at `SHLVL=1` and its status
+  overrides the one passed to `exit` — so `jb build` printed its success banner and the step
+  still returned 1. The step now returns its status by ending the script instead of calling
+  `exit`. Container builds were never affected (root has no `~/.bash_logout`), which is why
+  production lecture builds never surfaced this. Caught by the new action harness. (#100)
+- **setup-environment**: the standard-mode Conda environment cache could be saved but **never
+  restored** on hosted runners. The cache was rooted at `${CONDA}/envs`, whose parent directory
+  is root-owned on the runner image, so every restore died in tar (`Cannot utime` / `Cannot
+  change mode: Operation not permitted`) and `actions/cache` reported a miss — every run paid
+  the full environment solve, and a partial extraction could leave a mangled env behind for
+  `conda env update` to patch. The cache is now rooted at the runner-owned
+  `${CONDA}/envs/<environment-name>` directory, which round-trips cleanly. Existing caches under
+  the old path become unreachable (the `path` input is part of the cache version); the first run
+  after upgrading re-saves under the new path. Caught by the new action harness on its first run
+  — this is the #33/#78 path that PLAN item 9 noted had never been confirmed by CI. (#100)
+
 ## [0.9.0] - 2026-07-23
 
 ### Added

@@ -132,8 +132,15 @@ runs:
           echo "EOF"
         } >> "$GITHUB_OUTPUT"
 
-        # Exit with build exit code
-        exit $BUILD_EXIT_CODE
+        # Return the build status by ending the script, NOT via the exit
+        # builtin. This step runs in a login shell (bash -l, required for
+        # conda activation), and on hosted runners the explicit exit builtin
+        # triggers ~/.bash_logout processing at SHLVL=1, where Ubuntu's
+        # clear_console fails on a headless runner and its status overrides
+        # the one passed to exit — turning a successful build into exit 1.
+        # Containers are unaffected (root has no ~/.bash_logout), which is
+        # why production container builds never hit this.
+        (exit "$BUILD_EXIT_CODE")
 
     - name: Report build failure
       if: failure()

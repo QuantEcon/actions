@@ -113,18 +113,24 @@ runs:
         # created by the "Create/update environment" step below (miss), so a
         # cache hit is not wastefully rebuilt. Uses the runner's pre-installed
         # conda (kept current by auto-update-conda) so the cached env lives at
-        # a stable ${CONDA}/envs path.
+        # a stable ${CONDA}/envs/<environment-name> path.
         auto-update-conda: true
         auto-activate-base: true
         python-version: ${{ inputs.python-version }}
         activate-environment: ${{ inputs.environment-name }}
 
+    # Cache the named env directory, NOT ${CONDA}/envs: the envs parent is
+    # root-owned on hosted runners, and tar cannot restore its mode/mtime as
+    # the runner user — the restore dies with "Cannot utime/chmod: Operation
+    # not permitted" and actions/cache reports a miss, so a cache rooted at
+    # envs/ can be saved but never restored. The env dir itself is created by
+    # (and owned by) the runner user, so it round-trips cleanly.
     - name: Cache Conda environment (non-container mode)
       if: steps.detect-container.outputs.container-mode == 'false'
       uses: actions/cache@v6
       id: conda-cache
       with:
-        path: ${{ env.CONDA }}/envs
+        path: ${{ env.CONDA }}/envs/${{ inputs.environment-name }}
         key: conda-${{ runner.os }}-${{ inputs.environment-name }}-py${{ inputs.python-version }}-${{ hashFiles(inputs.environment) }}-${{ inputs.cache-version }}
         restore-keys: |
           conda-${{ runner.os }}-${{ inputs.environment-name }}-py${{ inputs.python-version }}-${{ hashFiles(inputs.environment) }}-
