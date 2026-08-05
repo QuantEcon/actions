@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-08-05
+
 ### Added
 - **CI**: Action-level PR harness (`.github/workflows/test-actions.yml`) — the first automated
   tests for the action logic itself, run against the PR's code via `./` local paths. Covers
