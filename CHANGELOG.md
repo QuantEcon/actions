@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **CI**: the action harness no longer uses `paths:` filters. A path filter suppresses creation of
+  the workflow *run*, not just its jobs, so no check run is ever published for that commit and a
+  required `Action harness: all checks` would sit "waiting for status to be reported" forever —
+  GitHub's own guidance is to avoid requiring workflows that can be skipped. Demonstrated live:
+  release PR #119 touched only `CHANGELOG.md` and GitHub reported "no checks reported on the
+  branch". The workflow now always runs, and a new `gate` job decides relevance per-job (a job
+  skipped by a conditional reports success to a required check). This is the prerequisite for
+  making the harness a required check on `main` — issue #116 item 5, whose suggested
+  `paths-ignore` companion workflow would not have worked, since `paths-ignore` is not the
+  complement of `paths` and a mixed PR would fire both, producing two same-named check runs.
+  The gate's decision rule is an **ignore** list rather than a cover list, deliberately: for a
+  required check the expensive mistake is a green earned by running nothing, so anything
+  unrecognised runs the whole harness. It also self-tests — the must-always-run set is derived
+  from the `uses: ./<action>` lines in the workflow itself, so widening the ignore list to swallow
+  a real action path fails the gate closed instead of silently skipping the suite. `harness-summary`
+  now certifies both shapes (all-ran and all-skipped), rejects a vacuous empty job set, and fails
+  if the gate and the fan-out disagree. (#116)
+
 ### Fixed
 - **build-jupyter-cache**: failure alerting **never worked in container mode**, which is the
   documented default. Three independent bugs sat on the same 14-line path, and because that path

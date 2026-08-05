@@ -41,25 +41,20 @@
 
 name: Test Actions
 
+# Deliberately NO `paths:` filter on either trigger. A path filter suppresses
+# creation of the workflow RUN, not just its jobs, so no check run is ever
+# published for that SHA and a required `Action harness: all checks` sits in
+# "Expected — waiting for status to be reported" forever. GitHub documents this
+# exactly ("Troubleshooting required status checks", Handling skipped but
+# required checks): a workflow skipped by path filtering leaves checks pending
+# and blocks merging, whereas a job skipped by a conditional reports Success.
+# So the workflow always runs, and the `gate` job below decides per-job
+# relevance instead. Do not re-add `paths:` here — see CONTRIBUTING.
 on:
   pull_request:
-    paths:
-      - 'restore-jupyter-cache/**'
-      - 'build-jupyter-cache/**'
-      - 'setup-environment/**'
-      - 'build-lectures/**'
-      - '.github/workflows/test-actions.yml'
-      - '.github/fixtures/mini-lectures/**'
   push:
     branches:
       - main
-    paths:
-      - 'restore-jupyter-cache/**'
-      - 'build-jupyter-cache/**'
-      - 'setup-environment/**'
-      - 'build-lectures/**'
-      - '.github/workflows/test-actions.yml'
-      - '.github/fixtures/mini-lectures/**'
   workflow_dispatch:
 
 concurrency:
@@ -74,6 +69,126 @@ env:
 
 jobs:
   # ==========================================================================
+  # Relevance gate — replaces the `paths:` filters this workflow used to carry.
+  # ==========================================================================
+
+  gate:
+    name: 'Action harness: relevance gate'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Job-scoped, not workflow-scoped. On a fork `pull_request` the other jobs
+    # execute PR-authored composite-action code via `uses: ./`, and none of them
+    # needs a pull-request scope. Job-level grants are additive over the
+    # workflow level (workflow-syntax: permissions are "adjusted based on any
+    # configuration within the workflow file, first at the workflow level and
+    # then at the job level").
+    permissions:
+      contents: read        # checkout, and the compare API on push
+      pull-requests: read   # pulls/{n}/files on pull_request
+    outputs:
+      relevant: ${{ steps.decide.outputs.relevant }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Decide whether this event touches anything the harness covers
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.event.after }}
+        run: |
+          set -euo pipefail
+
+          # An IGNORE list, not a cover list, and the direction is the whole
+          # point. `Action harness: all checks` is a required check, so the
+          # expensive mistake is a green earned by running nothing. Anything
+          # unrecognised — a new action directory, a new fixture, a new helper —
+          # therefore makes the harness RUN. Forgetting to extend this list
+          # costs CI minutes (free on a public repo); forgetting to extend a
+          # cover list would silently rubber-stamp untested action changes.
+          IGNORED='^(CHANGELOG|README|PLAN|TESTING|CONTRIBUTING|PROJECT-OPTIMIZE-PREVIEWS)\.md$|^LICENSE$|^\.gitignore$|^docs/|^tests/|^templates/|^\.github/(ISSUE_TEMPLATE|PULL_REQUEST_TEMPLATE|dependabot\.yml)|^[A-Za-z0-9_.-]+/README\.md$'
+
+          run_everything() { echo "relevant=true" >> "$GITHUB_OUTPUT"; echo "$1"; exit 0; }
+
+          # Self-test. A typo that widens IGNORED would turn a real action
+          # change into an all-skipped fan-out, which harness-summary accepts as
+          # a legitimate shape — nothing downstream could catch it, so catch it
+          # here and fail closed. The must-run list is read out of the harness
+          # itself, so coverage added later is protected with no second edit.
+          #
+          # Anchored to the start of a line on purpose: an unanchored match also
+          # picks the action name out of PROSE, so a comment mentioning another
+          # action would quietly enlarge the must-run set. That direction is
+          # harmless but it makes the self-test assert something other than what
+          # it appears to, which is the failure mode this whole job exists to
+          # avoid. Only real step invocations count.
+          DIRS=$(grep -oE '^[[:space:]]*uses: \./[A-Za-z0-9_.-]+' .github/workflows/test-actions.yml | sed 's|.*\./||' | sort -u)
+          [ -n "$DIRS" ] || { echo "::error::gate self-test: no 'uses: ./<action>' found in the harness — refusing to decide"; exit 1; }
+          MUST_RUN=".github/workflows/test-actions.yml .github/fixtures/mini-lectures/environment.yml"
+          for d in $DIRS; do MUST_RUN="$MUST_RUN $d/action.yml"; done
+          for p in $MUST_RUN; do
+            if grep -Eq "$IGNORED" <<< "$p"; then
+              echo "::error::gate self-test: IGNORED matches [$p], which must always run the harness"; exit 1
+            fi
+          done
+          for p in CHANGELOG.md .gitignore PLAN.md tests/README.md; do
+            if ! grep -Eq "$IGNORED" <<< "$p"; then
+              echo "::error::gate self-test: IGNORED no longer matches [$p]"; exit 1
+            fi
+          done
+          echo "gate self-test passed; harness invokes: $(echo $DIRS | tr '\n' ' ')"
+
+          FILES=$(mktemp)
+          case "$EVENT_NAME" in
+            pull_request)
+              # Answers exactly the question `paths:` used to answer, against
+              # the base repo — so it works for fork PRs, and no merge-ref
+              # checkout is involved to go stale.
+              gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files?per_page=100" \
+                --jq '.[].filename' > "$FILES"
+              # "Responses include a maximum of 3000 files." At the cap we
+              # cannot prove irrelevance, so run.
+              [ "$(wc -l < "$FILES")" -lt 3000 ] \
+                || run_everything "pull request hit the 3000-file API cap — running the whole harness"
+              ;;
+            push)
+              case "$PUSH_BEFORE" in
+                ''|0000000000000000000000000000000000000000)
+                  run_everything "push has no usable 'before' SHA — running the whole harness" ;;
+              esac
+              # A force-push can leave `before` unreachable and the compare
+              # 404s. That is a "cannot tell", so fail open rather than red.
+              if ! COMPARE=$(gh api "repos/$REPO/compare/$PUSH_BEFORE...$PUSH_AFTER" 2>/dev/null); then
+                run_everything "compare $PUSH_BEFORE...$PUSH_AFTER unavailable (force-push?) — running the whole harness"
+              fi
+              # No --paginate: the file list appears only on the first page and
+              # covers up to 300 files for the whole comparison. Paginating
+              # returns more commits, never more files.
+              [ "$(jq '.files | length' <<< "$COMPARE")" -lt 300 ] \
+                || run_everything "compare hit the 300-file cap — running the whole harness"
+              jq -r '.files[]?.filename' <<< "$COMPARE" > "$FILES"
+              ;;
+            *)
+              run_everything "event [$EVENT_NAME] is a deliberate manual trigger — running the whole harness"
+              ;;
+          esac
+
+          echo "Changed files ($(wc -l < "$FILES")):"
+          sed 's/^/  /' "$FILES"
+
+          if grep -Evq "$IGNORED" "$FILES"; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            echo "these changed paths are not provably irrelevant:"
+            grep -Ev "$IGNORED" "$FILES" | sed 's/^/  /'
+          else
+            echo "relevant=false" >> "$GITHUB_OUTPUT"
+            echo "every changed path is on the ignore list — the harness does not apply"
+          fi
+
+  # ==========================================================================
   # restore-jupyter-cache — unit jobs (synthetic fixtures, no conda, seconds)
   # ==========================================================================
 
@@ -81,6 +196,8 @@ jobs:
     name: 'restore-jupyter-cache: seed build cache (save mode, genuine miss)'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
     steps:
       - uses: actions/checkout@v7
 
@@ -185,6 +302,8 @@ jobs:
     name: 'restore-jupyter-cache: fail-on-miss fires on a genuine miss'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
     steps:
       - uses: actions/checkout@v7
 
@@ -214,6 +333,8 @@ jobs:
     name: 'restore-jupyter-cache: seed execution cache (save mode)'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
     steps:
       - uses: actions/checkout@v7
 
@@ -311,6 +432,8 @@ jobs:
     name: 'setup-environment: standard mode, cold conda cache'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
     steps:
       - uses: actions/checkout@v7
 
@@ -648,6 +771,7 @@ jobs:
     timeout-minutes: 5
     if: always()
     needs:
+      - gate
       - unit-build-seed
       - unit-build-restore
       - unit-build-restore-save
@@ -663,11 +787,42 @@ jobs:
       - bjc-restore-build
       - bjc-restore-exec
     steps:
-      - name: Fail unless every harness job succeeded
+      # This is the job intended to be the single required status check, so it
+      # has to be correct in BOTH shapes the gate can produce, and must never be
+      # vacuously green. Three failure modes it explicitly rejects:
+      #   - the gate itself failed or was skipped: nothing can be certified
+      #   - gate said relevant, but a job did not succeed
+      #   - gate said not relevant, but a job ran anyway (the fan-out and the
+      #     gate disagree, so one of them is wrong)
+      - name: Certify the harness result
         env:
           RESULTS: ${{ toJSON(needs) }}
         run: |
-          echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
-          echo "$RESULTS" | jq -e 'all(.[]; .result == "success")' > /dev/null \
-            || { echo "::error::One or more harness jobs did not succeed"; exit 1; }
-          echo "✅ action harness green"
+          set -euo pipefail
+          jq -r 'to_entries[] | "\(.key): \(.value.result)"' <<< "$RESULTS"
+
+          GATE=$(jq -r '.gate.result // "missing"' <<< "$RESULTS")
+          RELEVANT=$(jq -r '.gate.outputs.relevant // ""' <<< "$RESULTS")
+          JOBS=$(jq -c 'del(.gate)' <<< "$RESULTS")
+          COUNT=$(jq 'length' <<< "$JOBS")
+
+          [ "$GATE" = "success" ] \
+            || { echo "::error::the relevance gate did not succeed (result=[$GATE]) — the harness result cannot be certified"; exit 1; }
+          [ "$COUNT" -gt 0 ] \
+            || { echo "::error::no harness jobs in needs — this check would certify nothing"; exit 1; }
+
+          case "$RELEVANT" in
+            true)
+              jq -e 'all(.[]; .result == "success")' <<< "$JOBS" > /dev/null \
+                || { echo "::error::One or more harness jobs did not succeed"; exit 1; }
+              echo "✅ action harness green ($COUNT jobs)"
+              ;;
+            false)
+              jq -e 'all(.[]; .result == "skipped")' <<< "$JOBS" > /dev/null \
+                || { echo "::error::the gate found no harness-relevant changes, but not every job skipped — the gate and the fan-out disagree"; exit 1; }
+              echo "✅ no harness-relevant paths changed — all $COUNT jobs skipped"
+              ;;
+            *)
+              echo "::error::the gate produced no relevance decision (relevant=[$RELEVANT])"; exit 1
+              ;;
+          esac
