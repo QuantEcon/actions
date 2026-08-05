@@ -2,7 +2,7 @@
 
 Working plan for `QuantEcon/actions`: current state, prioritized backlog, dependency policy, and rollout status.
 
-**Last updated:** July 2026 — after the v0.8.0 release and a deep technical review of all actions, containers, workflows, docs, and open issues/PRs.
+**Last updated:** August 2026 — after the v0.10.0 release, the #83 alerting fix (#122), the harness relevance gate (#124), and enabling branch protection on `main`. The backlog below is still the July 2026 review; individual items carry their own closure notes.
 
 ---
 
@@ -14,7 +14,7 @@ The core infrastructure is complete, hardened, and in production:
 - **Containers (2)** — `quantecon` (full) and `quantecon-build` (lean); science stack pinned as a set to the Anaconda 2025.12 baseline (#28, #84), `kaleido<1.0` (#85), Miniconda SHA-pinned (#32)
 - **June 2026 hardening pass** — third-party actions SHA-pinned (#39, #79), shell safety in `build-lectures` (#36), preview actions de-duplicated and injection-hardened (#35), standard-mode conda caching fixed (#33, #78), docs sweep (#40, #66)
 
-**Known gap:** container-mode cache-build failure alerting is broken in the default configuration (#83) — this is the P0 item below.
+**Known gap:** a `setup-environment` failure in `build-jupyter-cache` still alerts nobody (#123). If setup fails the composite aborts before `verify-builds` runs, so `all-passed` is unset (`''`, not `'false'`) and every downstream guard — including the alerting step — skips. Container-mode *build* failure alerting itself was fixed in #122.
 
 ### Consumers in production
 
@@ -32,15 +32,17 @@ Consumer/migration tracking lives in [QuantEcon/meta#321](https://github.com/Qua
 
 ### P0 — broken safety net
 
+**Currently empty** — the one P0 item closed in #122 (2026-08-05). Alerting for unattended container-mode cache builds now works and cannot silently no-op.
+
 | # | Item | Refs |
 |---|---|---|
-| 1 | **Fix container-mode failure alerting.** Neither container image installs the `gh` CLI, so `create-failure-issue.sh` exits 127 when the cache build runs inside a container (the documented default) — every failure goes un-alerted. Install `gh` in both images, or fall back to the REST API via `curl`, and guard the script so a missing CLI is a loud `::error::`. Add a container test asserting `gh` is on PATH. | #83 |
+| 1 | ~~**Fix container-mode failure alerting.**~~ Done (#122) — but the diagnosis above was wrong, which is worth recording. `gh` absence was real and would have bitten, but it was never reached: the step invoked its script through `${{ github.action_path }}`, which expands to the *runner's* path, and inside a `container:` job the action is mounted at `/__w/_actions/...` — so bash got a nonexistent path and exited 127 *before* the script ran. A third, unnoticed bug made alerting fail on hosted runners too: `gh issue create --label` validates labels client-side, and no consumer has `build-failure` or `automated`. Fixed by moving to `actions/github-script` (REST), which removes all three at once. The suggested remedies here would each have fixed only one: installing `gh` in both images fixes neither the path nor the labels, and a container test asserting `gh` is on PATH is now moot. | #83, #122 |
 
 ### P1 — correctness and drift prevention
 
 | # | Item | Refs |
 |---|---|---|
-| 2 | **Targeted execution reports on cache failure.** The build steps inside `build-jupyter-cache` don't pass `upload-failure-reports` (defaults `false`), so a failed cache build uploads no `reports/*.err.log` artifact while the auto-issue body tells maintainers to download one. Pass it through (default `true`) and align the issue-body text with the artifact actually produced. | #83 |
+| 2 | ~~**Targeted execution reports on cache failure.**~~ Done (#122) — `upload-failure-reports` is now an input defaulting `true` and passed to all three inner `build-lectures` calls, and the issue body names the artifacts actually produced with per-builder reproduce commands. One correction: the reports were not entirely absent before, they were reachable only buried inside the full `_build` artifact (hundreds of MB, including `.jupyter_cache`) — and genuinely absent only when `upload-artifact` was off. It was mostly a discoverability failure. | #83, #122 |
 | 3 | **Fix Dependabot conda grouping.** The conda groups match `*` with no `ignore` for the pinned science stack or `anaconda`, so Dependabot proposes exactly the drift the #28 pins exist to prevent (live proof: PRs #86, #87). Add `ignore` entries so the stack moves manually as a set, and correct the stale header comment. | #28, PRs #86/#87 |
 | 4 | **Hold PRs #86 and #87.** Both drift the container science stack off the 2025.12 baseline; #87 additionally pulls in pandas 3.0 (major, copy-on-write default). Handle container-stack bumps as one coordinated, validated move when the lecture repos adopt a new anaconda baseline (see Dependency policy). | #28 |
 | 5 | **`preview-cloudflare`: use the stable `pr-N` alias URL.** The PR comment currently shows the per-deployment hash URL grepped from wrangler output; construct `https://{branch-alias}.{project}.pages.dev` directly (the alias is already computed). | #14 |
@@ -62,7 +64,7 @@ Consumer/migration tracking lives in [QuantEcon/meta#321](https://github.com/Qua
 | # | Item | Refs |
 |---|---|---|
 | 13 | Merge safe Dependabot PRs: #90 (checkout v7, cache v6 — first-party runtime bumps) and #88 (`action-gh-release` 3.0.1 patch, SHA-pinned). | PRs #90/#88 |
-| 14 | Harden `create-failure-issue.sh`: distinguish "no existing issue" from "list failed", surface `::error::` when creation fails, use `mktemp` instead of a fixed `/tmp` path. | #83 |
+| 14 | ~~Harden `create-failure-issue.sh`.~~ Moot (#122) — the script was deleted, not hardened. Every concern it listed is structurally gone: `actions/github-script` has no `/tmp` body file, a failed API call throws rather than being swallowed by `2>/dev/null || echo ""`, and a new step asserts an issue was actually filed. | #83, #122 |
 | 15 | Small fixes: `set -euo pipefail` in `check-latex-versions.sh`; `concurrency` + `timeout-minutes` in `build-containers.yml`; fix the `build-lectures` pdflatex debug hint path (`_build/latex/reports`); refresh stale README blocks in `setup-environment` (cache strategy) and `restore-jupyter-cache` (phantom "Age Information"). | — |
 | 16 | Branch hygiene: delete the merged `fix-conda-activation` branch and prune the five stale (~5 months old) feature branches after confirming nothing is stranded. | — |
 | 17 | Refresh TESTING.md dated status. | — |
@@ -83,7 +85,7 @@ The lean image's science stack (`numpy`, `scipy`, `pandas`, …) is **pinned as 
 
 | Issue | Status (July 2026 review) | Disposition |
 |---|---|---|
-| #83 cache failures silent | Partially addressed — `@main` sub-action pins and the literal script-not-found 127 are fixed; the container `gh` gap and missing failure reports remain | Backlog items 1, 2, 14 |
+| #83 cache failures silent | Addressed in #122. Note the earlier reading of this issue was wrong: the script-not-found 127 was *not* already fixed — it was the primary bug, caused by `${{ github.action_path }}` resolving to the runner's path inside a container. Missing `gh` was real but never reached, and a third bug (client-side label validation in `gh issue create`) broke alerting on hosted runners too. All three are gone with the move to `actions/github-script`; failure reports now upload via `upload-failure-reports`. Remaining: #123 | Backlog item 14 (moot) |
 | #14 Cloudflare alias URL | Still valid | Backlog item 5 |
 | #29 composite-vs-workflow docs + env harness | Still valid | Backlog items 9, 11 |
 | #30 env/config manifest | Partially addressed — v0 stub exists | Backlog item 12 |
@@ -97,7 +99,7 @@ The lean image's science stack (`numpy`, `scipy`, `pandas`, …) is **pinned as 
 
 ### Phase 1: `lecture-dp` — ✅ complete
 
-`lecture-dp` runs the full chain (`restore-jupyter-cache` → `build-lectures` → `build-jupyter-cache` → `publish-gh-pages`) in production at `@v0.8.0`. Production use surfaced the #83 alerting gaps — the motivation for the P0 item above.
+`lecture-dp` runs the full chain (`restore-jupyter-cache` → `build-lectures` → `build-jupyter-cache` → `publish-gh-pages`) in production at `@v0.8.0`. Production use surfaced the #83 alerting gaps — a weekly cache build failed for roughly two months with no alert issue and no downloadable traceback, which is what motivated the (now closed) P0 item above.
 
 ### Phase 2: migrate existing repos
 
