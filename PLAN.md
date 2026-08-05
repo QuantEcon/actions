@@ -64,7 +64,7 @@ Consumer/migration tracking lives in [QuantEcon/meta#321](https://github.com/Qua
 | # | Item | Refs |
 |---|---|---|
 | 13 | Merge safe Dependabot PRs: #90 (checkout v7, cache v6 — first-party runtime bumps) and #88 (`action-gh-release` 3.0.1 patch, SHA-pinned). | PRs #90/#88 |
-| 14 | Harden `create-failure-issue.sh`: distinguish "no existing issue" from "list failed", surface `::error::` when creation fails, use `mktemp` instead of a fixed `/tmp` path. | #83 |
+| 14 | ~~Harden `create-failure-issue.sh`.~~ Moot (#122) — the script was deleted, not hardened. Every concern it listed is structurally gone: `actions/github-script` has no `/tmp` body file, a failed API call throws rather than being swallowed by `2>/dev/null || echo ""`, and a new step asserts an issue was actually filed. | #83, #122 |
 | 15 | Small fixes: `set -euo pipefail` in `check-latex-versions.sh`; `concurrency` + `timeout-minutes` in `build-containers.yml`; fix the `build-lectures` pdflatex debug hint path (`_build/latex/reports`); refresh stale README blocks in `setup-environment` (cache strategy) and `restore-jupyter-cache` (phantom "Age Information"). | — |
 | 16 | Branch hygiene: delete the merged `fix-conda-activation` branch and prune the five stale (~5 months old) feature branches after confirming nothing is stranded. | — |
 | 17 | Refresh TESTING.md dated status. | — |
@@ -85,7 +85,7 @@ The lean image's science stack (`numpy`, `scipy`, `pandas`, …) is **pinned as 
 
 | Issue | Status (July 2026 review) | Disposition |
 |---|---|---|
-| #83 cache failures silent | Addressed in #122. Note the earlier reading of this issue was wrong: the script-not-found 127 was *not* already fixed — it was the primary bug, caused by `${{ github.action_path }}` resolving to the runner's path inside a container. Missing `gh` was real but never reached, and a third bug (client-side label validation in `gh issue create`) broke alerting on hosted runners too. All three are gone with the move to `actions/github-script`; failure reports now upload via `upload-failure-reports`. Remaining: #123 | Backlog item 14 |
+| #83 cache failures silent | Addressed in #122. Note the earlier reading of this issue was wrong: the script-not-found 127 was *not* already fixed — it was the primary bug, caused by `${{ github.action_path }}` resolving to the runner's path inside a container. Missing `gh` was real but never reached, and a third bug (client-side label validation in `gh issue create`) broke alerting on hosted runners too. All three are gone with the move to `actions/github-script`; failure reports now upload via `upload-failure-reports`. Remaining: #123 | Backlog item 14 (moot) |
 | #14 Cloudflare alias URL | Still valid | Backlog item 5 |
 | #29 composite-vs-workflow docs + env harness | Still valid | Backlog items 9, 11 |
 | #30 env/config manifest | Partially addressed — v0 stub exists | Backlog item 12 |
@@ -99,7 +99,7 @@ The lean image's science stack (`numpy`, `scipy`, `pandas`, …) is **pinned as 
 
 ### Phase 1: `lecture-dp` — ✅ complete
 
-`lecture-dp` runs the full chain (`restore-jupyter-cache` → `build-lectures` → `build-jupyter-cache` → `publish-gh-pages`) in production at `@v0.8.0`. Production use surfaced the #83 alerting gaps — the motivation for the P0 item above.
+`lecture-dp` runs the full chain (`restore-jupyter-cache` → `build-lectures` → `build-jupyter-cache` → `publish-gh-pages`) in production at `@v0.8.0`. Production use surfaced the #83 alerting gaps — a weekly cache build failed for roughly two months with no alert issue and no downloadable traceback, which is what motivated the (now closed) P0 item above.
 
 ### Phase 2: migrate existing repos
 
