@@ -182,7 +182,23 @@ See the [cache actions documentation](../build-jupyter-cache/README.md) for setu
 `-W --keep-going`
 
 - `-W`: Treat warnings as errors
-- `--keep-going`: Continue on errors
+- `--keep-going`: meaningful only alongside `-W` — collect every warning-as-error instead of
+  stopping at the first, then exit non-zero at the end of the build. On its own it does nothing.
+
+> **Warning:** keep `-W` in any `extra-args` you set.
+>
+> A code cell that raises is not an error to Jupyter Book. `myst-nb` logs the failed execution as
+> a *warning* and carries on — `raise_on_error` under `execute:` in `_config.yml` (Sphinx:
+> `nb_execution_raise_on_error`) defaults to `false`. `-W` is the only thing that turns that
+> warning into a non-zero exit, and `extra-args` **replaces** the default rather than adding to it.
+>
+> So a build with `extra-args` set but `-W` omitted publishes the site, writes
+> `_build/<builder>/reports/<page>.err.log`, and exits **0** — a green CI run over a broken
+> lecture.
+>
+> Setting `raise_on_error: true` in `_config.yml` is an alternative, but a blunter one: myst-nb
+> then raises instead of warning, so the build aborts at the first failing notebook and never
+> writes the `reports/` tracebacks that `upload-failure-reports` collects. Prefer `-W`.
 
 ### Common Extra Arguments
 
@@ -215,7 +231,8 @@ extra-args: '-W --keep-going --all'
 **Solutions:**
 1. Check specific notebook in build logs
 2. Run locally: `jb build lectures`
-3. Use `--keep-going` to see all errors
+3. Re-run locally the way CI does — `jb build lectures -W --keep-going` — to see every error that
+   fails the build (`--keep-going` without `-W` reports nothing extra)
 4. Enable `upload-failure-reports: true` for detailed reports
 
 ### Missing Artifacts

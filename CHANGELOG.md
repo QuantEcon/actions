@@ -20,6 +20,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   publish/preview coverage and the `@v0` sibling-pin chain remain with the post-release canary
   proposed there. (#100)
 
+### Changed
+- **build-lectures**: documented that `-W` is load-bearing for build failure. A code cell that
+  raises is only a *warning* to Jupyter Book, so `-W` in the `extra-args` default is the sole
+  reason a broken lecture fails the build — and `extra-args` replaces the default rather than
+  extending it. Overriding it without `-W` yields a published site, an error-report page, and
+  exit 0. The README now says so next to the default, and the Troubleshooting entry that
+  suggested bare `--keep-going` is corrected (it does nothing without `-W`). (#116)
+- **CI**: `build-fail-guard` now attributes its expected failure instead of accepting any red.
+  Asserting only `outcome == failure` would also have been satisfied by a build that died on an
+  unrelated `-W` warning; the job now requires the staged `CellExecutionError` traceback in
+  `harness/_build/html/reports/broken.err.log`. Also recorded in the workflow header that
+  "Re-run failed jobs" can never go green on this harness — it bumps `run_attempt`, and so the
+  cache salt, without re-running the seed jobs that saved under the old salt. (#116)
+
 ### Fixed
 - **build-lectures**: on hosted (non-container) runners, a **successful build failed the step
   anyway**. The build step runs in a login shell (`bash -l`, required for conda activation) and
