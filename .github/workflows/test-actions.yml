@@ -12,6 +12,15 @@
 # byte-for-byte and are ordered with `needs:` (actions/cache saves are visible
 # across jobs of the same run).
 #
+# Consequence: "Re-run failed jobs" can never go green. It increments
+# run_attempt — and therefore the salt, and therefore every cache key — but
+# does NOT re-run the already-green seed jobs, so unit-build-restore,
+# unit-build-restore-save, unit-exec-restore*, env-hit-build and the bjc-*
+# round-trips all end up looking for caches nobody saved under the new salt.
+# Always use "Re-run all jobs". Do not "fix" this by dropping run_attempt from
+# the salt: run_id alone would let attempt 2 reuse attempt 1's caches and
+# silently invalidate the miss assertions.
+#
 # Two constraints shape what this harness can and cannot assert:
 #
 #   1. actions/cache matches a key only when the cache "version" (a hash of
@@ -426,7 +435,30 @@ jobs:
           OUTCOME: ${{ steps.build.outcome }}
         run: |
           [ "$OUTCOME" = "failure" ] || { echo "::error::build-lectures reported [$OUTCOME] for a build whose execution raised — a failing build must fail the step"; exit 1; }
-          echo "✅ a failing build fails the step (exit status propagates)"
+
+          # Attribute the red. A `failure` outcome on its own is also satisfied
+          # by a build that died on some unrelated -W warning, which would let
+          # this job stay green while the property it guards was broken.
+          # myst-nb writes the execution traceback to
+          # <sphinx outdir>/reports/<docname>.err.log (myst_nb/sphinx_.py), and
+          # `jb build harness/lectures --path-output harness` with builder html
+          # puts outdir at harness/_build/html. Hard-coded rather than globbed:
+          # this is the same path build-lectures ships in upload-failure-reports,
+          # so if jupyter-book ever relocates reports/ this goes red here rather
+          # than that upload silently producing an empty artifact.
+          # Keep the $OUTCOME check above this one — a stale err.log survives an
+          # incremental rebuild that exits 0, so the file existing is not by
+          # itself evidence that the build failed.
+          REPORT=harness/_build/html/reports/broken.err.log
+          if [ ! -f "$REPORT" ]; then
+            echo "::error::the build failed but never wrote $REPORT — the red is not attributable to the staged execution error. If jupyter-book moved the execution-report directory, fix this path and build-lectures' upload-failure-reports paths together."
+            find harness -maxdepth 3 -type d -print || true
+            exit 1
+          fi
+          grep -q 'harness: deliberate build failure' "$REPORT" \
+            || { echo "::error::$REPORT is not the failure this job stages (missing the fixture's assertion message)"; sed -n '1,60p' "$REPORT"; exit 1; }
+
+          echo "✅ a failing build fails the step, and the red is the staged CellExecutionError ($REPORT)"
 
   # ==========================================================================
   # build-jupyter-cache — smoke + round-trip into restore-jupyter-cache.
