@@ -3,7 +3,18 @@ author: QuantEcon
 logo: ""
 
 execute:
-  execute_notebooks: "off"
+  # "force", not "off". The point of this fixture is to run the image's Python
+  # stack — before #108 it executed nothing at all, so an image whose numpy,
+  # matplotlib or kaleido was completely broken still produced a green
+  # container test.
+  execute_notebooks: "force"
+  # Belt and braces with the `-W` that smoke-test.sh passes. myst-nb reports a
+  # failed cell as a *warning* by default, so without one of these a raising
+  # cell yields a published book and exit 0. Keep BOTH: a typo in this key
+  # (e.g. `raise_on_errors`) is accepted silently by jupyter-book's config
+  # validator, and `-W` is then the only thing still catching a failing cell.
+  raise_on_error: true
+  timeout: 300
 
 latex:
   latex_documents:

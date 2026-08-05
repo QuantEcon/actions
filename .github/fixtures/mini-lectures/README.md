@@ -3,11 +3,18 @@
 A deliberately tiny lecture repository consumed by the action-level PR harness
 ([`.github/workflows/test-actions.yml`](../../workflows/test-actions.yml), issue #100).
 
-It differs from `containers/quantecon/tests/minimal-jupyter-book` in one
-important way: **it executes a real code cell** (`execute_notebooks: cache`), so
-building it produces a genuine `_build/.jupyter_cache` — the artifact the cache
-actions exist to save and restore. The container fixture builds with execution
-off and cannot exercise that path.
+Both this and `containers/quantecon/tests/minimal-jupyter-book` execute real
+code cells, but they test different things and should stay separate:
+
+| | this fixture | the container fixture |
+|---|---|---|
+| Tests | **action logic** on hosted runners | **image contents** in a container job |
+| Environment | minimal — Python + `jupyter-book` | whatever the image ships |
+| Execution mode | `cache`, so `_build/.jupyter_cache` is genuinely populated | `force` + `raise_on_error` |
+| Optimised for | a fast conda solve | exercising numpy/scipy/pandas/matplotlib and the kaleido→chromium path |
+
+Merging them would make this one slow (a full science stack to solve on every
+harness job) and that one blind to the cache artifact.
 
 The harness copies this directory into the workspace at run time and appends a
 per-run salt (run id + attempt) to `environment.yml` and `lectures/`, so every
