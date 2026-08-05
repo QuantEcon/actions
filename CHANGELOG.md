@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **build-jupyter-cache**: failure alerting **never worked in container mode**, which is the
+  documented default. Three independent bugs sat on the same 14-line path, and because that path
+  only runs once something else has already broken, none were caught. (1) The step invoked its
+  script through `${{ github.action_path }}`, which expands to the *runner's* path
+  (`/home/runner/work/_actions/...`); inside a job `container:` the action is mounted at
+  `/__w/_actions/...`, so bash got a nonexistent path — `No such file or directory`, exit 127,
+  before the script ran (actions/runner#2185). (2) Neither container image installs `gh`, so
+  fixing (1) alone would have died one line later on `gh issue list`. (3) `gh issue create
+  --label` validates labels client-side and fails when they don't exist — no consumer has
+  `build-failure` or `automated`, so even a hosted runner with `gh` would have failed. The step is
+  now `actions/github-script` against the REST API: no CLI, no `action_path`, and missing labels
+  are created implicitly. Observed impact: `lecture-dp` ran ~2 months un-alerted (#28), and the
+  canary repo failed eight consecutive weeks (2026-02-22 → 2026-04-12) filing zero issues while a
+  sibling workflow using a REST-API action filed every week. (#83)
+- **build-jupyter-cache**: a failed build could be reported as the *wrong* failure. Composite
+  steps carry an implicit `success()` in a plain `if:`, so once any earlier step failed —
+  including the alerting step itself — `Fail if builds failed` silently skipped, and the job's
+  only error was whatever incidental step happened to break. In `lecture-dp` run 26381283100 the
+  visible red was an exit-127 from "Create failure issue" while the actual build failure never
+  surfaced. Both that step and the alert step are now `always() && …`. (#83)
+- **build-jupyter-cache**: alerting can no longer silently no-op. A new step asserts an issue was
+  actually filed and fails the job with an explicit error otherwise; the URL is exposed as the new
+  `failure-issue-url` output. **Consumers must have `issues: write`** while
+  `create-issue-on-failure` is `true` (the shipped `templates/cache.yml` already does) — a missing
+  permission is now a loud failure with a message naming the fix, rather than silence. (#83)
+
+### Added
+- **build-jupyter-cache**: `upload-failure-reports` input, default `true`, passed through to the
+  inner `build-lectures` calls so a failed cache build uploads its `reports/*.err.log` tracebacks.
+  Previously the failure issue told maintainers to "download the build artifact for detailed
+  execution reports" while those reports were only reachable buried inside the full `_build`
+  artifact — hundreds of MB including `.jupyter_cache` — and not at all when `upload-artifact` was
+  off. The issue body now names the artifacts that were actually produced and gives per-builder
+  reproduce commands matching `build-lectures`' real flags. The default deliberately differs from
+  `build-lectures`' own `false`: that action is driven by a human watching a PR, this one runs
+  unattended. (#83)
+- **CI**: `bjc-fail-guard` harness job — a failing cache build must fail the step, report
+  `html-status=failure`, and save **no** cache over the last good one. The failure path had no
+  coverage at all, which is how three bugs accumulated on it. Issue filing itself stays out of the
+  PR harness (it needs `issues: write` and would file real issues on every run); that belongs to
+  the canary. (#83)
+
 ## [0.10.0] - 2026-08-05
 
 ### Added

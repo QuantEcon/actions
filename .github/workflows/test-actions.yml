@@ -512,6 +512,66 @@ jobs:
           [ -f _build/.jupyter_cache/global.db ] || { echo "::error::execution cache not populated by the build"; exit 1; }
           echo "✅ build-jupyter-cache built the fixture and saved both caches"
 
+  bjc-fail-guard:
+    # The negative half of build-jupyter-cache's contract, and the counterpart to
+    # build-fail-guard one level up. #83's core defect was that this whole path —
+    # everything after a build fails — was exercised only when something else was
+    # already broken, so three independent bugs accumulated on it unnoticed.
+    #
+    # Scope, stated honestly: this asserts the failure-path CONTRACT (the step
+    # fails, the per-builder statuses are right, and no cache is saved over a
+    # broken build). It does NOT exercise the issue-filing path — that needs
+    # `issues: write` and would file real issues in this repo on every PR run,
+    # so it belongs to the canary (QuantEcon/test-actions-lecture-intro), which
+    # runs in container mode against @v0 and has a tracker that can absorb them.
+    name: 'build-jupyter-cache: a failing build fails the step, no cache saved'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: env-seed
+    steps:
+      - uses: actions/checkout@v7
+
+      # Same staged failure as build-fail-guard: derive the broken page from the
+      # good one so only the raised AssertionError differs.
+      - name: Recreate salted fixture with a deliberately broken page
+        run: |
+          cp -r .github/fixtures/mini-lectures harness
+          printf '\n# harness-salt: %s-book\n' "$SALT" >> harness/environment.yml
+          printf '%% harness salt: %s-book\n' "$SALT" > harness/lectures/salt.md
+          sed -e 's/^# An Executed Lecture$/# A Deliberately Broken Lecture/' \
+              -e 's/^assert total == 285$/assert total == 0, "harness: deliberate build failure"/' \
+              harness/lectures/lecture1.md > harness/lectures/broken.md
+          printf '  - file: broken\n' >> harness/lectures/_toc.yml
+          grep -q 'assert total == 0' harness/lectures/broken.md \
+            || { echo "::error::fixture setup failed — broken.md has no failing cell"; exit 1; }
+
+      # create-issue-on-failure is false on purpose — see the note above.
+      - name: Build and cache (expected to fail)
+        id: bjc
+        continue-on-error: true
+        uses: ./build-jupyter-cache
+        with:
+          builders: 'html'
+          environment: 'harness/environment.yml'
+          source-dir: 'harness/lectures'
+          create-issue-on-failure: 'false'
+          upload-artifact: 'false'
+
+      - name: Assert the failure propagated and nothing was cached
+        env:
+          OUTCOME: ${{ steps.bjc.outcome }}
+          BUILD_SUCCESS: ${{ steps.bjc.outputs.build-success }}
+          CACHE_SAVED: ${{ steps.bjc.outputs.cache-saved }}
+          HTML_STATUS: ${{ steps.bjc.outputs.html-status }}
+        run: |
+          [ "$OUTCOME" = "failure" ] || { echo "::error::build-jupyter-cache reported [$OUTCOME] for a build whose execution raised — a failing cache build must fail the step"; exit 1; }
+          [ "$BUILD_SUCCESS" = "false" ] || { echo "::error::build-success: expected [false], got [$BUILD_SUCCESS]"; exit 1; }
+          [ "$HTML_STATUS" = "failure" ] || { echo "::error::html-status: expected [failure], got [$HTML_STATUS]"; exit 1; }
+          # The point of preserving the old cache: a broken build must never
+          # overwrite the last good one.
+          [ "$CACHE_SAVED" = "false" ] || { echo "::error::cache-saved: expected [false] — a failed build must not overwrite the good cache, got [$CACHE_SAVED]"; exit 1; }
+          echo "✅ a failing cache build fails the step and saves no cache"
+
   bjc-restore-build:
     name: 'round-trip: restore-jupyter-cache reads build-jupyter-cache (build)'
     runs-on: ubuntu-latest
@@ -599,6 +659,7 @@ jobs:
       - env-hit-build
       - build-fail-guard
       - bjc-smoke
+      - bjc-fail-guard
       - bjc-restore-build
       - bjc-restore-exec
     steps:
