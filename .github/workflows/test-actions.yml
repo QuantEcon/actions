@@ -117,9 +117,15 @@ jobs:
           # change into an all-skipped fan-out, which harness-summary accepts as
           # a legitimate shape — nothing downstream could catch it, so catch it
           # here and fail closed. The must-run list is read out of the harness
-          # itself, so future coverage (e.g. `uses: ./publish-gh-pages`) is
-          # protected with no second edit.
-          DIRS=$(grep -oE 'uses: \./[A-Za-z0-9_.-]+' .github/workflows/test-actions.yml | sed 's|uses: \./||' | sort -u)
+          # itself, so coverage added later is protected with no second edit.
+          #
+          # Anchored to the start of a line on purpose: an unanchored match also
+          # picks the action name out of PROSE, so a comment mentioning another
+          # action would quietly enlarge the must-run set. That direction is
+          # harmless but it makes the self-test assert something other than what
+          # it appears to, which is the failure mode this whole job exists to
+          # avoid. Only real step invocations count.
+          DIRS=$(grep -oE '^[[:space:]]*uses: \./[A-Za-z0-9_.-]+' .github/workflows/test-actions.yml | sed 's|.*\./||' | sort -u)
           [ -n "$DIRS" ] || { echo "::error::gate self-test: no 'uses: ./<action>' found in the harness — refusing to decide"; exit 1; }
           MUST_RUN=".github/workflows/test-actions.yml .github/fixtures/mini-lectures/environment.yml"
           for d in $DIRS; do MUST_RUN="$MUST_RUN $d/action.yml"; done
