@@ -10,7 +10,7 @@ Test assets are currently spread across the repo, each next to what it tests. Th
 
 | Location | What | Committed? |
 |---|---|---|
-| `.github/workflows/test-actions.yml` | The PR harness — a relevance `gate` plus 15 jobs exercising the cache, environment and build actions via `uses: ./` local paths (#100 stage 1) | yes |
+| `.github/workflows/test-actions.yml` | The PR harness — a relevance `gate`, 14 jobs exercising the cache, environment and build actions via `uses: ./` local paths, and a `harness-summary` certification job (#100 stage 1) | yes |
 | `.github/fixtures/mini-lectures/` | Fixture for the harness: a two-page book with a real executed code cell, so builds populate a genuine `_build/.jupyter_cache` | yes |
 | `containers/quantecon/tests/` | Container smoke tests and their minimal book | yes |
 | `tests/local/` | Throwaway clones of real lecture repos, for manual testing | **no** — git-ignored |
