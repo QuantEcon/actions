@@ -2,7 +2,7 @@
 
 Working plan for `QuantEcon/actions`: current state, prioritized backlog, dependency policy, and rollout status.
 
-**Last updated:** July 2026 — after the v0.8.0 release and a deep technical review of all actions, containers, workflows, docs, and open issues/PRs.
+**Last updated:** August 2026 — after the v0.10.0 release, the #83 alerting fix (#122), the harness relevance gate (#124), and enabling branch protection on `main`. The backlog below is still the July 2026 review; individual items carry their own closure notes.
 
 ---
 
@@ -14,7 +14,7 @@ The core infrastructure is complete, hardened, and in production:
 - **Containers (2)** — `quantecon` (full) and `quantecon-build` (lean); science stack pinned as a set to the Anaconda 2025.12 baseline (#28, #84), `kaleido<1.0` (#85), Miniconda SHA-pinned (#32)
 - **June 2026 hardening pass** — third-party actions SHA-pinned (#39, #79), shell safety in `build-lectures` (#36), preview actions de-duplicated and injection-hardened (#35), standard-mode conda caching fixed (#33, #78), docs sweep (#40, #66)
 
-**Known gap:** container-mode cache-build failure alerting is broken in the default configuration (#83) — this is the P0 item below.
+**Known gap:** a `setup-environment` failure in `build-jupyter-cache` still alerts nobody (#123). If setup fails the composite aborts before `verify-builds` runs, so `all-passed` is unset (`''`, not `'false'`) and every downstream guard — including the alerting step — skips. Container-mode *build* failure alerting itself was fixed in #122.
 
 ### Consumers in production
 
@@ -85,7 +85,7 @@ The lean image's science stack (`numpy`, `scipy`, `pandas`, …) is **pinned as 
 
 | Issue | Status (July 2026 review) | Disposition |
 |---|---|---|
-| #83 cache failures silent | Partially addressed — `@main` sub-action pins and the literal script-not-found 127 are fixed; the container `gh` gap and missing failure reports remain | Backlog items 1, 2, 14 |
+| #83 cache failures silent | Addressed in #122. Note the earlier reading of this issue was wrong: the script-not-found 127 was *not* already fixed — it was the primary bug, caused by `${{ github.action_path }}` resolving to the runner's path inside a container. Missing `gh` was real but never reached, and a third bug (client-side label validation in `gh issue create`) broke alerting on hosted runners too. All three are gone with the move to `actions/github-script`; failure reports now upload via `upload-failure-reports`. Remaining: #123 | Backlog item 14 |
 | #14 Cloudflare alias URL | Still valid | Backlog item 5 |
 | #29 composite-vs-workflow docs + env harness | Still valid | Backlog items 9, 11 |
 | #30 env/config manifest | Partially addressed — v0 stub exists | Backlog item 12 |
