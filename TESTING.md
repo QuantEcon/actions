@@ -38,9 +38,11 @@ Fixtures are salted with `run_id`-`run_attempt` so cache keys are unique per run
 
 ## Local Test Fixtures
 
-### `test-lecture-python-intro/` (git-ignored)
+### `test-lecture-python-intro/` (git-ignored, local only)
 
-A local clone of `lecture-python-intro` used for testing workflows locally. This directory is excluded from version control via the `.gitignore` pattern `test-*/`.
+A local clone of `lecture-python-intro` used for testing workflows on your own machine. Excluded from version control via the `.gitignore` pattern `test-*/`, so it exists only in your working tree — it is never committed and no workflow reads it.
+
+> **Not to be confused with [`QuantEcon/test-actions-lecture-intro`](https://github.com/QuantEcon/test-actions-lecture-intro)**, the canary repo that runs the actions in real CI (#100 stage 2). The two were previously near-identical in name, which was a reliable source of confusion. This entry is a throwaway directory; that one is a live repo. Any `test-*/` name works here — pick one that does not shadow a real repo.
 
 **Purpose:**
 - Test container builds locally
@@ -110,7 +112,7 @@ docker run --rm ghcr.io/quantecon/quantecon:latest pdflatex --version
 
 ## Phase 2: Test Repository Workflow
 
-### 2.1 Update test-lecture-python-intro
+### 2.1 Update test-actions-lecture-intro
 
 Create container-based workflow:
 
@@ -248,7 +250,7 @@ Pick a test repository or create a fork:
 2. Monitor for 1 week
 3. Collect metrics (build times, success rate)
 
-Complete testing with test-lecture-python-intro, validate all metrics.
+Complete testing with `QuantEcon/test-actions-lecture-intro`, validate all metrics.
 
 ### Stage 2: CPU Lecture Repositories
 
