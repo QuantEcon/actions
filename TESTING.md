@@ -24,7 +24,9 @@
 
 `.github/workflows/test-actions.yml` tests the composite actions themselves — via `uses: ./<action>` local paths, so it exercises **the code on the PR**, not a released ref. The workflow runs on **every** PR, on pushes to `main`, and on manual dispatch; a `gate` job then decides whether the jobs themselves apply, skipping them for changes that cannot affect the actions. It works that way because a workflow suppressed by a `paths:` filter never publishes a check run at all, which would leave a required `Action harness: all checks` pending forever. This is stage 1 of the two-part design in issue #100; it is the permanent form of the throwaway harness that verified the #104 fix.
 
-Fixtures are salted with `run_id`-`run_attempt` so cache keys are unique per run and miss assertions cannot be polluted by earlier runs. The committed fixture (`.github/fixtures/mini-lectures/`) executes a real code cell, so builds populate a genuine `_build/.jupyter_cache` — The container fixture at `containers/quantecon/tests/minimal-jupyter-book/` also executes cells, but with `force` + `raise_on_error` and against the image's own stack — it tests the image, not the action logic (#108).
+Fixtures are salted with `run_id`-`run_attempt` so cache keys are unique per run and miss assertions cannot be polluted by earlier runs. The committed fixture (`.github/fixtures/mini-lectures/`) executes a real code cell, so builds populate a genuine `_build/.jupyter_cache`.
+
+The container fixture at `containers/quantecon/tests/minimal-jupyter-book/` also executes cells, but with `force` + `raise_on_error` and against the image's own stack. It tests the image; this one tests the action logic (#108).
 
 | Action | Coverage |
 |---|---|

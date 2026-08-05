@@ -18,7 +18,14 @@ command -v fc-list >/dev/null 2>&1 || { echo "WARNING: fc-list not found. Instal
 # The fixture executes real cells (#108), so the book no longer builds with
 # jupyter-book alone. Check the stack up front rather than failing mid-build
 # with a CellExecutionError that looks like a fixture bug.
-python -c "import numpy, scipy, pandas, matplotlib, plotly" 2>/dev/null || {
+# Resolve an interpreter first — checking with `command -v` like the prereqs
+# above. Many macOS setups have only python3, and running a bare `python` there
+# would report a missing science stack when the real problem is no python.
+PY_BIN="$(command -v python3 || command -v python || true)"
+[ -n "$PY_BIN" ] || { echo "ERROR: no python3/python on PATH."; exit 1; }
+echo "✓ python found: $PY_BIN ($("$PY_BIN" --version 2>&1))"
+
+"$PY_BIN" -c "import numpy, scipy, pandas, matplotlib, plotly" 2>/dev/null || {
   echo "ERROR: the smoke fixture needs numpy, scipy, pandas, matplotlib and plotly."
   echo "       Install them, or run the real test inside the image:"
   echo "         docker run --rm -v \$(pwd)/../../..:/w -w /w ghcr.io/quantecon/quantecon:latest \\"
@@ -27,7 +34,7 @@ python -c "import numpy, scipy, pandas, matplotlib, plotly" 2>/dev/null || {
   echo "        #85 kaleido/chromium path that a container: job exercises)"
   exit 1
 }
-python -c "import plotly.graph_objects as go; go.Figure().to_image(format='png')" >/dev/null 2>&1 || {
+"$PY_BIN" -c "import plotly.graph_objects as go; go.Figure().to_image(format='png')" >/dev/null 2>&1 || {
   echo "ERROR: plotly static export (kaleido) is not working locally."
   echo "       Install kaleido<1.0, or run the test inside the image (see above)."
   exit 1

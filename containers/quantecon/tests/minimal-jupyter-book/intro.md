@@ -64,6 +64,7 @@ what exercises the backend and the font stack.
 import io
 import matplotlib
 import matplotlib.pyplot as plt
+import numpy as np  # imported here too: keeps a failure here attributable to matplotlib
 
 fig, ax = plt.subplots(figsize=(4, 2))
 ax.plot(np.linspace(0, 1, 50), np.linspace(0, 1, 50) ** 2)
