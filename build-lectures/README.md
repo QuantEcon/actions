@@ -183,7 +183,9 @@ See the [cache actions documentation](../build-jupyter-cache/README.md) for setu
 
 - `-W`: Treat warnings as errors
 - `--keep-going`: meaningful only alongside `-W` — collect every warning-as-error instead of
-  stopping at the first, then exit non-zero at the end of the build. On its own it does nothing.
+  stopping at the first, then exit non-zero at the end of the build. Sphinx ANDs the two flags
+  (`self.keep_going = warningiserror and keep_going`), so without `-W` this flag has no effect
+  at all.
 
 > **Warning:** keep `-W` in any `extra-args` you set.
 >
@@ -232,7 +234,8 @@ extra-args: '-W --keep-going --all'
 1. Check specific notebook in build logs
 2. Run locally: `jb build lectures`
 3. Re-run locally the way CI does — `jb build lectures -W --keep-going` — to see every error that
-   fails the build (`--keep-going` without `-W` reports nothing extra)
+   fails the build (`--keep-going` is inert without `-W`, since Sphinx only honours it when
+   warnings are already being treated as errors)
 4. Enable `upload-failure-reports: true` for detailed reports
 
 ### Missing Artifacts
