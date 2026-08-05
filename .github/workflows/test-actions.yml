@@ -482,15 +482,6 @@ jobs:
           printf '\n# harness-salt: %s-book\n' "$SALT" >> harness/environment.yml
           printf '%% harness salt: %s-book\n' "$SALT" > harness/lectures/salt.md
 
-      # The internal build-lectures@v0 still ends its login-shell build step
-      # with the exit builtin, which ~/.bash_logout corrupts on hosted runners
-      # (clear_console fails at SHLVL=1 and overrides the status — the bug
-      # fixed in this repo's build-lectures). The pinned @v0 copy can't pick
-      # that fix up until the tag moves, so neutralize the logout hook for
-      # this job. Drop this step once v0 includes the build-lectures fix.
-      - name: Remove ~/.bash_logout (workaround for pre-fix build-lectures@v0)
-        run: rm -f ~/.bash_logout
-
       - name: Build and cache
         id: bjc
         uses: ./build-jupyter-cache
