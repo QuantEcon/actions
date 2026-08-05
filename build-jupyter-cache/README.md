@@ -26,6 +26,7 @@ This ensures PRs always have a working cache to restore, even when the weekly bu
 | `create-issue-on-failure` | Create GitHub issue on failure | No | `true` |
 | `issue-assignees` | Comma-separated usernames for issue | No | `''` |
 | `issue-labels` | Comma-separated labels for issue | No | `build-failure,automated` |
+| `upload-failure-reports` | Pass through to the inner `build-lectures` calls so a failed build uploads its `reports/*.err.log` artifact. Defaults `true` here, unlike `build-lectures`' own `false` — this action runs unattended and the failure issue points at the report | No | `true` |
 
 ## Outputs
 
@@ -37,6 +38,7 @@ This ensures PRs always have a working cache to restore, even when the weekly bu
 | `jupyter-status` | Status of jupyter build (success/failure/skipped) |
 | `pdflatex-status` | Status of pdflatex build (success/failure/skipped) |
 | `html-status` | Status of html build (success/failure/skipped) |
+| `failure-issue-url` | URL of the failure issue filed or commented on (empty when there was no failure, or alerting is off) |
 
 ## Cache Key Strategy
 
@@ -79,10 +81,18 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/quantecon/quantecon:latest
+    permissions:
+      contents: read
+      issues: write             # required while create-issue-on-failure is true
+      packages: read            # required to pull the container image
     steps:
       - uses: actions/checkout@v4
       - uses: quantecon/actions/build-jupyter-cache@v0
 ```
+
+> **`issues: write` is not optional** unless you set `create-issue-on-failure: false`. Without it
+> the action now fails the job with an explicit error instead of skipping the alert — a cache
+> build that fails unnoticed is the exact failure mode this alerting exists to prevent (#83).
 
 ### All Builders with PDF
 
@@ -148,8 +158,13 @@ When a build fails:
    - Link to failed workflow run
    - Table showing which builders failed
    - Debug instructions
-3. **Artifact uploaded** - Full _build directory for inspection
+3. **Artifacts uploaded** - the per-builder `execution-reports-<builder>` artifacts holding the
+   `reports/*.err.log` tracebacks (`upload-failure-reports`, default `true`), plus the full
+   `_build` directory (`upload-artifact`, default `true`). The issue body names whichever were
+   actually produced instead of telling you to go hunting.
 4. **Workflow fails** - Clear signal that action is needed
+5. **Alert verified** - the action asserts an issue was really filed and fails loudly if not, so
+   alerting cannot silently no-op. The URL is exposed as the `failure-issue-url` output.
 
 ### Duplicate Issue Prevention
 

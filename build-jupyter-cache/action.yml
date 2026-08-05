@@ -39,6 +39,16 @@ inputs:
     description: 'Comma-separated labels for failure issues'
     required: false
     default: 'build-failure,automated'
+  upload-failure-reports:
+    description: >-
+      Pass upload-failure-reports through to the inner build-lectures calls, so a
+      failed build uploads its execution-report artifact. Defaults to true here,
+      unlike build-lectures' own default of false: that action is usually driven by
+      a human watching a PR, whereas this one runs unattended (typically weekly),
+      and the auto-filed failure issue tells the maintainer to go read a report.
+      Set to false if re-uploading reports on every failure is too costly.
+    required: false
+    default: 'true'
 
 outputs:
   cache-saved:
@@ -59,6 +69,9 @@ outputs:
   html-status:
     description: 'Status of html build (success/failure/skipped)'
     value: ${{ steps.verify-builds.outputs.html-status }}
+  failure-issue-url:
+    description: 'URL of the failure issue filed or commented on (empty when no failure, or alerting disabled)'
+    value: ${{ steps.create-failure-issue.outputs.issue-url }}
 
 runs:
   using: "composite"
@@ -148,6 +161,7 @@ runs:
       with:
         builder: 'jupyter'
         source-dir: ${{ inputs.source-dir }}
+        upload-failure-reports: ${{ inputs.upload-failure-reports }}
 
     - name: Build PDF (pdflatex)
       id: build-pdflatex
@@ -157,6 +171,7 @@ runs:
       with:
         builder: 'pdflatex'
         source-dir: ${{ inputs.source-dir }}
+        upload-failure-reports: ${{ inputs.upload-failure-reports }}
 
     - name: Build HTML
       id: build-html
@@ -166,6 +181,7 @@ runs:
       with:
         builder: 'html'
         source-dir: ${{ inputs.source-dir }}
+        upload-failure-reports: ${{ inputs.upload-failure-reports }}
         html-copy-pdf: ${{ steps.parse-builders.outputs.run-pdflatex }}
         html-copy-notebooks: ${{ steps.parse-builders.outputs.run-jupyter }}
 
@@ -282,19 +298,161 @@ runs:
     # CREATE ISSUE ON FAILURE
     # ============================================================
     
+    # Filed via actions/github-script (octokit/REST), not the gh CLI, and not a
+    # script reached through github.action_path. That combination caused three
+    # independent silent failures on this 14-line path (#83):
+    #
+    #   1. `${{ github.action_path }}/scripts/...` expands to the RUNNER's path
+    #      (/home/runner/work/_actions/...). In a `container:` job the action is
+    #      mounted at /__w/_actions/..., so bash got a path that does not exist:
+    #      "No such file or directory", exit 127, before the script ever ran.
+    #      (actions/runner#2185. Note $GITHUB_ACTION_PATH does NOT have this
+    #      problem — env values are translated in StepHost.TranslateToContainerPath
+    #      — which is why the preview actions' use of it is correct.)
+    #   2. Neither container image installs `gh`, so fixing (1) alone would have
+    #      died one line later on `gh issue list`.
+    #   3. `gh issue create --label` validates labels client-side and fails if
+    #      they don't exist. No consumer has `build-failure` or `automated`, so
+    #      even a hosted runner with gh would have failed. The REST API creates
+    #      missing labels implicitly.
+    #
+    # always() because this step must run even though a preceding step failed —
+    # a composite step's plain `if:` carries an implicit success(), which is what
+    # made the artifact upload above able to skip alerting entirely.
     - name: Create failure issue
-      if: steps.verify-builds.outputs.all-passed == 'false' && inputs.create-issue-on-failure == 'true'
-      shell: bash
+      id: create-failure-issue
+      if: always() && steps.verify-builds.outputs.all-passed == 'false' && inputs.create-issue-on-failure == 'true'
+      uses: actions/github-script@v9
       env:
-        GH_TOKEN: ${{ github.token }}
         SOURCE_DIR: ${{ inputs.source-dir }}
         ISSUE_LABELS: ${{ inputs.issue-labels }}
         ISSUE_ASSIGNEES: ${{ inputs.issue-assignees }}
         JUPYTER_STATUS: ${{ steps.verify-builds.outputs.jupyter-status }}
         PDFLATEX_STATUS: ${{ steps.verify-builds.outputs.pdflatex-status }}
         HTML_STATUS: ${{ steps.verify-builds.outputs.html-status }}
+        UPLOAD_ARTIFACT: ${{ inputs.upload-artifact }}
+        UPLOAD_FAILURE_REPORTS: ${{ inputs.upload-failure-reports }}
+      with:
+        github-token: ${{ github.token }}
+        script: |
+          // Consumer-supplied values are read from env, never interpolated into
+          // this script body (same discipline as the preview actions).
+          const sourceDir = process.env.SOURCE_DIR || 'lectures';
+          const labels = (process.env.ISSUE_LABELS || '')
+            .split(',').map(s => s.trim()).filter(Boolean);
+          const assignees = (process.env.ISSUE_ASSIGNEES || '')
+            .split(',').map(s => s.trim()).filter(Boolean);
+          const status = {
+            jupyter: process.env.JUPYTER_STATUS || 'skipped',
+            pdflatex: process.env.PDFLATEX_STATUS || 'skipped',
+            html: process.env.HTML_STATUS || 'skipped',
+          };
+          const icon = s => ({ success: '✅ success', failure: '❌ failure' }[s] || '⏭️ skipped');
+
+          const { owner, repo } = context.repo;
+          const runUrl = `${process.env.GITHUB_SERVER_URL}/${owner}/${repo}/actions/runs/${context.runId}`;
+
+          // Reproduce commands must match build-lectures' own builder flags.
+          const repro = {
+            html: `jb build ${sourceDir} -W --keep-going`,
+            pdflatex: `jb build ${sourceDir} --builder pdflatex -n -W --keep-going`,
+            jupyter: `jb build ${sourceDir} --builder=custom --custom-builder=jupyter -n -W --keep-going`,
+          };
+          const failed = Object.keys(status).filter(k => status[k] === 'failure');
+
+          // Name the artifacts rather than saying "download the build artifact".
+          const artifacts = [];
+          if (process.env.UPLOAD_FAILURE_REPORTS === 'true') {
+            for (const b of failed) artifacts.push(`\`execution-reports-${b}\` — \`reports/*.err.log\` tracebacks for the ${b} build`);
+          }
+          if (process.env.UPLOAD_ARTIFACT === 'true') {
+            artifacts.push(`\`build-cache-${context.runId}\` — the whole \`_build\` tree (large; includes \`.jupyter_cache\`)`);
+          }
+
+          const body = [
+            '## 🔴 Jupyter Cache Build Failed',
+            '',
+            `**Workflow run:** [${context.runId}](${runUrl})`,
+            `**Trigger:** ${context.eventName}`,
+            `**Branch:** ${process.env.GITHUB_REF_NAME}`,
+            `**Commit:** ${context.sha}`,
+            '',
+            '### Build results',
+            '',
+            '| Builder | Status |',
+            '|---|---|',
+            `| jupyter | ${icon(status.jupyter)} |`,
+            `| pdflatex | ${icon(status.pdflatex)} |`,
+            `| html | ${icon(status.html)} |`,
+            '',
+            '### Impact',
+            '',
+            '⚠️ **The existing cache is preserved** — PR workflows keep using the last good cache.',
+            '',
+            '### Debug',
+            '',
+            `1. [Workflow logs](${runUrl})`,
+            artifacts.length
+              ? `2. Artifacts on that run:\n${artifacts.map(a => `   - ${a}`).join('\n')}`
+              : '2. No artifacts were uploaded (`upload-artifact` and `upload-failure-reports` are both false).',
+            failed.length
+              ? `3. Reproduce locally:\n\n   \`\`\`bash\n${failed.map(b => `   ${repro[b]}`).join('\n')}\n   \`\`\``
+              : '3. No builder reported failure — the run failed before or after the builds.',
+            '',
+            '---',
+            'Filed automatically by `build-jupyter-cache`. Close it once the build is fixed; the next successful run saves a new cache.',
+          ].join('\n');
+
+          // Dedupe on the first label, matching the previous behaviour.
+          let issue;
+          try {
+            const existing = labels.length
+              ? (await github.rest.issues.listForRepo({
+                  owner, repo, state: 'open', labels: labels[0], per_page: 1,
+                })).data[0]
+              : undefined;
+
+            if (existing) {
+              await github.rest.issues.createComment({ owner, repo, issue_number: existing.number, body });
+              issue = existing;
+              core.info(`Commented on existing issue #${existing.number}`);
+            } else {
+              const created = await github.rest.issues.create({
+                owner, repo,
+                title: `🔴 Cache Build Failed - ${new Date().toISOString().slice(0, 10)}`,
+                body, labels,
+                ...(assignees.length ? { assignees } : {}),
+              });
+              issue = created.data;
+              core.info(`Created issue #${issue.number}`);
+            }
+          } catch (err) {
+            if (err.status === 403 || err.status === 404) {
+              core.error(
+                'Could not file the failure issue: the token lacks issue permissions. ' +
+                'Add `issues: write` to the job\'s `permissions:` block. ' +
+                `(${err.status} ${err.message})`);
+            }
+            throw err;
+          }
+          core.setOutput('issue-url', issue.html_url);
+
+    # The defect this whole path had was being a silent no-op, so assert the
+    # postcondition rather than trusting the step above. This also survives
+    # someone later adding continue-on-error to it.
+    - name: Verify the failure alert was filed
+      if: always() && steps.verify-builds.outputs.all-passed == 'false' && inputs.create-issue-on-failure == 'true'
+      shell: bash
+      env:
+        ALERT_OUTCOME: ${{ steps.create-failure-issue.outcome }}
+        ISSUE_URL: ${{ steps.create-failure-issue.outputs.issue-url }}
       run: |
-        ${{ github.action_path }}/scripts/create-failure-issue.sh
+        if [ "$ALERT_OUTCOME" != "success" ] || [ -z "$ISSUE_URL" ]; then
+          echo "::error::create-issue-on-failure is enabled but no failure issue was filed (alert step outcome=[$ALERT_OUTCOME], issue url=[$ISSUE_URL]). The build failure below would otherwise have gone unreported."
+          exit 1
+        fi
+        echo "✅ failure issue filed: $ISSUE_URL"
+        echo "Failure issue: $ISSUE_URL" >> "$GITHUB_STEP_SUMMARY"
 
     # ============================================================
     # BUILD SUMMARY
@@ -365,8 +523,14 @@ runs:
     # FAIL WORKFLOW IF BUILDS FAILED
     # ============================================================
     
+    # always() is load-bearing. A composite step's plain `if:` carries an
+    # implicit success(), so once any earlier step failed — the artifact upload,
+    # or the alert step itself — this one silently skipped and the composite's
+    # only red was whatever incidental step happened to fail. In lecture-dp run
+    # 26381283100 that meant the visible error was an exit-127 from "Create
+    # failure issue", and the actual build failure never surfaced at all.
     - name: Fail if builds failed
-      if: steps.verify-builds.outputs.all-passed == 'false'
+      if: always() && steps.verify-builds.outputs.all-passed == 'false'
       shell: bash
       run: |
         echo "::error::One or more builds failed - see summary above"
