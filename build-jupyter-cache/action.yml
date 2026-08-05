@@ -43,7 +43,7 @@ inputs:
     description: >-
       Pass upload-failure-reports through to the inner build-lectures calls, so a
       failed build uploads its execution-report artifact. Defaults to true here,
-      unlike build-lectures own default of false: that action is usually driven by
+      unlike build-lectures' own default of false: that action is usually driven by
       a human watching a PR, whereas this one runs unattended (typically weekly),
       and the auto-filed failure issue tells the maintainer to go read a report.
       Set to false if re-uploading reports on every failure is too costly.
