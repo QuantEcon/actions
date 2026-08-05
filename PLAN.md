@@ -22,7 +22,7 @@ The core infrastructure is complete, hardened, and in production:
 |---|---|---|
 | `lecture-dp` | Full chain: `restore-jupyter-cache`, `build-lectures`, `build-jupyter-cache`, `publish-gh-pages` | `@v0.8.0` |
 | `lecture-python.myst` | `preview-netlify` (ci.yml) | `@v0.8.0` |
-| `test-lecture-python-intro` | Full chain (test harness) | `@v0.6.0` |
+| `test-actions-lecture-intro` | Full chain (canary — see #100 stage 2) | `@v0.6.0` ⚠️ stale, dormant |
 
 Consumer/migration tracking lives in [QuantEcon/meta#321](https://github.com/QuantEcon/meta/issues/321); the preview-unification rollout is planned in [QuantEcon/meta#327](https://github.com/QuantEcon/meta/issues/327).
 

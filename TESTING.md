@@ -38,9 +38,13 @@ Fixtures are salted with `run_id`-`run_attempt` so cache keys are unique per run
 
 ## Local Test Fixtures
 
-### `test-lecture-python-intro/` (git-ignored)
+### `tests/local/` (git-ignored)
 
-A local clone of `lecture-python-intro` used for testing workflows locally. This directory is excluded from version control via the `.gitignore` pattern `test-*/`.
+Scratch space for local clones of real lecture repos, used to test workflows on your own machine against something larger than the committed fixture. Ignored via `tests/local/` in `.gitignore`, so it exists only in your working tree — never committed, and read by no workflow. See [tests/README.md](tests/README.md) for the wider layout.
+
+> **Not to be confused with [`QuantEcon/test-actions-lecture-intro`](https://github.com/QuantEcon/test-actions-lecture-intro)**, the canary repo that runs the actions in real CI (#100 stage 2). This is a throwaway directory; that is a live repo.
+>
+> Local clones used to be documented at the repo root as `test-lecture-python-intro/`, one character away from the canary's old name — close enough that the two were repeatedly confused. A path under `tests/local/` cannot collide with a repo name. The old `test-*/` ignore pattern is retained, so existing local clones stay ignored where they are.
 
 **Purpose:**
 - Test container builds locally
@@ -49,8 +53,8 @@ A local clone of `lecture-python-intro` used for testing workflows locally. This
 
 **Setup:**
 ```bash
-# Clone test fixture (from actions repo root)
-git clone https://github.com/QuantEcon/lecture-python-intro.git test-lecture-python-intro
+# from the repo root
+git clone https://github.com/QuantEcon/lecture-python-intro.git tests/local/lecture-python-intro
 ```
 
 **Usage with local scripts:**
@@ -110,7 +114,7 @@ docker run --rm ghcr.io/quantecon/quantecon:latest pdflatex --version
 
 ## Phase 2: Test Repository Workflow
 
-### 2.1 Update test-lecture-python-intro
+### 2.1 Update test-actions-lecture-intro
 
 Create container-based workflow:
 
@@ -248,7 +252,7 @@ Pick a test repository or create a fork:
 2. Monitor for 1 week
 3. Collect metrics (build times, success rate)
 
-Complete testing with test-lecture-python-intro, validate all metrics.
+Complete testing with `QuantEcon/test-actions-lecture-intro`, validate all metrics.
 
 ### Stage 2: CPU Lecture Repositories
 

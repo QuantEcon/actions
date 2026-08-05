@@ -10,7 +10,14 @@
 *.swo
 *~
 
-# Test directories
+# Local scratch space for test infrastructure (see tests/README.md).
+# Everything under tests/ is committed EXCEPT tests/local/, which is where
+# throwaway clones of real lecture repos go. Keeping them under a directory
+# that can never be a repo name avoids shadowing one.
+tests/local/
+
+# Legacy scratch patterns — kept so existing local clones stay ignored.
+# Prefer tests/local/ for anything new.
 test-*/
 examples-*/
 
