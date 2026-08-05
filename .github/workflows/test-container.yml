@@ -11,14 +11,30 @@ on:
       - completed
 
 jobs:
-  test-quantecon:
-    name: Test quantecon (Full)
+  smoke:
+    name: 'Smoke: ${{ matrix.image }}'
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     timeout-minutes: 30
     permissions:
       contents: read
       packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [quantecon, quantecon-build]
+    # A real container job, not `docker run`. The runner mounts an empty
+    # directory at /github/home and forces HOME=/github/home; `docker run` gets
+    # HOME=/root. That is exactly how #85 (kaleido v1 losing its bundled
+    # chromium, provisioned under /root at image build time) passed this
+    # workflow while failing test-containers-lectures.yml, which does use a
+    # container job. Same pattern as that workflow.
+    container:
+      image: ghcr.io/quantecon/${{ matrix.image }}:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user root
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -28,96 +44,58 @@ jobs:
           # triggering commit; fall back to github.sha for workflow_dispatch.
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Pull latest container
-        run: docker pull ghcr.io/quantecon/quantecon:latest
-
-      - name: Test XeLaTeX compilation
+      - name: Assert the container-job environment
         run: |
-          cd containers/quantecon
-          docker run --rm -v $(pwd):/workspace -w /workspace/tests \
-            ghcr.io/quantecon/quantecon:latest \
-            bash -c "xelatex test-xelatex.tex && ls -lh test-xelatex.pdf"
+          cat /etc/quantecon-container
+          # If this ever stops being /github/home, the job has silently reverted
+          # to an environment in which #85 could not have surfaced.
+          [ "$HOME" = "/github/home" ] \
+            || { echo "::error::HOME=[$HOME], expected /github/home — this is no longer a container job"; exit 1; }
 
-      - name: Test Jupyter Book HTML build
-        run: |
-          cd containers/quantecon
-          docker run --rm -v $(pwd):/workspace -w /workspace/tests \
-            ghcr.io/quantecon/quantecon:latest \
-            bash -c "cd minimal-jupyter-book && jb build . --builder html"
-          ls -lh tests/minimal-jupyter-book/_build/html/
+      - name: Smoke test
+        run: ./containers/quantecon/tests/smoke-test.sh
 
-      - name: Test Jupyter Book PDF build
-        run: |
-          cd containers/quantecon
-          docker run --rm -v $(pwd):/workspace -w /workspace/tests \
-            ghcr.io/quantecon/quantecon:latest \
-            bash -c "cd minimal-jupyter-book && jb build . --builder pdflatex"
-          ls -lh tests/minimal-jupyter-book/_build/latex/*.pdf
-
-  test-quantecon-build:
-    name: Test quantecon-build (Lean)
-    runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
-    timeout-minutes: 30
-    permissions:
-      contents: read
-      packages: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          # Test files must match the commit that built the image. For
-          # workflow_run events checkout defaults to the default branch, not the
-          # triggering commit; fall back to github.sha for workflow_dispatch.
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Pull latest container
-        run: docker pull ghcr.io/quantecon/quantecon-build:latest
-
-      - name: Check container marker
-        run: |
-          docker run --rm ghcr.io/quantecon/quantecon-build:latest \
-            cat /etc/quantecon-container
-
-      - name: Test XeLaTeX compilation
-        run: |
-          cd containers/quantecon
-          docker run --rm -v $(pwd):/workspace -w /workspace/tests \
-            ghcr.io/quantecon/quantecon-build:latest \
-            bash -c "xelatex test-xelatex.tex && ls -lh test-xelatex.pdf"
-
-      - name: Test Jupyter Book HTML build
-        run: |
-          cd containers/quantecon
-          docker run --rm -v $(pwd):/workspace -w /workspace/tests \
-            ghcr.io/quantecon/quantecon-build:latest \
-            bash -c "cd minimal-jupyter-book && jb build . --builder html"
-          ls -lh tests/minimal-jupyter-book/_build/html/
-
-      - name: Show image size
-        run: |
-          echo "=== Container Image Size ==="
-          docker images ghcr.io/quantecon/quantecon-build:latest --format "quantecon-build (lean): {{.Size}}"
-
-      - name: Upload test artifacts
-        uses: actions/upload-artifact@v7
+      # Runs even if the smoke test failed: a green smoke test whose fixture
+      # cannot fail is the defect #108 was about, so the guard has to report
+      # independently.
+      - name: Self-test (the fixture must be able to fail)
         if: always()
+        run: ./containers/quantecon/tests/smoke-test.sh --self-test
+
+      - name: Upload test outputs
+        if: always()
+        uses: actions/upload-artifact@v7
         with:
-          name: test-outputs-lean
-          path: |
-            containers/quantecon/tests/test-xelatex.pdf
-            containers/quantecon/tests/minimal-jupyter-book/_build/
+          name: smoke-${{ matrix.image }}
+          path: ${{ runner.temp }}/smoke-*/
+          if-no-files-found: warn
+
+  # The old workflow reported image size via `docker images` after a pull. A
+  # container job cannot run docker, so this reads the manifest instead — note
+  # that is COMPRESSED layer size, a different (smaller) number than the old
+  # uncompressed one, so do not compare the two series directly.
+  size:
+    name: 'Image size: ${{ matrix.image }}'
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [quantecon, quantecon-build]
+    steps:
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Report compressed image size
+        run: |
+          docker manifest inspect ghcr.io/quantecon/${{ matrix.image }}:latest \
+            | jq -r '"${{ matrix.image }}: \(([.layers[].size] | add) / 1048576 | floor) MiB compressed"' \
+            | tee -a "$GITHUB_STEP_SUMMARY"

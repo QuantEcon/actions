@@ -25,6 +25,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a real action path fails the gate closed instead of silently skipping the suite. `harness-summary`
   now certifies both shapes (all-ran and all-skipped), rejects a vacuous empty job set, and fails
   if the gate and the fan-out disagree. (#116)
+- **CI**: the container smoke tests could not fail. `containers/quantecon/tests/minimal-jupyter-book/`
+  was inert for three independent reasons — `execute_notebooks: "off"`, its one code block was a
+  plain ` ```python ` fence rather than a `{code-cell}`, and it had no jupytext front matter — so an
+  image whose numpy, matplotlib or kaleido was completely broken still produced a green test. It now
+  executes real cells that **assert** on results (a stack that imports but computes wrong answers is
+  exactly what a smoke test should catch), covering numpy/scipy, pandas, a real matplotlib PNG
+  render, and a plotly static export through kaleido — the #85 path. `execute_notebooks: force` plus
+  `raise_on_error: true`, and the build passes `-W`, because a raising cell is otherwise only a
+  warning.
+  `test-container.yml` now runs both images as real `container:` jobs rather than `docker run`. That
+  is not cosmetic: a container job forces `HOME=/github/home` while `docker run` leaves `HOME=/root`,
+  and that difference is precisely why #85 passed these tests while failing the lecture matrix, which
+  does use a container job. The job asserts `HOME` explicitly so a silent revert is caught. A new
+  `--self-test` mode stages a deliberate exception and fails if the build does *not* go red,
+  attributing on captured output rather than `reports/*.err.log` (with `raise_on_error` myst-nb
+  raises before Sphinx writes the report). The lean image also gains pdflatex coverage it never had,
+  and image size is now reported from the manifest — **compressed** layer bytes, a different and
+  smaller number than the previous `docker images` figure, so the two series are not comparable.
+  (#108)
 
 ### Fixed
 - **build-jupyter-cache**: failure alerting **never worked in container mode**, which is the

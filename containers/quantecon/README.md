@@ -236,8 +236,9 @@ The test script will:
 ### Test Files
 
 - `tests/test-xelatex.tex` - Minimal XeLaTeX document testing fonts and unicode
-- `tests/minimal-jupyter-book/` - Minimal Jupyter Book project for build testing
-- `tests/test-container.sh` - Automated test script for Docker container
+- `tests/minimal-jupyter-book/` - Minimal Jupyter Book whose cells actually execute, so a broken science stack fails the build
+- `tests/smoke-test.sh` - What CI runs, inside the image; `--self-test` asserts the fixture can still fail
+- `tests/test-container.sh` - Older automated test script for Docker container
 - `tests/run-local-tests.sh` - Local test script for macOS development
 
 ### Local Testing (macOS)
@@ -253,6 +254,8 @@ cd containers/quantecon/tests
 - MacTeX (for xelatex)
 - jupyter-book (`pip install jupyter-book`)
 - DejaVu Serif fonts (`brew install --cask font-dejavu`)
+- numpy, scipy, pandas, matplotlib, and plotly with a working `kaleido<1.0` — the
+  fixture executes its cells now, so these are no longer optional
 
 The script runs the same tests as the container test suite locally.
 
