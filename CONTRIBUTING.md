@@ -74,6 +74,16 @@ should pin an exact `v0.x.y` tag. After the 1.0.0 release, we'll add floating ma
    Currently outstanding: none. Add an entry here whenever you introduce one — a workaround with
    no entry is one a future releaser will not find.
 
+## CI
+
+**Do not add a `paths:` filter to `.github/workflows/test-actions.yml`.** A path filter suppresses
+creation of the workflow *run*, so no check run is published for that commit and a required
+`Action harness: all checks` waits forever — GitHub's own guidance is to avoid requiring workflows
+that can be skipped. Relevance is decided by the `gate` job instead, which skips the jobs (a
+skipped job reports success to a required check). If the harness should ignore a new kind of path,
+extend `IGNORED` in that job; it is an ignore list, so anything unrecognised runs the harness
+rather than silently passing.
+
 ### Breaking Changes
 
 **During 0.x phase (current):**

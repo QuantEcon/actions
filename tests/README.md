@@ -10,7 +10,7 @@ Test assets are currently spread across the repo, each next to what it tests. Th
 
 | Location | What | Committed? |
 |---|---|---|
-| `.github/workflows/test-actions.yml` | The PR harness — 14 jobs exercising the cache, environment and build actions via `uses: ./` local paths (#100 stage 1) | yes |
+| `.github/workflows/test-actions.yml` | The PR harness — a relevance `gate` plus 15 jobs exercising the cache, environment and build actions via `uses: ./` local paths (#100 stage 1) | yes |
 | `.github/fixtures/mini-lectures/` | Fixture for the harness: a two-page book with a real executed code cell, so builds populate a genuine `_build/.jupyter_cache` | yes |
 | `containers/quantecon/tests/` | Container smoke tests and their minimal book | yes |
 | `tests/local/` | Throwaway clones of real lecture repos, for manual testing | **no** — git-ignored |
@@ -31,4 +31,6 @@ Put local clones **here** rather than at the repo root. A root-level `test-lectu
 
 ## Adding test infrastructure
 
-Fixtures that a workflow consumes should stay next to that workflow (`.github/fixtures/`, `containers/*/tests/`) so the `paths:` filters keep working. Use `tests/` for tooling that spans more than one of them — a shared harness runner, cross-action integration scripts, or fixture-generation tooling.
+Fixtures that a workflow consumes should stay next to that workflow (`.github/fixtures/`, `containers/*/tests/`). Use `tests/` for tooling that spans more than one of them — a shared harness runner, cross-action integration scripts, or fixture-generation tooling.
+
+The harness no longer uses `paths:` filters, so moving a fixture will not silently stop it triggering. Relevance is decided by the `gate` job's `IGNORED` list, which is an **ignore** list: anything it does not recognise runs the whole harness. The gate also self-tests, deriving the must-always-run set from the `uses: ./<action>` lines in the workflow itself, so it fails closed if `IGNORED` ever grows to swallow a real action path.
