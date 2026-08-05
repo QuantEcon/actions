@@ -32,15 +32,17 @@ Consumer/migration tracking lives in [QuantEcon/meta#321](https://github.com/Qua
 
 ### P0 — broken safety net
 
+**Currently empty** — the one P0 item closed in #122 (2026-08-05). Alerting for unattended container-mode cache builds now works and cannot silently no-op.
+
 | # | Item | Refs |
 |---|---|---|
-| 1 | **Fix container-mode failure alerting.** Neither container image installs the `gh` CLI, so `create-failure-issue.sh` exits 127 when the cache build runs inside a container (the documented default) — every failure goes un-alerted. Install `gh` in both images, or fall back to the REST API via `curl`, and guard the script so a missing CLI is a loud `::error::`. Add a container test asserting `gh` is on PATH. | #83 |
+| 1 | ~~**Fix container-mode failure alerting.**~~ Done (#122) — but the diagnosis above was wrong, which is worth recording. `gh` absence was real and would have bitten, but it was never reached: the step invoked its script through `${{ github.action_path }}`, which expands to the *runner's* path, and inside a `container:` job the action is mounted at `/__w/_actions/...` — so bash got a nonexistent path and exited 127 *before* the script ran. A third, unnoticed bug made alerting fail on hosted runners too: `gh issue create --label` validates labels client-side, and no consumer has `build-failure` or `automated`. Fixed by moving to `actions/github-script` (REST), which removes all three at once. The suggested remedies here would each have fixed only one: installing `gh` in both images fixes neither the path nor the labels, and a container test asserting `gh` is on PATH is now moot. | #83, #122 |
 
 ### P1 — correctness and drift prevention
 
 | # | Item | Refs |
 |---|---|---|
-| 2 | **Targeted execution reports on cache failure.** The build steps inside `build-jupyter-cache` don't pass `upload-failure-reports` (defaults `false`), so a failed cache build uploads no `reports/*.err.log` artifact while the auto-issue body tells maintainers to download one. Pass it through (default `true`) and align the issue-body text with the artifact actually produced. | #83 |
+| 2 | ~~**Targeted execution reports on cache failure.**~~ Done (#122) — `upload-failure-reports` is now an input defaulting `true` and passed to all three inner `build-lectures` calls, and the issue body names the artifacts actually produced with per-builder reproduce commands. One correction: the reports were not entirely absent before, they were reachable only buried inside the full `_build` artifact (hundreds of MB, including `.jupyter_cache`) — and genuinely absent only when `upload-artifact` was off. It was mostly a discoverability failure. | #83, #122 |
 | 3 | **Fix Dependabot conda grouping.** The conda groups match `*` with no `ignore` for the pinned science stack or `anaconda`, so Dependabot proposes exactly the drift the #28 pins exist to prevent (live proof: PRs #86, #87). Add `ignore` entries so the stack moves manually as a set, and correct the stale header comment. | #28, PRs #86/#87 |
 | 4 | **Hold PRs #86 and #87.** Both drift the container science stack off the 2025.12 baseline; #87 additionally pulls in pandas 3.0 (major, copy-on-write default). Handle container-stack bumps as one coordinated, validated move when the lecture repos adopt a new anaconda baseline (see Dependency policy). | #28 |
 | 5 | **`preview-cloudflare`: use the stable `pr-N` alias URL.** The PR comment currently shows the per-deployment hash URL grepped from wrangler output; construct `https://{branch-alias}.{project}.pages.dev` directly (the alias is already computed). | #14 |
