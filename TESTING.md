@@ -38,11 +38,13 @@ Fixtures are salted with `run_id`-`run_attempt` so cache keys are unique per run
 
 ## Local Test Fixtures
 
-### `test-lecture-python-intro/` (git-ignored, local only)
+### `tests/local/` (git-ignored)
 
-A local clone of `lecture-python-intro` used for testing workflows on your own machine. Excluded from version control via the `.gitignore` pattern `test-*/`, so it exists only in your working tree — it is never committed and no workflow reads it.
+Scratch space for local clones of real lecture repos, used to test workflows on your own machine against something larger than the committed fixture. Ignored via `tests/local/` in `.gitignore`, so it exists only in your working tree — never committed, and read by no workflow. See [tests/README.md](tests/README.md) for the wider layout.
 
-> **Not to be confused with [`QuantEcon/test-actions-lecture-intro`](https://github.com/QuantEcon/test-actions-lecture-intro)**, the canary repo that runs the actions in real CI (#100 stage 2). The two were previously near-identical in name, which was a reliable source of confusion. This entry is a throwaway directory; that one is a live repo. Any `test-*/` name works here — pick one that does not shadow a real repo.
+> **Not to be confused with [`QuantEcon/test-actions-lecture-intro`](https://github.com/QuantEcon/test-actions-lecture-intro)**, the canary repo that runs the actions in real CI (#100 stage 2). This is a throwaway directory; that is a live repo.
+>
+> Local clones used to be documented at the repo root as `test-lecture-python-intro/`, one character away from the canary's old name — close enough that the two were repeatedly confused. A path under `tests/local/` cannot collide with a repo name. The old `test-*/` ignore pattern is retained, so existing local clones stay ignored where they are.
 
 **Purpose:**
 - Test container builds locally
@@ -51,8 +53,8 @@ A local clone of `lecture-python-intro` used for testing workflows on your own m
 
 **Setup:**
 ```bash
-# Clone test fixture (from actions repo root)
-git clone https://github.com/QuantEcon/lecture-python-intro.git test-lecture-python-intro
+# from the repo root
+git clone https://github.com/QuantEcon/lecture-python-intro.git tests/local/lecture-python-intro
 ```
 
 **Usage with local scripts:**
