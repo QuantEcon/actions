@@ -32,12 +32,12 @@ This ensures PRs always have a working cache to restore, even when the weekly bu
 
 | Output | Description |
 |--------|-------------|
-| `cache-saved` | Whether new cache was saved (true only if all builds passed) |
-| `build-success` | Whether all builds succeeded |
+| `cache-saved` | Whether a new cache was saved (`true` only if every requested build passed) |
+| `build-success` | `true` only if every requested build passed, `false` for anything else — including a run that aborted during setup before any build started |
 | `cache-key` | The cache key used |
-| `jupyter-status` | Status of jupyter build (success/failure/skipped) |
-| `pdflatex-status` | Status of pdflatex build (success/failure/skipped) |
-| `html-status` | Status of html build (success/failure/skipped) |
+| `jupyter-status` | Status of jupyter build (success/failure/skipped; empty if the run aborted before the builds) |
+| `pdflatex-status` | Status of pdflatex build (success/failure/skipped; empty if the run aborted before the builds) |
+| `html-status` | Status of html build (success/failure/skipped; empty if the run aborted before the builds) |
 | `failure-issue-url` | URL of the failure issue filed or commented on (empty when there was no failure, or alerting is off) |
 
 ## Cache Key Strategy

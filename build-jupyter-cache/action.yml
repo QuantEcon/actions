@@ -53,10 +53,14 @@ inputs:
 outputs:
   cache-saved:
     description: 'Whether new cache was saved (only true if all builds passed)'
-    value: ${{ steps.verify-builds.outputs.all-passed }}
+    value: ${{ steps.status.outputs.all-passed }}
   build-success:
-    description: 'Whether all builds succeeded'
-    value: ${{ steps.verify-builds.outputs.all-passed }}
+    description: >-
+      Whether the cache build succeeded. 'true' only if every requested build
+      passed; 'false' for anything else, including a run that aborted during
+      setup before any build started (it used to be empty in that case, which
+      no caller could distinguish from success — see #123).
+    value: ${{ steps.status.outputs.all-passed }}
   cache-key:
     description: 'The cache key used for saving'
     value: ${{ steps.cache-key.outputs.key }}
@@ -257,22 +261,68 @@ runs:
           echo "  Existing cache preserved for PR workflows"
           echo "all-passed=false" >> $GITHUB_OUTPUT
         fi
-        
+
         echo ""
+
+    # ============================================================
+    # RESOLVE OVERALL STATUS
+    # ============================================================
+
+    # Single source of truth for "did this run succeed?". Every guard below
+    # reads THIS step, not verify-builds, and the distinction is the whole
+    # point of #123.
+    #
+    # verify-builds has no `if:` at all, and a composite step without `always()`
+    # is skipped once an earlier step has failed. So any earlier failure —
+    # `Setup environment`, or the input validation above it — skips
+    # verify-builds entirely and leaves all-passed as '', not 'false'. (The
+    # steps further down that DO carry an `if:` have the same problem for the
+    # same reason: a written condition gains an implicit success() on top of
+    # whatever it says.) The guards below used to test `== 'false'`, so on that
+    # path ALL of them skipped: no issue was filed, the postcondition assert
+    # never fired, and the only red was the aborting step itself. For an
+    # unattended weekly build that is the same silence #83 was about.
+    #
+    # Resolving '' to 'false' here makes the failure path fail SAFE — it alerts
+    # on any abort, not only on the ones that were anticipated. That is why the
+    # guards below test `!= 'true'` rather than `== 'false'`: a value nobody
+    # wrote must not read as success.
+    - name: Resolve overall status
+      id: status
+      if: always()
+      shell: bash
+      env:
+        VERIFIED: ${{ steps.verify-builds.outputs.all-passed }}
+        SETUP_OUTCOME: ${{ steps.setup-env.outcome }}
+      run: |
+        # phase names which part of the composite decided the outcome, so the
+        # failure issue and the summary can say "no lecture was ever built"
+        # instead of pointing a maintainer at lectures that never ran.
+        if [ -n "$VERIFIED" ]; then
+          PHASE=build
+        elif [ "$SETUP_OUTCOME" = "failure" ]; then
+          PHASE=setup
+        else
+          PHASE=pre-build
+        fi
+
+        echo "all-passed=${VERIFIED:-false}" >> $GITHUB_OUTPUT
+        echo "phase=$PHASE" >> $GITHUB_OUTPUT
+        echo "Overall status: all-passed=${VERIFIED:-false} (decided in phase: $PHASE)"
 
     # ============================================================
     # SAVE CACHE (only if all builds passed)
     # ============================================================
-    
+
     - name: Save build cache
-      if: steps.verify-builds.outputs.all-passed == 'true'
+      if: steps.status.outputs.all-passed == 'true'
       uses: actions/cache/save@v6
       with:
         path: _build
         key: ${{ steps.cache-key.outputs.key }}
 
     - name: Save execution cache
-      if: steps.verify-builds.outputs.all-passed == 'true'
+      if: steps.status.outputs.all-passed == 'true'
       uses: actions/cache/save@v6
       with:
         path: _build/.jupyter_cache
@@ -283,10 +333,20 @@ runs:
     # ============================================================
     
     - name: Upload build artifact (on failure, for debugging)
+      id: upload-artifact
       # On success the GHA cache already holds _build, so skip the redundant
       # 30-day artifact; only upload when a build failed (the cache is not saved
       # then), making the artifact the sole copy for debugging.
-      if: inputs.upload-artifact == 'true' && steps.verify-builds.outputs.all-passed != 'true'
+      #
+      # The bare `if:` (implicit success()) is deliberate and stays: when the
+      # composite aborted during setup there is no _build to upload. The failure
+      # issue therefore keys its artifact list off this step's `artifact-id`
+      # output rather than off inputs.upload-artifact. Not off the step's
+      # outcome either: `if-no-files-found: warn` lets the step SUCCEED having
+      # uploaded nothing, whereas artifact-id is empty in that case as well as
+      # when the step is skipped. So the issue never names an artifact that was
+      # not produced.
+      if: inputs.upload-artifact == 'true' && steps.status.outputs.all-passed != 'true'
       uses: actions/upload-artifact@v7
       with:
         name: build-cache-${{ github.run_id }}
@@ -321,7 +381,7 @@ runs:
     # made the artifact upload above able to skip alerting entirely.
     - name: Create failure issue
       id: create-failure-issue
-      if: always() && steps.verify-builds.outputs.all-passed == 'false' && inputs.create-issue-on-failure == 'true'
+      if: always() && steps.status.outputs.all-passed != 'true' && inputs.create-issue-on-failure == 'true'
       uses: actions/github-script@v9
       env:
         SOURCE_DIR: ${{ inputs.source-dir }}
@@ -330,7 +390,12 @@ runs:
         JUPYTER_STATUS: ${{ steps.verify-builds.outputs.jupyter-status }}
         PDFLATEX_STATUS: ${{ steps.verify-builds.outputs.pdflatex-status }}
         HTML_STATUS: ${{ steps.verify-builds.outputs.html-status }}
-        UPLOAD_ARTIFACT: ${{ inputs.upload-artifact }}
+        FAILURE_PHASE: ${{ steps.status.outputs.phase }}
+        # artifact-id, not the step's outcome: `if-no-files-found: warn` means
+        # the step also succeeds when it uploaded nothing at all. The output is
+        # documented as empty unless an artifact was really created, and it is
+        # empty for a skipped step too, which is the case that matters here.
+        ARTIFACT_UPLOADED: ${{ steps.upload-artifact.outputs.artifact-id != '' }}
         UPLOAD_FAILURE_REPORTS: ${{ inputs.upload-failure-reports }}
       with:
         github-token: ${{ github.token }}
@@ -342,12 +407,30 @@ runs:
             .split(',').map(s => s.trim()).filter(Boolean);
           const assignees = (process.env.ISSUE_ASSIGNEES || '')
             .split(',').map(s => s.trim()).filter(Boolean);
+          // 'not run' is distinct from 'skipped' on purpose. verify-builds
+          // writes 'skipped' for a builder that was considered and not
+          // requested; an empty value means verify-builds never ran, so the
+          // builder was never considered at all.
           const status = {
-            jupyter: process.env.JUPYTER_STATUS || 'skipped',
-            pdflatex: process.env.PDFLATEX_STATUS || 'skipped',
-            html: process.env.HTML_STATUS || 'skipped',
+            jupyter: process.env.JUPYTER_STATUS || 'not run',
+            pdflatex: process.env.PDFLATEX_STATUS || 'not run',
+            html: process.env.HTML_STATUS || 'not run',
           };
-          const icon = s => ({ success: '✅ success', failure: '❌ failure' }[s] || '⏭️ skipped');
+          const icon = s => ({
+            success: '✅ success', failure: '❌ failure', skipped: '⏭️ skipped',
+          }[s] || '⚪ not run');
+
+          // Which part of the composite decided the outcome. On anything other
+          // than 'build' every row of the table below reads 'not run', which is
+          // accurate but easy to misread, so say plainly that no lecture ever
+          // ran — otherwise this issue looks like a lecture bug when the cause
+          // was the environment.
+          const phase = process.env.FAILURE_PHASE || 'build';
+          const phaseLabel = {
+            build: 'the lecture builds',
+            setup: 'environment setup — no lecture was built',
+            'pre-build': 'input validation, before environment setup — no lecture was built',
+          }[phase] || phase;
 
           const { owner, repo } = context.repo;
           const runUrl = `${process.env.GITHUB_SERVER_URL}/${owner}/${repo}/actions/runs/${context.runId}`;
@@ -361,11 +444,15 @@ runs:
           const failed = Object.keys(status).filter(k => status[k] === 'failure');
 
           // Name the artifacts rather than saying "download the build artifact".
+          // Both lists are gated on something that PRODUCED an artifact, not on
+          // the input that asked for one: a run that aborted before any build
+          // uploads nothing, and an issue naming a nonexistent artifact sends
+          // the maintainer looking for a download that is not there.
           const artifacts = [];
           if (process.env.UPLOAD_FAILURE_REPORTS === 'true') {
             for (const b of failed) artifacts.push(`\`execution-reports-${b}\` — \`reports/*.err.log\` tracebacks for the ${b} build`);
           }
-          if (process.env.UPLOAD_ARTIFACT === 'true') {
+          if (process.env.ARTIFACT_UPLOADED === 'true') {
             artifacts.push(`\`build-cache-${context.runId}\` — the whole \`_build\` tree (large; includes \`.jupyter_cache\`)`);
           }
 
@@ -376,6 +463,7 @@ runs:
             `**Trigger:** ${context.eventName}`,
             `**Branch:** ${process.env.GITHUB_REF_NAME}`,
             `**Commit:** ${context.sha}`,
+            `**Failed during:** ${phaseLabel}`,
             '',
             '### Build results',
             '',
@@ -394,10 +482,12 @@ runs:
             `1. [Workflow logs](${runUrl})`,
             artifacts.length
               ? `2. Artifacts on that run:\n${artifacts.map(a => `   - ${a}`).join('\n')}`
-              : '2. No artifacts were uploaded (`upload-artifact` and `upload-failure-reports` are both false).',
+              : '2. No artifacts were uploaded — either nothing was built, or `upload-artifact` and `upload-failure-reports` are both off.',
             failed.length
               ? `3. Reproduce locally:\n\n   \`\`\`bash\n${failed.map(b => `   ${repro[b]}`).join('\n')}\n   \`\`\``
-              : '3. No builder reported failure — the run failed before or after the builds.',
+              : phase === 'build'
+                ? '3. No builder reported failure — the run failed after the builds, in cache save, artifact upload, or alerting.'
+                : '3. Nothing to reproduce locally: no lecture was built. Start from the failing step in the run logs — this is an environment or configuration failure, not a lecture failure.',
             '',
             '---',
             'Filed automatically by `build-jupyter-cache`. Close it once the build is fixed; the next successful run saves a new cache.',
@@ -441,14 +531,15 @@ runs:
     # postcondition rather than trusting the step above. This also survives
     # someone later adding continue-on-error to it.
     - name: Verify the failure alert was filed
-      if: always() && steps.verify-builds.outputs.all-passed == 'false' && inputs.create-issue-on-failure == 'true'
+      if: always() && steps.status.outputs.all-passed != 'true' && inputs.create-issue-on-failure == 'true'
       shell: bash
       env:
         ALERT_OUTCOME: ${{ steps.create-failure-issue.outcome }}
         ISSUE_URL: ${{ steps.create-failure-issue.outputs.issue-url }}
+        FAILURE_PHASE: ${{ steps.status.outputs.phase }}
       run: |
         if [ "$ALERT_OUTCOME" != "success" ] || [ -z "$ISSUE_URL" ]; then
-          echo "::error::create-issue-on-failure is enabled but no failure issue was filed (alert step outcome=[$ALERT_OUTCOME], issue url=[$ISSUE_URL]). The build failure below would otherwise have gone unreported."
+          echo "::error::create-issue-on-failure is enabled but no failure issue was filed (alert step outcome=[$ALERT_OUTCOME], issue url=[$ISSUE_URL], failing phase=[$FAILURE_PHASE]). This run's failure would otherwise have gone unreported."
           exit 1
         fi
         echo "✅ failure issue filed: $ISSUE_URL"
@@ -458,82 +549,113 @@ runs:
     # BUILD SUMMARY
     # ============================================================
     
+    # Values are read from env rather than interpolated into the script body:
+    # same discipline as the alert step, and it lets each one carry a default.
+    # A run that aborts before verify-builds has no per-builder outputs at all,
+    # which used to render as three blank table cells.
     - name: Generate build summary
       if: always()
       shell: bash
+      env:
+        ALL_PASSED: ${{ steps.status.outputs.all-passed }}
+        FAILURE_PHASE: ${{ steps.status.outputs.phase }}
+        CACHE_KEY: ${{ steps.cache-key.outputs.key }}
+        CONTAINER_MODE: ${{ steps.setup-env.outputs.container-mode }}
+        JUPYTER_STATUS: ${{ steps.verify-builds.outputs.jupyter-status }}
+        PDFLATEX_STATUS: ${{ steps.verify-builds.outputs.pdflatex-status }}
+        HTML_STATUS: ${{ steps.verify-builds.outputs.html-status }}
       run: |
-        echo "## 📦 Jupyter Cache Build Summary" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        
-        if [ "${{ steps.verify-builds.outputs.all-passed }}" = "true" ]; then
-          echo "### ✅ Build Successful - Cache Saved" >> $GITHUB_STEP_SUMMARY
-        else
-          echo "### ❌ Build Failed - Cache NOT Saved" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "> ⚠️ Existing cache preserved for PR workflows" >> $GITHUB_STEP_SUMMARY
-        fi
-        
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
-        echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
-        echo "| Cache Key | \`${{ steps.cache-key.outputs.key }}\` |" >> $GITHUB_STEP_SUMMARY
-        echo "| Trigger | ${{ github.event_name }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
-        echo "| Container Mode | ${{ steps.setup-env.outputs.container-mode }} |" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        
-        echo "### Builder Results" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "| Builder | Status |" >> $GITHUB_STEP_SUMMARY
-        echo "|---------|--------|" >> $GITHUB_STEP_SUMMARY
-        
-        # Add status icons
-        JUPYTER_ICON="⏭️"
-        PDFLATEX_ICON="⏭️"
-        HTML_ICON="⏭️"
-        
-        if [ "${{ steps.verify-builds.outputs.jupyter-status }}" = "success" ]; then JUPYTER_ICON="✅"; fi
-        if [ "${{ steps.verify-builds.outputs.jupyter-status }}" = "failure" ]; then JUPYTER_ICON="❌"; fi
-        if [ "${{ steps.verify-builds.outputs.pdflatex-status }}" = "success" ]; then PDFLATEX_ICON="✅"; fi
-        if [ "${{ steps.verify-builds.outputs.pdflatex-status }}" = "failure" ]; then PDFLATEX_ICON="❌"; fi
-        if [ "${{ steps.verify-builds.outputs.html-status }}" = "success" ]; then HTML_ICON="✅"; fi
-        if [ "${{ steps.verify-builds.outputs.html-status }}" = "failure" ]; then HTML_ICON="❌"; fi
-        
-        echo "| jupyter | $JUPYTER_ICON ${{ steps.verify-builds.outputs.jupyter-status }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| pdflatex | $PDFLATEX_ICON ${{ steps.verify-builds.outputs.pdflatex-status }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| html | $HTML_ICON ${{ steps.verify-builds.outputs.html-status }} |" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        
-        if [ -d "_build" ]; then
-          echo "### Build Output" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Directory | Size |" >> $GITHUB_STEP_SUMMARY
-          echo "|-----------|------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Total | $(du -sh _build 2>/dev/null | cut -f1 || echo 'N/A') |" >> $GITHUB_STEP_SUMMARY
-          for dir in _build/*/; do
-            if [ -d "$dir" ]; then
-              NAME=$(basename "$dir")
-              SIZE=$(du -sh "$dir" 2>/dev/null | cut -f1 || echo 'N/A')
-              echo "| $NAME | $SIZE |" >> $GITHUB_STEP_SUMMARY
+        JUPYTER_STATUS="${JUPYTER_STATUS:-not run}"
+        PDFLATEX_STATUS="${PDFLATEX_STATUS:-not run}"
+        HTML_STATUS="${HTML_STATUS:-not run}"
+
+        icon() {
+          case "$1" in
+            success) echo "✅" ;;
+            failure) echo "❌" ;;
+            skipped) echo "⏭️" ;;
+            *)       echo "⚪" ;;
+          esac
+        }
+
+        {
+          echo "## 📦 Jupyter Cache Build Summary"
+          echo ""
+
+          if [ "$ALL_PASSED" = "true" ]; then
+            echo "### ✅ Build Successful - Cache Saved"
+          else
+            echo "### ❌ Build Failed - Cache NOT Saved"
+            echo ""
+            echo "> ⚠️ Existing cache preserved for PR workflows"
+            if [ "$FAILURE_PHASE" != "build" ]; then
+              echo ">"
+              echo "> Failed during \`$FAILURE_PHASE\` — no lecture was built, which is why every builder below reads \`not run\`. Look at the failing step, not at the lectures."
             fi
-          done
+          fi
+
+          echo ""
+          echo "| Item | Value |"
+          echo "|------|-------|"
+          echo "| Cache Key | \`${CACHE_KEY:-not generated}\` |"
+          echo "| Trigger | $GITHUB_EVENT_NAME |"
+          echo "| Commit | \`$GITHUB_SHA\` |"
+          echo "| Container Mode | ${CONTAINER_MODE:-unknown} |"
+          echo ""
+
+          echo "### Builder Results"
+          echo ""
+          echo "| Builder | Status |"
+          echo "|---------|--------|"
+          echo "| jupyter | $(icon "$JUPYTER_STATUS") $JUPYTER_STATUS |"
+          echo "| pdflatex | $(icon "$PDFLATEX_STATUS") $PDFLATEX_STATUS |"
+          echo "| html | $(icon "$HTML_STATUS") $HTML_STATUS |"
+          echo ""
+        } >> "$GITHUB_STEP_SUMMARY"
+
+        if [ -d "_build" ]; then
+          {
+            echo "### Build Output"
+            echo ""
+            echo "| Directory | Size |"
+            echo "|-----------|------|"
+            echo "| Total | $(du -sh _build 2>/dev/null | cut -f1 || echo 'N/A') |"
+            for dir in _build/*/; do
+              if [ -d "$dir" ]; then
+                NAME=$(basename "$dir")
+                SIZE=$(du -sh "$dir" 2>/dev/null | cut -f1 || echo 'N/A')
+                echo "| $NAME | $SIZE |"
+              fi
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
         fi
 
     # ============================================================
-    # FAIL WORKFLOW IF BUILDS FAILED
+    # FAIL WORKFLOW IF THE CACHE BUILD DID NOT SUCCEED
     # ============================================================
-    
+
     # always() is load-bearing. A composite step's plain `if:` carries an
     # implicit success(), so once any earlier step failed — the artifact upload,
     # or the alert step itself — this one silently skipped and the composite's
     # only red was whatever incidental step happened to fail. In lecture-dp run
     # 26381283100 that meant the visible error was an exit-127 from "Create
     # failure issue", and the actual build failure never surfaced at all.
-    - name: Fail if builds failed
-      if: always() && steps.verify-builds.outputs.all-passed == 'false'
+    #
+    # On a setup/pre-build abort the job is already red from the aborting step,
+    # so this is belt-and-braces there rather than the sole red. It still runs,
+    # because a guard that only covers the case someone remembered is how #123
+    # happened in the first place.
+    - name: Fail if the cache build did not succeed
+      if: always() && steps.status.outputs.all-passed != 'true'
       shell: bash
+      env:
+        FAILURE_PHASE: ${{ steps.status.outputs.phase }}
       run: |
-        echo "::error::One or more builds failed - see summary above"
+        if [ "$FAILURE_PHASE" = "build" ]; then
+          echo "::error::One or more builds failed - see summary above"
+        else
+          echo "::error::The cache build aborted during $FAILURE_PHASE, before any lecture was built - see the failing step above"
+        fi
         exit 1
 
 branding:
