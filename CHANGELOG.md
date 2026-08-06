@@ -7,31 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-- **`build-jupyter-cache`**: a failure *before* the builds — most plausibly an `environment-update` that no
-  longer solves, a container tag that stops resolving, or a registry outage on pull — alerted nobody. The
-  `Setup environment` step has no `continue-on-error`, so the composite aborted there and `verify-builds`
-  never ran; its `all-passed` output was therefore `''` rather than `'false'`, and all three downstream
-  guards tested `== 'false'`. The alert step, the "verify the alert was filed" assert added in #122, and
-  the fail step all skipped, so an unattended weekly build could go red with nothing reaching the tracker —
-  the same silence #83 was about, on the one path #122 did not cover. The action now resolves its overall
-  status in a single `always()` step that maps "verify-builds never ran" to `false`, and every guard tests
-  `!= 'true'` rather than `== 'false'`, so the failure path fails **safe**: it alerts on any abort, not only
-  on anticipated ones. This also covers aborts in the input-validation steps above `Setup environment`,
-  which had the identical hole. `build-success`/`cache-saved` consequently report `false` where they used to
-  report `''` — a value no caller could distinguish from success. The `continue-on-error: true` on `Setup
-  environment` sketched in the issue was deliberately not taken: it would have let all three builds run
-  against a broken environment, burning the full build timeout to produce an issue whose table blames the
-  lectures for an environment failure. Two follow-on defects on the same path are fixed with it — the issue
-  body listed a `build-cache-<run-id>` artifact whenever `upload-artifact` was on, but that upload is
-  correctly skipped when nothing was built (it now keys off the upload step's `artifact-id` output, which is
-  empty both when that step is skipped and when `if-no-files-found: warn` lets it succeed having uploaded
-  nothing — the step's outcome alone would not have caught the second case), and its "no artifacts" fallback
-  asserted both upload inputs were off when the real reason was that no build ran. The
-  issue body and job summary now name the phase that failed and distinguish a builder that was *considered
-  and skipped* from one that was *never run*. Covered by a new `bjc-abort-guard` harness job asserting both
-  abort shapes; note that whether an issue is actually *filed* remains canary-only, since it needs
-  `issues: write`. (#123, #127)
+## [0.11.0] - 2026-08-07
+
+### Added
+- **build-jupyter-cache**: `upload-failure-reports` input, default `true`, passed through to the
+  inner `build-lectures` calls so a failed cache build uploads its `reports/*.err.log` tracebacks.
+  Previously the failure issue told maintainers to "download the build artifact for detailed
+  execution reports" while those reports were only reachable buried inside the full `_build`
+  artifact — hundreds of MB including `.jupyter_cache` — and not at all when `upload-artifact` was
+  off. The issue body now names the artifacts that were actually produced and gives per-builder
+  reproduce commands matching `build-lectures`' real flags. The default deliberately differs from
+  `build-lectures`' own `false`: that action is driven by a human watching a PR, this one runs
+  unattended. (#83)
+- **CI**: `bjc-fail-guard` harness job — a failing cache build must fail the step, report
+  `html-status=failure`, and save **no** cache over the last good one. The failure path had no
+  coverage at all, which is how three bugs accumulated on it. Issue filing itself stays out of the
+  PR harness (it needs `issues: write` and would file real issues on every run); that belongs to
+  the canary. (#83)
 
 ### Changed
 - **CI**: the action harness no longer uses `paths:` filters. A path filter suppresses creation of
@@ -97,22 +89,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `failure-issue-url` output. **Consumers must have `issues: write`** while
   `create-issue-on-failure` is `true` (the shipped `templates/cache.yml` already does) — a missing
   permission is now a loud failure with a message naming the fix, rather than silence. (#83)
-
-### Added
-- **build-jupyter-cache**: `upload-failure-reports` input, default `true`, passed through to the
-  inner `build-lectures` calls so a failed cache build uploads its `reports/*.err.log` tracebacks.
-  Previously the failure issue told maintainers to "download the build artifact for detailed
-  execution reports" while those reports were only reachable buried inside the full `_build`
-  artifact — hundreds of MB including `.jupyter_cache` — and not at all when `upload-artifact` was
-  off. The issue body now names the artifacts that were actually produced and gives per-builder
-  reproduce commands matching `build-lectures`' real flags. The default deliberately differs from
-  `build-lectures`' own `false`: that action is driven by a human watching a PR, this one runs
-  unattended. (#83)
-- **CI**: `bjc-fail-guard` harness job — a failing cache build must fail the step, report
-  `html-status=failure`, and save **no** cache over the last good one. The failure path had no
-  coverage at all, which is how three bugs accumulated on it. Issue filing itself stays out of the
-  PR harness (it needs `issues: write` and would file real issues on every run); that belongs to
-  the canary. (#83)
+- **`build-jupyter-cache`**: a failure *before* the builds — most plausibly an `environment-update` that no
+  longer solves, a container tag that stops resolving, or a registry outage on pull — alerted nobody. The
+  `Setup environment` step has no `continue-on-error`, so the composite aborted there and `verify-builds`
+  never ran; its `all-passed` output was therefore `''` rather than `'false'`, and all three downstream
+  guards tested `== 'false'`. The alert step, the "verify the alert was filed" assert added in #122, and
+  the fail step all skipped, so an unattended weekly build could go red with nothing reaching the tracker —
+  the same silence #83 was about, on the one path #122 did not cover. The action now resolves its overall
+  status in a single `always()` step that maps "verify-builds never ran" to `false`, and every guard tests
+  `!= 'true'` rather than `== 'false'`, so the failure path fails **safe**: it alerts on any abort, not only
+  on anticipated ones. This also covers aborts in the input-validation steps above `Setup environment`,
+  which had the identical hole. `build-success`/`cache-saved` consequently report `false` where they used to
+  report `''` — a value no caller could distinguish from success. The `continue-on-error: true` on `Setup
+  environment` sketched in the issue was deliberately not taken: it would have let all three builds run
+  against a broken environment, burning the full build timeout to produce an issue whose table blames the
+  lectures for an environment failure. Two follow-on defects on the same path are fixed with it — the issue
+  body listed a `build-cache-<run-id>` artifact whenever `upload-artifact` was on, but that upload is
+  correctly skipped when nothing was built (it now keys off the upload step's `artifact-id` output, which is
+  empty both when that step is skipped and when `if-no-files-found: warn` lets it succeed having uploaded
+  nothing — the step's outcome alone would not have caught the second case), and its "no artifacts" fallback
+  asserted both upload inputs were off when the real reason was that no build ran. The
+  issue body and job summary now name the phase that failed and distinguish a builder that was *considered
+  and skipped* from one that was *never run*. Covered by a new `bjc-abort-guard` harness job asserting both
+  abort shapes; note that whether an issue is actually *filed* remains canary-only, since it needs
+  `issues: write`. (#123, #127)
 
 ## [0.10.0] - 2026-08-05
 
