@@ -29,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   issue body and job summary now name the phase that failed and distinguish a builder that was *considered
   and skipped* from one that was *never run*. Covered by a new `bjc-abort-guard` harness job asserting both
   abort shapes; note that whether an issue is actually *filed* remains canary-only, since it needs
-  `issues: write`. (#123)
+  `issues: write`. (#123, #127)
 
 ### Changed
 - **CI**: the action harness no longer uses `paths:` filters. A path filter suppresses creation of
