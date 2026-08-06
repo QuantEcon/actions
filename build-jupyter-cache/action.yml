@@ -272,10 +272,13 @@ runs:
     # reads THIS step, not verify-builds, and the distinction is the whole
     # point of #123.
     #
-    # verify-builds carries a bare `if:`, which in a composite means an implicit
-    # success(). So any earlier failure — `Setup environment`, or the input
-    # validation above it — skips verify-builds entirely and leaves all-passed
-    # as '', not 'false'. The guards below used to test `== 'false'`, so on that
+    # verify-builds has no `if:` at all, and a composite step without `always()`
+    # is skipped once an earlier step has failed. So any earlier failure —
+    # `Setup environment`, or the input validation above it — skips
+    # verify-builds entirely and leaves all-passed as '', not 'false'. (The
+    # steps further down that DO carry an `if:` have the same problem for the
+    # same reason: a written condition gains an implicit success() on top of
+    # whatever it says.) The guards below used to test `== 'false'`, so on that
     # path ALL of them skipped: no issue was filed, the postcondition assert
     # never fired, and the only red was the aborting step itself. For an
     # unattended weekly build that is the same silence #83 was about.
@@ -337,8 +340,11 @@ runs:
       #
       # The bare `if:` (implicit success()) is deliberate and stays: when the
       # composite aborted during setup there is no _build to upload. The failure
-      # issue therefore keys its artifact list off this step's OUTCOME rather
-      # than off inputs.upload-artifact, so it never names an artifact that was
+      # issue therefore keys its artifact list off this step's `artifact-id`
+      # output rather than off inputs.upload-artifact. Not off the step's
+      # outcome either: `if-no-files-found: warn` lets the step SUCCEED having
+      # uploaded nothing, whereas artifact-id is empty in that case as well as
+      # when the step is skipped. So the issue never names an artifact that was
       # not produced.
       if: inputs.upload-artifact == 'true' && steps.status.outputs.all-passed != 'true'
       uses: actions/upload-artifact@v7

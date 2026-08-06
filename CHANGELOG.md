@@ -24,8 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   against a broken environment, burning the full build timeout to produce an issue whose table blames the
   lectures for an environment failure. Two follow-on defects on the same path are fixed with it — the issue
   body listed a `build-cache-<run-id>` artifact whenever `upload-artifact` was on, but that upload is
-  correctly skipped when nothing was built (it now keys off the upload step's outcome), and its "no
-  artifacts" fallback asserted both upload inputs were off when the real reason was that no build ran. The
+  correctly skipped when nothing was built (it now keys off the upload step's `artifact-id` output, which is
+  empty both when that step is skipped and when `if-no-files-found: warn` lets it succeed having uploaded
+  nothing — the step's outcome alone would not have caught the second case), and its "no artifacts" fallback
+  asserted both upload inputs were off when the real reason was that no build ran. The
   issue body and job summary now name the phase that failed and distinguish a builder that was *considered
   and skipped* from one that was *never run*. Covered by a new `bjc-abort-guard` harness job asserting both
   abort shapes; note that whether an issue is actually *filed* remains canary-only, since it needs
