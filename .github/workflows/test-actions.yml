@@ -747,10 +747,16 @@ jobs:
           [ -z "$ISSUE_URL" ] || { echo "::error::failure-issue-url: expected empty with create-issue-on-failure=false, got [$ISSUE_URL]"; exit 1; }
           echo "✅ a pre-setup abort resolves to build-success=false"
 
-      # The variant #123 actually reported: setup-environment itself fails. The
-      # environment file does not exist, so the inner setup-environment@v0 dies
-      # in `conda env update` — the same shape as the likeliest real trigger, an
-      # environment-update that no longer solves (#28).
+      # The variant #123 actually reported: setup-environment itself fails.
+      #
+      # A missing environment file rather than an unsolvable one, deliberately.
+      # setup-environment validates the file's existence before it touches
+      # conda, so this aborts in seconds and — the part that matters — no conda
+      # cache is restored or saved. An unsolvable environment.yml would be a
+      # closer analogue of the likeliest real trigger (#28), but it would spend
+      # minutes in the solver and leave a junk conda cache entry per run. Do not
+      # "improve" it into one: the assertions below are about where the abort
+      # leaves `all-passed`, not about why conda failed.
       - name: Abort during setup (environment file does not exist)
         id: setup
         continue-on-error: true
