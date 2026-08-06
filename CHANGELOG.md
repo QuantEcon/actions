@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **`build-jupyter-cache`**: a failure *before* the builds — most plausibly an `environment-update` that no
+  longer solves, a container tag that stops resolving, or a registry outage on pull — alerted nobody. The
+  `Setup environment` step has no `continue-on-error`, so the composite aborted there and `verify-builds`
+  never ran; its `all-passed` output was therefore `''` rather than `'false'`, and all three downstream
+  guards tested `== 'false'`. The alert step, the "verify the alert was filed" assert added in #122, and
+  the fail step all skipped, so an unattended weekly build could go red with nothing reaching the tracker —
+  the same silence #83 was about, on the one path #122 did not cover. The action now resolves its overall
+  status in a single `always()` step that maps "verify-builds never ran" to `false`, and every guard tests
+  `!= 'true'` rather than `== 'false'`, so the failure path fails **safe**: it alerts on any abort, not only
+  on anticipated ones. This also covers aborts in the input-validation steps above `Setup environment`,
+  which had the identical hole. `build-success`/`cache-saved` consequently report `false` where they used to
+  report `''` — a value no caller could distinguish from success. The `continue-on-error: true` on `Setup
+  environment` sketched in the issue was deliberately not taken: it would have let all three builds run
+  against a broken environment, burning the full build timeout to produce an issue whose table blames the
+  lectures for an environment failure. Two follow-on defects on the same path are fixed with it — the issue
+  body listed a `build-cache-<run-id>` artifact whenever `upload-artifact` was on, but that upload is
+  correctly skipped when nothing was built (it now keys off the upload step's outcome), and its "no
+  artifacts" fallback asserted both upload inputs were off when the real reason was that no build ran. The
+  issue body and job summary now name the phase that failed and distinguish a builder that was *considered
+  and skipped* from one that was *never run*. Covered by a new `bjc-abort-guard` harness job asserting both
+  abort shapes; note that whether an issue is actually *filed* remains canary-only, since it needs
+  `issues: write`. (#123)
+
 ### Changed
 - **CI**: the action harness no longer uses `paths:` filters. A path filter suppresses creation of
   the workflow *run*, not just its jobs, so no check run is ever published for that commit and a
