@@ -164,8 +164,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "Re-run failed jobs" can never go green on this harness — it bumps `run_attempt`, and so the
   cache salt, without re-running the seed jobs that saved under the old salt. (#116)
 - **publish-gh-pages**: `softprops/action-gh-release` moved to v3.0.2, SHA-pinned as
-  `3d0d9888cb7fd7b750713d6e236d1fcb99157228`. Recorded retrospectively — this shipped in v0.10.0
-  with no changelog entry, which left the v0.9.0 note about v3.0.1 (#94) as the file's last word
+  `3d0d9888cb7fd7b750713d6e236d1fcb99157228`. Recorded retrospectively — it shipped in v0.10.0
+  with no entry at the time, which left the v0.9.0 note about v3.0.1 (#94) as the file's last word
   on the pin while the code had moved past it. (#101)
 
 ### Fixed
