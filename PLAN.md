@@ -2,7 +2,7 @@
 
 Working plan for `QuantEcon/actions`: current state, prioritized backlog, dependency policy, and rollout status.
 
-**Last updated:** August 2026 — after the v0.10.0 release, the #83 alerting fix (#122), the harness relevance gate (#124), the #123 abort-path fix, and enabling branch protection on `main`. The backlog below is still the July 2026 review; individual items carry their own closure notes.
+**Last updated:** 2026-08-07 — after the **v0.11.0** release, which is the first to carry both alerting fixes (#122, #127) to consumers: `build-jupyter-cache` reaches its siblings through the pinned `@v0` ref, so neither fix existed for any consumer until `v0` moved to this release. The backlog below is still the July 2026 review; individual items carry their own closure notes.
 
 ---
 
@@ -10,16 +10,16 @@ Working plan for `QuantEcon/actions`: current state, prioritized backlog, depend
 
 The core infrastructure is complete, hardened, and in production:
 
-- **Actions (7)** — `setup-environment`, `build-lectures`, `build-jupyter-cache`, `restore-jupyter-cache`, `preview-netlify`, `preview-cloudflare`, `publish-gh-pages`; latest release `v0.10.0` (2026-08-05)
+- **Actions (7)** — `setup-environment`, `build-lectures`, `build-jupyter-cache`, `restore-jupyter-cache`, `preview-netlify`, `preview-cloudflare`, `publish-gh-pages`; latest release **`v0.11.0`** (2026-08-07), and `@v0` points to it
 - **Containers (2)** — `quantecon` (full) and `quantecon-build` (lean); science stack pinned as a set to the Anaconda 2026.06 baseline (#28, #84, migrated in #95), `kaleido<1.0` (#85), Miniconda SHA-pinned (#32)
 - **June 2026 hardening pass** — third-party actions SHA-pinned (#39, #79), shell safety in `build-lectures` (#36), preview actions de-duplicated and injection-hardened (#35), standard-mode conda caching fixed (#33, #78), docs sweep (#40, #66)
-- **August 2026 alerting pass** — unattended cache-build failures now reach the tracker on every failure path: during the builds (#83, #122) and before them (#123, #127)
+- **August 2026 alerting pass** — unattended cache-build failures now reach the tracker on every failure path: during the builds (#83, #122) and before them (#123, #127). Shipped in v0.11.0. The half neither fix can prove in-repo is whether an issue is *actually filed* — that needs `issues: write` and would open real issues on every PR run — so the canary is now the only place it is exercised, and it only started exercising it when `v0` moved to v0.11.0.
 
 ### Consumers in production
 
 | Repo | Actions used | Version |
 |---|---|---|
-| `lecture-dp` | Full chain: `restore-jupyter-cache`, `build-lectures`, `build-jupyter-cache`, `publish-gh-pages` | `@v0.8.0` |
+| `lecture-dp` | Full chain: `restore-jupyter-cache`, `build-lectures`, `build-jupyter-cache`, `publish-gh-pages` | `@v0.8.0` → `@v0` ([lecture-dp#52](https://github.com/QuantEcon/lecture-dp/pull/52), open) |
 | `lecture-python.myst` | `preview-netlify` (ci.yml), `publish-gh-pages` | `@v0.8.0` |
 | `test-actions-lecture-intro` | Full chain + `preview-netlify` (canary — see #100 stage 2) | `@v0` (floating, tracks the release tag) |
 
@@ -45,8 +45,8 @@ One correction to how that closure was written up: "cannot silently no-op" was t
 |---|---|---|
 | 2 | ~~**Targeted execution reports on cache failure.**~~ Done (#122) — `upload-failure-reports` is now an input defaulting `true` and passed to all three inner `build-lectures` calls, and the issue body names the artifacts actually produced with per-builder reproduce commands. One correction: the reports were not entirely absent before, they were reachable only buried inside the full `_build` artifact (hundreds of MB, including `.jupyter_cache`) — and genuinely absent only when `upload-artifact` was off. It was mostly a discoverability failure. | #83, #122 |
 | 2a | ~~**Alert when the cache build aborts before the builds.**~~ Done (#127) — `build-jupyter-cache` now resolves the overall status in a single `always()` step that maps "verify-builds never ran" to `false` instead of `''`, and every guard reads it as `!= 'true'`. The `continue-on-error` on `Setup environment` that the issue sketched was rejected: it would have let all three builds run against a broken environment and filed an issue blaming the lectures. Two follow-on defects on the same path were fixed with it — the issue body named a `build-cache-*` artifact that is never uploaded when nothing was built, and reported "both upload inputs are false" as the reason. Covered by a new `bjc-abort-guard` harness job. | #83, #122, #123, #127 |
-| 3 | **Fix Dependabot conda grouping.** The conda groups match `*` with no `ignore` for the pinned science stack or `anaconda`, so Dependabot proposes exactly the drift the #28 pins exist to prevent (live proof: PRs #86, #87). Add `ignore` entries so the stack moves manually as a set, and correct the stale header comment. | #28, PRs #86/#87 |
-| 4 | **Hold PRs #86 and #87.** Both drift the container science stack off the 2025.12 baseline; #87 additionally pulls in pandas 3.0 (major, copy-on-write default). Handle container-stack bumps as one coordinated, validated move when the lecture repos adopt a new anaconda baseline (see Dependency policy). | #28 |
+| 3 | ~~**Fix Dependabot conda grouping.**~~ Done (#95) — verified in `.github/dependabot.yml`: all eleven stack packages plus `anaconda` are listed under `ignore` with **no** `update-types`, so every update type is blocked rather than just majors, and the header comment was corrected in the same change. The old comment asserted that a date-pin (`=2025.12`) meant the metapackage "stays put", which is exactly the misconception that let #86/#87 be proposed — a date-pin does not stop Dependabot offering the next release. | #28, #95 |
+| 4 | ~~**Hold PRs #86 and #87.**~~ Resolved — both are closed, and the stack has since moved as one coordinated set to the anaconda 2026.06 baseline (#95). The standing policy they were held under is unchanged and now lives in Dependency policy below; item 3 is what stops Dependabot re-proposing the same drift. | #28, #95 |
 | 5 | **`preview-cloudflare`: use the stable `pr-N` alias URL.** The PR comment currently shows the per-deployment hash URL grepped from wrangler output; construct `https://{branch-alias}.{project}.pages.dev` directly (the alias is already computed). | #14 |
 
 ### P2 — surplus removal and quality
@@ -65,7 +65,7 @@ One correction to how that closure was written up: "cannot silently no-op" was t
 
 | # | Item | Refs |
 |---|---|---|
-| 13 | Merge safe Dependabot PRs: #90 (checkout v7, cache v6 — first-party runtime bumps) and #88 (`action-gh-release` 3.0.1 patch, SHA-pinned). | PRs #90/#88 |
+| 13 | ~~Merge safe Dependabot PRs.~~ Resolved — #90 (checkout v7, cache v6) merged; #88 (`action-gh-release` 3.0.1) closed. There are currently **no open PRs** in this repo. | PRs #90/#88 |
 | 14 | ~~Harden `create-failure-issue.sh`.~~ Moot (#122) — the script was deleted, not hardened. Every concern it listed is structurally gone: `actions/github-script` has no `/tmp` body file, a failed API call throws rather than being swallowed by `2>/dev/null || echo ""`, and a new step asserts an issue was actually filed. | #83, #122 |
 | 15 | Small fixes: `set -euo pipefail` in `check-latex-versions.sh`; `concurrency` + `timeout-minutes` in `build-containers.yml`; fix the `build-lectures` pdflatex debug hint path (`_build/latex/reports`); refresh stale README blocks in `setup-environment` (cache strategy) and `restore-jupyter-cache` (phantom "Age Information"). | — |
 | 16 | Branch hygiene: delete the merged `fix-conda-activation` branch and prune the five stale (~5 months old) feature branches after confirming nothing is stranded. | — |
