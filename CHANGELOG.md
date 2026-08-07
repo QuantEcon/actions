@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-08-07
+
 ### Fixed
 - **`preview-cloudflare`**: PR comments linked the per-deployment hash URL
   (`https://b3a5c314.{project}.pages.dev`) instead of the stable branch alias
