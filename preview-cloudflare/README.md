@@ -50,7 +50,8 @@ To disable changed file detection, set `lectures-dir: ''`.
 
 | Output | Description |
 |--------|-------------|
-| `deploy-url` | URL of deployed preview |
+| `deploy-url` | Stable preview URL — `https://pr-{number}.{project}.pages.dev`. The branch alias, so it keeps pointing at the newest deployment as the PR gains commits. Use it for anything a human will follow |
+| `deployment-url` | Immutable URL of this one deployment — `https://{hash}.{project}.pages.dev`. Pinned to the commit that produced it; use it to look at a specific revision. Empty if wrangler's output did not name it |
 | `changed-files` | List of changed lecture files |
 
 ## Example PR Comment
