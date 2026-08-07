@@ -2,7 +2,7 @@
 
 Working plan for `QuantEcon/actions`: current state, prioritized backlog, dependency policy, and rollout status.
 
-**Last updated:** 2026-08-07 — after the **v0.11.0** release, which is the first to carry both alerting fixes (#122, #127) to consumers: `build-jupyter-cache` reaches its siblings through the pinned `@v0` ref, so neither fix existed for any consumer until `v0` moved to this release. The backlog below is still the July 2026 review; individual items carry their own closure notes.
+**Last updated:** 2026-08-07 — after the **v0.11.0** and **v0.11.1** releases and the move of every consumer to `@v0`, which is the first to carry both alerting fixes (#122, #127) to consumers: `build-jupyter-cache` reaches its siblings through the pinned `@v0` ref, so neither fix existed for any consumer until `v0` moved to this release. The backlog below is still the July 2026 review; individual items carry their own closure notes.
 
 ---
 
@@ -19,9 +19,11 @@ The core infrastructure is complete, hardened, and in production:
 
 | Repo | Actions used | Version |
 |---|---|---|
-| `lecture-dp` | Full chain: `restore-jupyter-cache`, `build-lectures`, `build-jupyter-cache`, `publish-gh-pages` | `@v0.8.0` → `@v0` ([lecture-dp#52](https://github.com/QuantEcon/lecture-dp/pull/52), open) |
-| `lecture-python.myst` | `preview-netlify` (ci.yml), `publish-gh-pages` | `@v0.8.0` |
-| `test-actions-lecture-intro` | Full chain + `preview-netlify` (canary — see #100 stage 2) | `@v0` (floating, tracks the release tag) |
+| `lecture-dp` | Full chain: `restore-jupyter-cache`, `build-lectures`, `build-jupyter-cache`, `publish-gh-pages` | `@v0` ([lecture-dp#52](https://github.com/QuantEcon/lecture-dp/pull/52)) |
+| `lecture-python.myst` | `preview-netlify` (ci.yml), `publish-gh-pages` | `@v0` ([lecture-python.myst#1029](https://github.com/QuantEcon/lecture-python.myst/pull/1029)) |
+| `test-actions-lecture-intro` | Full chain + `preview-netlify` (canary — see #100 stage 2) | `@v0` |
+
+**Every consumer now tracks the floating `@v0`** — 11 call sites, no exact pins left. Exact pins are what stranded `lecture-dp` three releases behind, which is why its weekly cache build ran for ~2 months with alerting that had never worked (#83). Pinning plus Dependabot was tried and is not sufficient on its own: it surfaces the bump but currency still depends on someone merging it, and `lecture-python.myst#1000` sat open for 13 days before being closed as superseded. The breaking-change risk that pinning guards against is covered instead by the canary, which runs the full chain against `@v0` on the same weekly cadence and so meets a bad release first.
 
 Consumer/migration tracking lives in [QuantEcon/meta#321](https://github.com/QuantEcon/meta/issues/321); the preview-unification rollout is planned in [QuantEcon/meta#327](https://github.com/QuantEcon/meta/issues/327).
 
