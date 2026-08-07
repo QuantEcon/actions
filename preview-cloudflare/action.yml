@@ -22,8 +22,17 @@ inputs:
 
 outputs:
   deploy-url:
-    description: 'URL of the deployed preview site'
+    description: >-
+      Stable preview URL for this PR — https://pr-{number}.{project}.pages.dev.
+      This is the branch alias, so it keeps pointing at the newest deployment as
+      the PR gets more commits. Use it for anything a human will follow.
     value: ${{ steps.deploy.outputs.deploy-url }}
+  deployment-url:
+    description: >-
+      Immutable URL of this one deployment — https://{hash}.{project}.pages.dev.
+      Pinned to the commit that produced it, so use it to compare a specific
+      revision. Empty if wrangler's output did not name it.
+    value: ${{ steps.deploy.outputs.deployment-url }}
   changed-files:
     description: 'List of changed lecture files'
     value: ${{ steps.detect-changes.outputs.changed-files }}
@@ -68,54 +77,79 @@ runs:
       env:
         CLOUDFLARE_API_TOKEN: ${{ inputs.cloudflare-api-token }}
         CLOUDFLARE_ACCOUNT_ID: ${{ inputs.cloudflare-account-id }}
+        # Read from env rather than interpolated into the script body, matching
+        # the discipline the comment step below already follows.
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+        PROJECT_NAME: ${{ inputs.project-name }}
+        BUILD_DIR: ${{ inputs.build-dir }}
       run: |
-        PR_NUMBER="${{ github.event.pull_request.number }}"
-        COMMIT_SHA="${{ github.event.pull_request.head.sha }}"
         SHORT_SHA="${COMMIT_SHA:0:7}"
-        PROJECT_NAME="${{ inputs.project-name }}"
         BRANCH_ALIAS="pr-${PR_NUMBER}"
-        
+
         echo "🔍 Deploying preview for PR #${PR_NUMBER} to Cloudflare Pages..."
-        
+
         # Deploy to Cloudflare Pages with branch alias
-        DEPLOY_OUTPUT=$(wrangler pages deploy "${{ inputs.build-dir }}" \
+        DEPLOY_OUTPUT=$(wrangler pages deploy "${BUILD_DIR}" \
           --project-name="${PROJECT_NAME}" \
           --branch="${BRANCH_ALIAS}" \
           --commit-hash="${COMMIT_SHA}" \
           --commit-message="PR #${PR_NUMBER} (${SHORT_SHA})" \
           2>&1)
-        
+
         DEPLOY_EXIT_CODE=$?
-        
+
         echo "::group::Deployment Output"
         echo "$DEPLOY_OUTPUT"
         echo "::endgroup::"
-        
+
         if [ $DEPLOY_EXIT_CODE -ne 0 ]; then
           echo "❌ Error: Cloudflare Pages deployment failed"
           exit 1
         fi
-        
-        # Extract the deployment URL from wrangler output
-        # Wrangler outputs the URL in format: "Deployment complete! Take a peek over at https://..."
-        DEPLOY_URL=$(echo "$DEPLOY_OUTPUT" | grep -oE 'https://[a-zA-Z0-9.-]+\.pages\.dev' | head -1)
-        
-        # If no URL found, construct it from the branch alias
-        if [ -z "$DEPLOY_URL" ]; then
-          DEPLOY_URL="https://${BRANCH_ALIAS}.${PROJECT_NAME}.pages.dev"
-          echo "⚠️ Could not extract URL from output, using constructed URL: $DEPLOY_URL"
-        fi
-        
+
+        # The alias URL is CONSTRUCTED, never parsed (#14). Two reasons:
+        #
+        #   1. It is stable. The hash URL names one deployment, so every push to
+        #      the PR produced a different link — including every per-lecture
+        #      deep link in the comment below, which is the bigger cost. The
+        #      alias tracks the newest deployment, so a reviewer can keep one
+        #      tab open across the whole review.
+        #   2. It needs no parsing at all. `pr-N` is already alias-safe
+        #      (Cloudflare lowercases branch names and maps non-alphanumerics to
+        #      `-`), so the URL is fully determined by inputs we already hold.
+        #
+        # Cloudflare creates the alias for any non-production branch, and this
+        # step only runs on pull_request, so the branch is always `pr-N`.
+        DEPLOY_URL="https://${BRANCH_ALIAS}.${PROJECT_NAME}.pages.dev"
+
+        # The per-deployment URL is still worth having — it is the only way to
+        # look at one specific revision — so keep it as a secondary output.
+        # Match a pages.dev host and drop the alias, rather than taking the
+        # first hit: wrangler prints both URLs in some versions, so `head -1`
+        # silently chose one or the other depending on the wrangler release.
+        DEPLOYMENT_URL=$(echo "$DEPLOY_OUTPUT" \
+          | grep -oE 'https://[a-zA-Z0-9.-]+\.pages\.dev' \
+          | grep -v "^https://${BRANCH_ALIAS}\." \
+          | head -1 || true)
+
         echo "deploy-url=$DEPLOY_URL" >> $GITHUB_OUTPUT
-        
+        echo "deployment-url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
+
         echo "✅ Deployment successful!"
-        echo "📍 URL: $DEPLOY_URL"
+        echo "📍 Preview (stable):  $DEPLOY_URL"
+        if [ -n "$DEPLOYMENT_URL" ]; then
+          echo "📌 This deployment:   $DEPLOYMENT_URL"
+        else
+          echo "📌 This deployment:   (not named in wrangler output)"
+        fi
 
     - name: Comment on PR
       if: steps.check-trust.outputs.skip != 'true' && github.event_name == 'pull_request' && steps.deploy.outputs.deploy-url != ''
       uses: actions/github-script@v9
       env:
         DEPLOY_URL: ${{ steps.deploy.outputs.deploy-url }}
+        DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
         CHANGED_FILES: ${{ steps.detect-changes.outputs.changed-files }}
         LECTURES_DIR: ${{ inputs.lectures-dir }}
         STRIP_LECTURES_DIR: ${{ steps.detect-changes.outputs.strip-lectures-dir }}
@@ -126,6 +160,7 @@ runs:
           // Untrusted PR data (file paths, deploy URL) is read from env, never
           // interpolated into the script body (avoids script injection).
           const deployUrl = process.env.DEPLOY_URL || '';
+          const deploymentUrl = process.env.DEPLOYMENT_URL || '';
           const changedFiles = process.env.CHANGED_FILES || '';
           const lecturesDir = process.env.LECTURES_DIR || '';
           const stripLecturesDir = process.env.STRIP_LECTURES_DIR === 'true';
@@ -169,6 +204,13 @@ runs:
           comment += `---\n`;
           comment += `<details><summary>Build Info</summary>\n\n`;
           comment += `- **Workflow:** [${context.workflow}](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})\n`;
+          // The preview URL above is the branch alias, which follows the newest
+          // deployment. Name the immutable one here too, so a reviewer who needs
+          // to look at exactly this commit still has a link that will not move
+          // under them when the next push lands.
+          if (deploymentUrl) {
+            comment += `- **This deployment:** ${deploymentUrl} (pinned to \`${shortSha}\`; the URL above always tracks the latest push)\n`;
+          }
           comment += `</details>\n`;
           
           // Check for existing preview comment and update it

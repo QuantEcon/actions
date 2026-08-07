@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **`preview-cloudflare`**: PR comments linked the per-deployment hash URL
+  (`https://b3a5c314.{project}.pages.dev`) instead of the stable branch alias
+  (`https://pr-{number}.{project}.pages.dev`), so every push to a PR produced a
+  fresh set of links and reviewers had to scroll for the newest comment. The cost was larger
+  than the headline URL: **every per-lecture deep link** in the comment carried the same hash,
+  so a reviewer could not keep a tab open across a review. The alias is now **constructed**
+  rather than parsed — `pr-N` is already alias-safe, so the URL is fully determined by inputs
+  the action already holds, and no output parsing can go wrong. Note the README already
+  documented the alias as the behaviour, so this brings the code in line with its own docs.
+  A latent bug went with it: the old `grep … | head -1` took whichever `pages.dev` URL came
+  first, and wrangler prints the alias *before* the hash URL in some versions — so
+  `deploy-url` silently returned the alias on one wrangler release and the hash on another.
+  The per-deployment URL is still worth having, so it is now a separate `deployment-url`
+  output (extracted by excluding the alias, not by position) and named in the comment's
+  Build Info block for anyone who needs to look at one specific revision. Inputs in the
+  deploy step also move from `${{ }}` interpolation into `env:`, matching the discipline the
+  comment step in the same file already followed. (#14)
+
 ## [0.11.0] - 2026-08-07
 
 ### Added
