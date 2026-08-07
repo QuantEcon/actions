@@ -10,10 +10,10 @@ Working plan for `QuantEcon/actions`: current state, prioritized backlog, depend
 
 The core infrastructure is complete, hardened, and in production:
 
-- **Actions (7)** — `setup-environment`, `build-lectures`, `build-jupyter-cache`, `restore-jupyter-cache`, `preview-netlify`, `preview-cloudflare`, `publish-gh-pages`; latest release **`v0.11.0`** (2026-08-07), which `@v0` now points at
+- **Actions (7)** — `setup-environment`, `build-lectures`, `build-jupyter-cache`, `restore-jupyter-cache`, `preview-netlify`, `preview-cloudflare`, `publish-gh-pages`; latest release **`v0.11.0`** (2026-08-07), and `@v0` points to it
 - **Containers (2)** — `quantecon` (full) and `quantecon-build` (lean); science stack pinned as a set to the Anaconda 2026.06 baseline (#28, #84, migrated in #95), `kaleido<1.0` (#85), Miniconda SHA-pinned (#32)
 - **June 2026 hardening pass** — third-party actions SHA-pinned (#39, #79), shell safety in `build-lectures` (#36), preview actions de-duplicated and injection-hardened (#35), standard-mode conda caching fixed (#33, #78), docs sweep (#40, #66)
-- **August 2026 alerting pass** — unattended cache-build failures now reach the tracker on every failure path: during the builds (#83, #122) and before them (#123, #127). Shipped in v0.11.0. The half neither fix can prove in-repo is whether an issue is *actually filed* — that needs `issues: write` and would open real issues on every PR run — so the canary is now the only place it is exercised, and it only started exercising it when `v0` moved to v0.11.0
+- **August 2026 alerting pass** — unattended cache-build failures now reach the tracker on every failure path: during the builds (#83, #122) and before them (#123, #127). Shipped in v0.11.0. The half neither fix can prove in-repo is whether an issue is *actually filed* — that needs `issues: write` and would open real issues on every PR run — so the canary is now the only place it is exercised, and it only started exercising it when `v0` moved to v0.11.0.
 
 ### Consumers in production
 
