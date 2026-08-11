@@ -67,7 +67,7 @@ One correction to how that closure was written up: "cannot silently no-op" was t
 | 2a | ~~**Alert when the cache build aborts before the builds.**~~ Done (#127) — `build-jupyter-cache` now resolves the overall status in a single `always()` step that maps "verify-builds never ran" to `false` instead of `''`, and every guard reads it as `!= 'true'`. The `continue-on-error` on `Setup environment` that the issue sketched was rejected: it would have let all three builds run against a broken environment and filed an issue blaming the lectures. Two follow-on defects on the same path were fixed with it — the issue body named a `build-cache-*` artifact that is never uploaded when nothing was built, and reported "both upload inputs are false" as the reason. Covered by a new `bjc-abort-guard` harness job. | #83, #122, #123, #127 |
 | 3 | ~~**Fix Dependabot conda grouping.**~~ Done (#95) — verified in `.github/dependabot.yml`: all eleven stack packages plus `anaconda` are listed under `ignore` with **no** `update-types`, so every update type is blocked rather than just majors, and the header comment was corrected in the same change. The old comment asserted that a date-pin (`=2025.12`) meant the metapackage "stays put", which is exactly the misconception that let #86/#87 be proposed — a date-pin does not stop Dependabot offering the next release. | #28, #95 |
 | 4 | ~~**Hold PRs #86 and #87.**~~ Resolved — both are closed, and the stack has since moved as one coordinated set to the anaconda 2026.06 baseline (#95). The standing policy they were held under is unchanged and now lives in Dependency policy below; item 3 is what stops Dependabot re-proposing the same drift. | #28, #95 |
-| 5 | **`preview-cloudflare`: use the stable `pr-N` alias URL.** The PR comment currently shows the per-deployment hash URL grepped from wrangler output; construct `https://{branch-alias}.{project}.pages.dev` directly (the alias is already computed). | #14 |
+| 5 | ~~**`preview-cloudflare`: use the stable `pr-N` alias URL.**~~ Done (#131, v0.11.1) — `deploy-url` is now constructed from the branch alias rather than grepped from wrangler output, and the surviving `deployment-url` extraction ends `\|\| true` so the fallback is reachable. The capture itself is still fatal under `pipefail`, which is #105's first checklist item, not this one. | #14, #131 |
 
 ### P2 — surplus removal and quality
 
@@ -95,7 +95,7 @@ One correction to how that closure was written up: "cannot silently no-op" was t
 
 ## Dependency policy
 
-The lean image's science stack (`numpy`, `scipy`, `pandas`, …) is **pinned as a set** to the Anaconda baseline the lecture repos pin (currently `anaconda=2025.12`). Drifting individual packages ahead of that baseline is what broke lecture execution in #28.
+The lean image's science stack (`numpy`, `scipy`, `pandas`, …) is **pinned as a set** to the Anaconda baseline the lecture repos pin (currently `anaconda=2026.06`, migrated in #95). Drifting individual packages ahead of that baseline is what broke lecture execution in #28.
 
 - Stack bumps happen as **one coordinated move** — both containers together, only when the lecture repos adopt a new anaconda baseline, validated by a container lecture-build run (and, once built, the #29 env-test harness).
 - Dependabot handles everything else: minors/patches grouped per ecosystem, majors grouped for individual review (#67, #76). The conda stack should be excluded via `ignore` (backlog item 3).
@@ -109,12 +109,32 @@ The lean image's science stack (`numpy`, `scipy`, `pandas`, …) is **pinned as 
 |---|---|---|
 | #83 cache failures silent | Addressed in #122. Note the earlier reading of this issue was wrong: the script-not-found 127 was *not* already fixed — it was the primary bug, caused by `${{ github.action_path }}` resolving to the runner's path inside a container. Missing `gh` was real but never reached, and a third bug (client-side label validation in `gh issue create`) broke alerting on hosted runners too. All three are gone with the move to `actions/github-script`; failure reports now upload via `upload-failure-reports`. The remaining variant (#123) is closed too, in #127 | Backlog items 2a, 14 (moot) |
 | #123 setup failure alerts nobody | Fixed. The gap was one of guard *polarity*, not of the alerting mechanism: every downstream step tested `all-passed == 'false'`, and a composite that aborts before `verify-builds` leaves that output `''`. Found by reading rather than from a live incident — the canary's silent weeks were build failures, not setup failures. One residual is deliberately out of scope: if the job itself never starts, or is cancelled, timed out, or loses its runner, no step runs at all — `always()` included — so nothing can be filed from inside the action. Covering that needs a workflow-level `if: failure()` notify job in the consumer repo, or a scheduled sweeper | Backlog item 2a |
-| #14 Cloudflare alias URL | Still valid | Backlog item 5 |
-| #29 composite-vs-workflow docs + env harness | Still valid | Backlog items 9, 11 |
+| #14 Cloudflare alias URL | Closed — shipped in #131 (v0.11.1) | Backlog item 5, done |
+| #29 composite-vs-workflow docs + env harness | Docs half still valid; the env-harness half is overtaken by the live canary | Backlog item 11 (item 9 done) |
 | #30 env/config manifest | Partially addressed — v0 stub exists | Backlog item 12 |
 | #18 container-mode caching | Re-scoped — pre-baking covers the common stack; only the per-lecture delta install is uncached. Quantify before investing | Keep open, low priority |
 | #27 HTML recovery tool | Still valid — producer half exists (release assets + checksums); consumer unbuilt. Likely belongs in `workflow-backups`, not here | Decide home, then build |
-| #2 isolated lecture execution | Exploratory — most tractable first step is an execution check of the built notebooks | Keep open, low priority |
+| #2 isolated lecture execution | Exploratory — most tractable first step is an execution check of the *built* notebooks, which nothing in the repo executes today | Keep open, low priority |
+
+Issues opened after the July review, dispositioned in the August 2026 triage:
+
+| Issue | Status | Disposition |
+|---|---|---|
+| #105 preview error surfacing, CLI pinning, fork guidance | Live — one half-item shipped in v0.11.1 (#131); the swallowed-error, unpinned-CLI and `pull_request_target` problems are unchanged | Top of the queue; closes backlog item 8 |
+| #107 correctness batch across the actions | Seven of ten items live; three shipped in v0.11.0 | Closes backlog items 7, 15 |
+| #106 docs sweep to the 2026.06 baseline | Live — v0.11.0 changed the container-size metric, so figures need re-measuring, not copying | Land with #109 and #99 as one docs PR |
+| #109 reconcile READMEs and templates with the code | Live | Land with #106 and #99; see backlog items 10, 11 |
+| #99 QUICK-REFERENCE Pages-404 permissions | Live, narrow | Close as duplicate of #109 when that PR lands |
+| #100 publish/preview/cache logic untested | Re-scoped — stage 1 shipped in v0.10.0 and the canary is live; stages 2–3 and the coverage gaps remain | Release gating split out to #135/#136/#138 |
+| #92 optimize preview builds (tracking) | Phase 1 partly shipped | Three decisions outstanding; phases not yet filed as sub-issues |
+| #108 unify container smoke tests | Majority shipped in v0.11.0 (#125) | Two residual hygiene items |
+| #102 raw-GitHub 429 flake | Body superseded — the fix is CI-side retry, not the lecture-side change | Good first issue |
+| #97 `-n` nitpick default + extra-args passthrough | Live | Needs an org HTML-strictness decision first |
+| #96 sync-notebooks action | Live, but unacknowledged tension with the v0.6.0 gh-pages-notebooks architecture | Sequencing decision required |
+| #98 `_build/.doctrees` clear | Live — the mechanism is intra-job doctree reuse across builders, not cache staleness | Needs a falsifiable repro |
+| #110 July 2026 audit tracking | Native sub-issue parent over #103–#109 | Tracker only |
+| #115 external actions worth studying | Reading list, no completion condition | Fold into `docs/FUTURE-DEVELOPMENT.md` or keep parked |
+| #129 reproducibility of published lectures | Accurate and deliberately parked | Discussion; relates to #30 |
 
 ---
 
@@ -122,7 +142,7 @@ The lean image's science stack (`numpy`, `scipy`, `pandas`, …) is **pinned as 
 
 ### Phase 1: `lecture-dp` — ✅ complete
 
-`lecture-dp` runs the full chain (`restore-jupyter-cache` → `build-lectures` → `build-jupyter-cache` → `publish-gh-pages`) in production at `@v0.8.0`. Production use surfaced the #83 alerting gaps — a weekly cache build failed for roughly two months with no alert issue and no downloadable traceback, which is what motivated the (now closed) P0 item above.
+`lecture-dp` runs the full chain (`restore-jupyter-cache` → `build-lectures` → `build-jupyter-cache` → `publish-gh-pages`) in production at `@v0` (moved in lecture-dp#52). Production use surfaced the #83 alerting gaps — a weekly cache build failed for roughly two months with no alert issue and no downloadable traceback, which is what motivated the (now closed) P0 item above.
 
 ### Phase 2: migrate existing repos
 
