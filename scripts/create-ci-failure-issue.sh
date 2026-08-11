@@ -40,8 +40,21 @@ TITLE="🔴 CI failure: ${GITHUB_WORKFLOW}"
 RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
 # Which legs failed. Needs `actions: read`; degrade to the run link if absent.
+#
+# `cancelled` legs are included and labelled. A job killed by `timeout-minutes`
+# concludes cancelled, not failed, so filtering on failure alone produced an
+# empty list under a "failed" heading — the alert fired with nothing in it.
+# Timings come from the same call so a slow-drift regression is visible in the
+# issue rather than needing a click through to the run.
 FAILED_JOBS="$(gh run view "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --json jobs \
-  | jq -r '[.jobs[] | select(.conclusion == "failure") | "- `" + .name + "`"] | join("\n")' \
+  | jq -r '[.jobs[]
+      | select(.conclusion == "failure" or .conclusion == "cancelled")
+      | "- `" + .name + "` — " + .conclusion
+        + (if .startedAt and .completedAt
+           then " after " + (((.completedAt | fromdate) - (.startedAt | fromdate)) / 60 | floor | tostring) + "m"
+           else "" end)
+        + (if .conclusion == "cancelled" then " (timed out, or the run was superseded)" else "" end)]
+    | join("\n")' \
   || true)"
 
 BODY_FILE="$(mktemp)"

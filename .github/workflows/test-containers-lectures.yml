@@ -135,7 +135,23 @@ jobs:
     needs: [test]
     # This workflow runs unattended off the weekly container build. Manual
     # dispatches have someone watching them.
-    if: ${{ failure() && github.event_name != 'workflow_dispatch' }}
+    #
+    # `cancelled` must alert as well as `failure`. A leg killed by
+    # `timeout-minutes` concludes *cancelled*, not failed, so a bare `failure()`
+    # guard is silently disarmed by exactly the regression this matrix exists to
+    # catch — a build that got slow enough to stop finishing. That is how the
+    # 2026-08-03, -08-05 and -08-10 sweeps all went unreported: both
+    # `lecture-python.myst` legs hit the 120-minute ceiling, every other leg
+    # passed, and nothing was filed. Same class as #83 and #103; the same
+    # guard-polarity lesson #123 encoded in `build-jupyter-cache`.
+    #
+    # `always()` is required because `failure()` is false once a needed job is
+    # cancelled. The cost is that a run superseded by the workflow-level
+    # `cancel-in-progress` also reaches here — accepted deliberately: supersedes
+    # are rare on a weekly `workflow_run` trigger, the filed issue is
+    # deduplicated rather than duplicated, and a spare issue is much cheaper
+    # than another three-week silence.
+    if: ${{ always() && github.event_name != 'workflow_dispatch' && (needs.test.result == 'failure' || needs.test.result == 'cancelled') }}
     timeout-minutes: 10
     permissions:
       contents: read
