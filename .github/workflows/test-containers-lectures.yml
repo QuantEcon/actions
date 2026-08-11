@@ -58,6 +58,8 @@ jobs:
             owner: QuantEcon
           - repo: lecture-python-advanced.myst
             owner: QuantEcon
+          - repo: lecture-python-programming
+            owner: QuantEcon
           # TODO: Re-enable after https://github.com/QuantEcon/lecture-jax/issues/284 is resolved
           # lecture-jax requires JAX but doesn't include pip install commands
           # - repo: lecture-jax
@@ -93,6 +95,8 @@ jobs:
 
       # Stage 1: HTML (executes notebooks)
       - name: Build HTML (Execute Notebooks)
+        id: build-html
+        continue-on-error: true
         uses: ./actions-repo/build-lectures
         with:
           source-dir: lecture-repo/lectures
@@ -100,6 +104,19 @@ jobs:
           builder: html
           upload-failure-reports: true
           failure-artifact-name: reports-html-${{ matrix.container }}-${{ matrix.repo.repo }}
+
+      # A transient raw-GitHub 429 can fail one notebook while the successful
+      # executions remain in the Jupyter cache. Retry once so only the failed
+      # notebooks execute again; a second failure still fails the job.
+      - name: Retry HTML build after failure
+        if: steps.build-html.outcome == 'failure'
+        uses: ./actions-repo/build-lectures
+        with:
+          source-dir: lecture-repo/lectures
+          output-dir: lecture-repo
+          builder: html
+          upload-failure-reports: true
+          failure-artifact-name: reports-html-retry-${{ matrix.container }}-${{ matrix.repo.repo }}
 
       # Stage 2: pdflatex (reuses cached notebooks from HTML build)
       - name: Build PDF (No Execution)
