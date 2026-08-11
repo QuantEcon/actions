@@ -2,7 +2,7 @@
 
 Working plan for `QuantEcon/actions`: current state, prioritized backlog, dependency policy, and rollout status.
 
-**Last updated:** 2026-08-07 — after the **v0.11.0** and **v0.11.1** releases and the move of every consumer to `@v0`, which is the first to carry both alerting fixes (#122, #127) to consumers: `build-jupyter-cache` reaches its siblings through the pinned `@v0` ref, so neither fix existed for any consumer until `v0` moved to this release. The backlog below is still the July 2026 review; individual items carry their own closure notes.
+**Last updated:** 2026-08-11 — release gating added as P0 (#135, #136) and the consumers table corrected: five lecture repos are still on exact pins, which this document previously said did not exist. Before that, 2026-08-07 — after the **v0.11.0** and **v0.11.1** releases and the move of `lecture-dp` and `lecture-python.myst` to `@v0`, which is the first to carry both alerting fixes (#122, #127) to consumers: `build-jupyter-cache` reaches its siblings through the pinned `@v0` ref, so neither fix existed for any consumer until `v0` moved to this release. The backlog below is still the July 2026 review; individual items carry their own closure notes.
 
 ---
 
@@ -21,9 +21,18 @@ The core infrastructure is complete, hardened, and in production:
 |---|---|---|
 | `lecture-dp` | Full chain: `restore-jupyter-cache`, `build-lectures`, `build-jupyter-cache`, `publish-gh-pages` | `@v0` ([lecture-dp#52](https://github.com/QuantEcon/lecture-dp/pull/52)) |
 | `lecture-python.myst` | `preview-netlify` (ci.yml), `publish-gh-pages` | `@v0` ([lecture-python.myst#1029](https://github.com/QuantEcon/lecture-python.myst/pull/1029)) |
-| `test-actions-lecture-intro` | Full chain + `preview-netlify` (canary — see #100 stage 2) | `@v0` |
+| `test-actions-lecture-intro` | Full chain + `preview-netlify` (sandbox and post-release canary — #100 stage 2, role documented in its README) | `@v0` |
+| `lecture-jax` | `preview-netlify`, `publish-gh-pages` | **`@v0.8.0`** (2 call sites) |
+| `lecture-python-intro` | `publish-gh-pages` | **`@v0.8.0`** |
+| `lecture-python-advanced.myst` | `publish-gh-pages` | **`@v0.8.0`** |
+| `lecture-python-programming` | `publish-gh-pages` | **`@v0.9.0`** |
+| `continuous_time_mcs` | `publish-gh-pages` | **`@v0.9.0`** |
 
-**Every consumer now tracks the floating `@v0`** — 11 call sites, no exact pins left. Exact pins are what stranded `lecture-dp` three releases behind, which is why its weekly cache build ran for ~2 months with alerting that had never worked (#83). Pinning plus Dependabot was tried and is not sufficient on its own: it surfaces the bump but currency still depends on someone merging it, and `lecture-python.myst#1000` sat open for 13 days before being closed as superseded. The breaking-change risk that pinning guards against is covered instead by the canary, which runs the full chain against `@v0` on the same weekly cadence and so meets a bad release first.
+**Corrected 2026-08-11.** This section previously listed only the first three rows and stated "every consumer now tracks the floating `@v0` — 11 call sites, no exact pins left". That was wrong: **six exactly-pinned call sites exist across five lecture repos**, two to three releases behind current. The audit is QuantEcon/workspace-lectures#31. The omission matters because the argument below was reasoned partly from the incomplete table — `publish-gh-pages` is in fact at **7/7** adoption across the publishing lecture repos, and it is also the action every remaining pin sits on.
+
+The case against exact pins still stands on its own evidence. Pins are what stranded `lecture-dp` three releases behind, which is why its weekly cache build ran for ~2 months with alerting that had never worked (#83). Pinning plus Dependabot was tried and is not sufficient: it surfaces the bump but currency still depends on someone merging it, and `lecture-python.myst#1000` sat open for 13 days before being closed as superseded.
+
+**What does not stand is the claim that the canary "meets a bad release first".** That holds on exactly one consumer path. The canary's weekly cache build runs Sunday 03:00 UTC against consumers' Monday 02:00/03:00 UTC, a real 23–24 hour lead. Its `ci.yml` fires only on a `pull_request` in the canary, and its `publish.yml` only on a tag push there — so the **preview and publish paths have no lead at all**, and publish is where output reaches readers. More fundamentally, the canary pins `@v0`, the tag a release *moves*, so it only ever exercises a published release and cannot test a candidate. Gating is #135; the fixture it needs is #136.
 
 Consumer/migration tracking lives in [QuantEcon/meta#321](https://github.com/QuantEcon/meta/issues/321); the preview-unification rollout is planned in [QuantEcon/meta#327](https://github.com/QuantEcon/meta/issues/327).
 
@@ -33,7 +42,16 @@ Consumer/migration tracking lives in [QuantEcon/meta#321](https://github.com/Qua
 
 ### P0 — broken safety net
 
-**Currently empty** — the one P0 item closed in #122 (2026-08-05).
+**Release gating (#135, #136) — added 2026-08-11.** A release currently reaches a published lecture site before any test has met it. This is P0 for the same reason the alerting item below was: the safety net does not do the thing it is assumed to do. It also blocks the lecture family's move to floating `@v0` (QuantEcon/workspace-lectures#33), which is otherwise ready.
+
+| # | Item | Refs |
+|---|---|---|
+| 0a | **Build `test-actions-release`** — a frozen gate fixture. The existing canary cannot be the gate: it runs `quantecon-build:latest`, has Dependabot enabled, and pins `@v0`. The first two are the *right* properties for a sandbox and disqualifying for a gate, and both are repo-level, so one repo cannot hold both roles. Purpose-built (not trimmed from intro), container pinned by digest, no network reads, ~5 lectures, all three builders, staged-failure self-test from day one. Must cover **plotly/kaleido static export** — the #85 path is uncovered by any current fixture | #136, #85, #108 |
+| 0b | **Add a `v0-next` staging tag and gate on it.** Move `v0-next` to the candidate, dispatch the gate fixture, require green, then move `v0`. Works because `@v0-next` is as static as `@v0` — GitHub forbids expressions in `uses:`, so no parameterised-ref design is possible. Does **not** cover `build-jupyter-cache`'s sibling chain, which reaches `setup-environment@v0` and `build-lectures@v0` hardcoded, so "verified green" will mean "everything except that chain" | #135, #100 |
+| 0c | **Close the ungated consumer paths regardless of 0b.** Schedule the canary's `ci.yml` and `publish.yml` ahead of consumers' Monday cache builds; `publish.yml` has no `workflow_dispatch` at all today, so it cannot even be run by hand | #135 |
+| 0d | **Prove the gate can stop a release, and that a red gate reaches a human.** Two separate things, both with precedent here: the container smoke tests could not fail and still reported green (#108), and the canary failed eight consecutive weeks filing zero issues (#83) | #135, #83, #108 |
+
+**The previous P0 is closed** — the one item closed in #122 (2026-08-05).
 
 One correction to how that closure was written up: "cannot silently no-op" was too strong. #122 fixed alerting for failures *during* the builds, but a failure *before* them still skipped every guard, because they all tested `all-passed == 'false'` and an aborted run leaves that output empty rather than `'false'` (#123, fixed below). The general lesson is worth keeping: a guard written around the failure mode someone had in mind fails open on the one they did not, so guards on an alerting path should test `!= 'true'`, never `== 'false'`.
 
@@ -110,14 +128,18 @@ The lean image's science stack (`numpy`, `scipy`, `pandas`, …) is **pinned as 
 
 Incremental migration, previews first (see [meta#327](https://github.com/QuantEcon/meta/issues/327)), CPU-only full chains next, GPU last:
 
+**`publish-gh-pages` is separately at 7/7** across the publishing lecture repos and is not tracked by this table — the table is about the *full chain*. Five of those seven are on exact pins; see Consumers in production above.
+
 | # | Repository | Runner | Status |
 |---|---|---|---|
-| 1 | `lecture-python.myst` (previews) | GPU | ✅ `preview-netlify@v0.8.0` live |
-| 2 | Remaining python repos (previews) | Container | ⏳ meta#327 pilots |
-| 3 | `lecture-python-intro` (full chain) | Container | ⏳ Planned |
-| 4 | `lecture-python-programming.myst` (full chain) | Container | ⏳ Planned |
+| 1 | `lecture-python.myst` (previews) | GPU | ✅ live, now on `preview-netlify@v0` (was `@v0.8.0`) |
+| 2 | Remaining python repos (previews) | Container | ⏳ `lecture-jax` done (`@v0.8.0`); four still on `nwtgck/actions-netlify` — meta#327, QuantEcon/workspace-lectures#2 |
+| 3 | `lecture-python-intro` (full chain) | Container | ⏳ Planned — blocked on #97 and #98 |
+| 4 | `lecture-python-programming.myst` (full chain) | Container | ⏳ Planned — blocked on #97 and #98 |
 | 5 | `lecture-python-advanced.myst` (full chain) | Container | ⏳ Planned |
 | 6 | `lecture-python.myst` (full chain) | RunsOn GPU | ⏳ Blocked on RunsOn verification (below) |
+
+`lecture-jax` is the suggested full-chain pilot: it is the smallest of the native five and is **not** blocked by #97/#98, which bite intro and programming specifically. See QuantEcon/meta#348.
 
 Per-repo checklist: create migration branch → `setup-environment` → `build-lectures` → cache actions → preview action → `publish-gh-pages` → validate output against production → measure → merge and monitor.
 
