@@ -32,7 +32,7 @@ The core infrastructure is complete, hardened, and in production:
 
 The case against exact pins still stands on its own evidence. Pins are what stranded `lecture-dp` three releases behind, which is why its weekly cache build ran for ~2 months with alerting that had never worked (#83). Pinning plus Dependabot was tried and is not sufficient: it surfaces the bump but currency still depends on someone merging it, and `lecture-python.myst#1000` sat open for 13 days before being closed as superseded.
 
-**What does not stand is the claim that the canary "meets a bad release first".** That holds on exactly one consumer path. The canary's weekly cache build runs Sunday 03:00 UTC against consumers' Monday 02:00/03:00 UTC, a real 23–24 hour lead. Its `ci.yml` fires only on a `pull_request` in the canary, and its `publish.yml` only on a tag push there — so the **preview and publish paths have no lead at all**, and publish is where output reaches readers. More fundamentally, the canary pins `@v0`, the tag a release *moves*, so it only ever exercises a published release and cannot test a candidate. Gating is #135; the fixture it needs is #136.
+**What does not stand is the claim that the canary "meets a bad release first".** That holds on exactly one consumer path. The canary's weekly cache build runs Sunday 03:00 UTC against consumers' Monday 02:00/03:00 UTC, a real 23–24 hour lead. Its `ci.yml` has `pull_request` and manual `workflow_dispatch` triggers but **no schedule**, and its `publish.yml` fires only on a `publish*` tag push in the canary — so **neither the preview nor the publish path has any automatic lead** over consumers, and publish is where output reaches readers. A manual dispatch can exercise preview on demand, but a gate cannot rest on someone remembering. More fundamentally, the canary pins `@v0`, the tag a release *moves*, so it only ever exercises a published release and cannot test a candidate. Gating is #135; the fixture it needs is #136.
 
 Consumer/migration tracking lives in [QuantEcon/meta#321](https://github.com/QuantEcon/meta/issues/321); the preview-unification rollout is planned in [QuantEcon/meta#327](https://github.com/QuantEcon/meta/issues/327).
 
@@ -135,7 +135,7 @@ Incremental migration, previews first (see [meta#327](https://github.com/QuantEc
 | 1 | `lecture-python.myst` (previews) | GPU | ✅ live, now on `preview-netlify@v0` (was `@v0.8.0`) |
 | 2 | Remaining python repos (previews) | Container | ⏳ `lecture-jax` done (`@v0.8.0`); four still on `nwtgck/actions-netlify` — meta#327, QuantEcon/workspace-lectures#2 |
 | 3 | `lecture-python-intro` (full chain) | Container | ⏳ Planned — blocked on #97 and #98 |
-| 4 | `lecture-python-programming.myst` (full chain) | Container | ⏳ Planned — blocked on #97 and #98 |
+| 4 | `lecture-python-programming` (full chain) | Container | ⏳ Planned — blocked on #97 and #98 |
 | 5 | `lecture-python-advanced.myst` (full chain) | Container | ⏳ Planned |
 | 6 | `lecture-python.myst` (full chain) | RunsOn GPU | ⏳ Blocked on RunsOn verification (below) |
 
