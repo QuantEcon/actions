@@ -8,7 +8,7 @@
 
 | Repository | quantecon-build | quantecon | Status |
 |------------|-----------------|-----------|--------|
-| lecture-python-programming.myst | 4.6 min | 5.4 min | ✅ Pass |
+| lecture-python-programming | 4.6 min | 5.4 min | ✅ Pass |
 | lecture-python-intro | 11.5 min | 13.4 min | ✅ Pass |
 | lecture-python-advanced.myst | 33.6 min | 35.9 min | ✅ Pass |
 | lecture-python.myst | 60.0 min | 60.0 min | ✅ Pass |
@@ -246,7 +246,7 @@ Before production rollout:
 Pick a test repository or create a fork:
 
 ```bash
-# Option 1: Use lecture-python-programming.myst (lower traffic)
+# Option 1: Use lecture-python-programming (lower traffic)
 # Option 2: Create a fork for testing
 ```
 
@@ -261,7 +261,7 @@ Complete testing with `QuantEcon/test-actions-lecture-intro`, validate all metri
 After successful testing, migrate CPU-based lecture repositories:
 
 1. **lecture-python-intro** (Netlify, similar to test repo)
-2. **lecture-python-programming.myst** (GitHub Pages)
+2. **lecture-python-programming** (GitHub Pages)
 3. **lecture-python-advanced.myst** (GitHub Pages)
 4. **lecture-python.myst** - CPU builds only (defer GPU workflows)
 

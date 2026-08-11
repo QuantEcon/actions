@@ -6,7 +6,7 @@ This document records validation test results for the QuantEcon containers acros
 
 Containers are tested by [`test-containers-lectures.yml`](../.github/workflows/test-containers-lectures.yml), which runs after the **Build QuantEcon Containers** workflow completes. Each job builds one lecture repo on one container through the full builder pipeline (HTML → pdflatex → jupyter) **sequentially**, reusing the executed notebooks across builders. Concurrency groups serialize jobs for the same repo to avoid network contention from concurrent dataset downloads; different repos run in parallel.
 
-**Matrix:** 2 containers (`quantecon`, `quantecon-build`) × the QuantEcon lecture repos — `lecture-python-intro`, `lecture-python.myst`, `lecture-python-advanced.myst` (`lecture-jax` is temporarily disabled pending [lecture-jax#284](https://github.com/QuantEcon/lecture-jax/issues/284)).
+**Matrix:** 2 containers (`quantecon`, `quantecon-build`) × the QuantEcon lecture repos — `lecture-python-intro`, `lecture-python.myst`, `lecture-python-advanced.myst`, `lecture-python-programming` (`lecture-jax` is temporarily disabled pending [lecture-jax#284](https://github.com/QuantEcon/lecture-jax/issues/284)).
 
 A companion workflow, [`test-container.yml`](../.github/workflows/test-container.yml), smoke-tests the freshly built images (XeLaTeX compile + a minimal Jupyter Book HTML/PDF build).
 
@@ -22,7 +22,7 @@ A companion workflow, [`test-container.yml`](../.github/workflows/test-container
 | Repository | Lectures | Notes |
 |-----------|----------|-------|
 | `lecture-python-intro` | 46 | Standard, Netlify deployment |
-| `lecture-python-programming.myst` | ~40 | Standard, GitHub Pages |
+| `lecture-python-programming` | ~40 | Standard, GitHub Pages |
 | `lecture-python-advanced.myst` | ~50 | Standard, GitHub Pages |
 | `lecture-python.myst` | ~80 | GPU lectures, GitHub Pages |
 
@@ -39,15 +39,15 @@ A companion workflow, [`test-container.yml`](../.github/workflows/test-container
 | Builder | Repository | quantecon-build (lean) | quantecon (full) |
 |---------|-----------|:---:|:---:|
 | **html** | lecture-python-intro | ✅ 12m | ✅ 13m |
-| | lecture-python-programming.myst | ✅ 5m | ✅ 5m |
+| | lecture-python-programming | ✅ 5m | ✅ 5m |
 | | lecture-python-advanced.myst | ✅ 34m | ✅ 36m |
 | | lecture-python.myst | ✅ 58m | ✅ 100m |
 | **pdflatex** | lecture-python-intro | ✅ 14m | ✅ 14m |
-| | lecture-python-programming.myst | ✅ 6m | ✅ 7m |
+| | lecture-python-programming | ✅ 6m | ✅ 7m |
 | | lecture-python-advanced.myst | ✅ 36m | ✅ 38m |
 | | lecture-python.myst | ✅ 62m | ✅ 63m |
 | **jupyter** | lecture-python-intro | ✅ 12m | ✅ 12m |
-| | lecture-python-programming.myst | ✅ 4m | ✅ 5m |
+| | lecture-python-programming | ✅ 4m | ✅ 5m |
 | | lecture-python-advanced.myst | ✅ 34m | ✅ 35m |
 | | lecture-python.myst | ✅ 58m | ✅ 58m |
 
