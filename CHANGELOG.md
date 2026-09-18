@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Container images, `build-lectures`**: every page built in a container job lost its
+  "Last changed" header and changelog, with nothing in the log. The runner owns the
+  bind-mounted workspace (uid 1001) while container steps run as root, so git refuses the
+  work tree ("detected dubious ownership", exit 128) after `actions/checkout`, whose own
+  `safe.directory` entry lives only in a temporary HOME. quantecon-book-theme drops the
+  header when git fails, and `detect-changed-lectures.sh` hides the same failure behind
+  `|| true`, so in a container job it can report no changed lectures. Both images now set `safe.directory '*'` at system scope. `build-lectures`
+  trusts the source work tree when git cannot read it, and warns when it still cannot, or
+  when the checkout is shallow (which dates every page to the checkout commit). The
+  `publish.yml` and `cache.yml` templates now check out with `fetch-depth: 0`.
+
 ## [0.11.1] - 2026-08-07
 
 ### Fixed

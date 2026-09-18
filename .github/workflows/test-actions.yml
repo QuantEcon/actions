@@ -464,7 +464,12 @@ jobs:
     timeout-minutes: 30
     needs: env-seed
     steps:
+      # Full history, so build-lectures' git check reads "Git history
+      # available" rather than warning about a shallow clone on every run. The
+      # fixture is an untracked copy, so its dates are not what this tests.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Recreate salted fixture
         run: |
@@ -519,7 +524,12 @@ jobs:
     timeout-minutes: 30
     needs: env-seed
     steps:
+      # Full history, so build-lectures' git check reads "Git history
+      # available" rather than warning about a shallow clone on every run. The
+      # fixture is an untracked copy, so its dates are not what this tests.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       # Same salt as env-seed, so the conda env restores from its cache.
       - name: Recreate salted fixture with a deliberately broken page
