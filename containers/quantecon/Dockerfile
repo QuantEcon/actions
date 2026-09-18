@@ -110,6 +110,8 @@ RUN echo "quantecon-container" > /etc/quantecon-container && \
 # against repositories planted by another user; this image runs one job's own
 # checkout, single-tenant and discarded afterwards, so there is nothing for it
 # to guard. System scope, so the entry holds whatever HOME a step sets.
+# Revisit this if the image is ever run on a shared, long-lived host with
+# other users' volumes mounted: there the check has something to guard.
 RUN git config --system --add safe.directory '*'
 
 # Set working directory

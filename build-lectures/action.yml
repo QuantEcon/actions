@@ -95,9 +95,12 @@ runs:
     # actions/checkout trusts the tree only in a temporary HOME that it
     # deletes when its step ends, so later steps do not inherit the entry.
     #
-    # `git config --global` writes $HOME/.gitconfig. In a container job HOME
-    # is /github/home, which the runner bind-mounts for the whole job, so the
-    # entry reaches the build step below and every later step in the job.
+    # The trust is job-scoped: command-scope config passed through the
+    # environment (GIT_CONFIG_COUNT/KEY/VALUE) and exported via $GITHUB_ENV,
+    # which git reads as protected config and so honours for safe.directory.
+    # Nothing is written to disk, so nothing outlives the job even on a
+    # long-lived runner, and the real global config stays in force
+    # (GIT_CONFIG_GLOBAL would replace it for every later step).
     # The entry names the work-tree root found from source-dir, not
     # $GITHUB_WORKSPACE: the two differ when the caller checks out into a
     # subdirectory (test-containers-lectures.yml does), and git does not
@@ -115,15 +118,23 @@ runs:
         # of a tree that git does not yet trust.
         if ! command -v git >/dev/null 2>&1; then
           echo "::warning::git is not installed, so pages will be built without their 'Last changed' date and changelog"
-        elif ! TOP=$(git -c safe.directory='*' -C "$SOURCE_DIR" rev-parse --show-toplevel 2>/dev/null); then
-          echo "::warning::$SOURCE_DIR is not in a git work tree, so pages will be built without their 'Last changed' date and changelog"
+        elif ! TOP=$(git -c safe.directory='*' -C "$SOURCE_DIR" rev-parse --show-toplevel 2>&1); then
+          # Quote git's own reason: not a work tree, or anything else that stops
+          # git before it can look (a malformed GIT_CONFIG_COUNT, for one).
+          echo "::warning::git cannot find the work tree for $SOURCE_DIR, so pages will be built without their 'Last changed' date and changelog: ${TOP%%$'\n'*}"
         else
           # Adds the entry only while git refuses the tree, so the repeat calls
-          # of multi-format callers and build-jupyter-cache add nothing, and a
-          # failed write falls through to the warning below, not a failed build.
-          if ! git -C "$SOURCE_DIR" rev-parse --git-dir >/dev/null 2>&1 \
-             && git config --global --add safe.directory "$TOP"; then
-            echo "Trusted $TOP for git (safe.directory in $HOME/.gitconfig)"
+          # of multi-format callers and build-jupyter-cache add nothing. It is
+          # appended after any entries a caller already set, exported here so
+          # the check below sees it, and written to $GITHUB_ENV for the build
+          # step and the rest of the job.
+          if ! git -C "$SOURCE_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+            n=${GIT_CONFIG_COUNT:-0}
+            export GIT_CONFIG_COUNT=$((n + 1)) "GIT_CONFIG_KEY_$n=safe.directory" "GIT_CONFIG_VALUE_$n=$TOP"
+            if [ -n "${GITHUB_ENV:-}" ] && printf '%s\n' "GIT_CONFIG_COUNT=$GIT_CONFIG_COUNT" \
+                 "GIT_CONFIG_KEY_$n=safe.directory" "GIT_CONFIG_VALUE_$n=$TOP" >> "$GITHUB_ENV"; then
+              echo "Trusted $TOP for git for the rest of this job (GIT_CONFIG_KEY_$n)"
+            fi
           fi
           if ! git -C "$SOURCE_DIR" rev-parse --git-dir >/dev/null 2>&1; then
             echo "::warning::git cannot read $TOP, so pages will be built without their 'Last changed' date and changelog: $(git -C "$SOURCE_DIR" rev-parse --git-dir 2>&1 | head -n 1)"
