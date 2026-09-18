@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Container images**: Node.js moves from 20 (end-of-life 2026-04-30) to 24 LTS. The
+  lean image carried 20.17.0 and the full image 20.20.2. It no longer comes from conda,
+  which cannot supply 24 here: every `jupyterlab` below 4.6 on the defaults channel,
+  including the 4.5.7 that `anaconda=2026.06` pins, constrains `nodejs` to 20.x. Both
+  images now install Node from nodejs.org, pinned by version and SHA256 like Miniconda,
+  after the conda layer. Dropping the conda `nodejs` leaves the full image's solve
+  unchanged; the lean image holds `icu=73.1`, the version the old `nodejs` pinned, so its
+  native stack does not re-solve. `netlify-cli@latest` (27.x, which needs node >=22.13) and
+  `wrangler@latest` (which refuses to run below node 22), both installed into the image
+  by `preview-netlify` and `preview-cloudflare`, are now inside their supported range.
+
 ### Fixed
 - **Container images, `build-lectures`**: every page built in a container job lost its
   "Last changed" header and changelog, with nothing in the log. The runner owns the

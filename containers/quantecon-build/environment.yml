@@ -56,8 +56,12 @@ dependencies:
   - lxml
   - pyyaml
   
-  # Build tools
-  - nodejs>=20,<25  # Jupyter extensions; capped at node 24 LTS (exclude non-LTS 25)
+  # Held at the icu the conda nodejs 20.17 build pinned before Node moved out of
+  # conda (Node 24 now comes from the Dockerfile). Without this hold, dropping
+  # nodejs lets the native stack re-solve (qt 5 -> 6, pillow, lxml, libxml2,
+  # fontconfig, tbb and ~80 others): a separate change from the Node bump. Drop it
+  # with the next Anaconda baseline bump.
+  - icu=73.1
   
   - pip
   - pip:

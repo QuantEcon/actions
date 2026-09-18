@@ -13,8 +13,9 @@ updates:
   # ── Conda environments (container images) ──────────────────────────────────
   # The conda ecosystem (GA Dec 2025) tracks the `pip:` block (jupyter-book,
   # quantecon-book-theme, the sphinx-* extensions, kaleido) via PyPI, and also
-  # proposes version-range bumps for conda deps such as `nodejs` — which is why
-  # it's capped in the ignore list below. The core scientific stack (numpy, scipy,
+  # proposes version-range bumps for conda-only deps. Node is not a conda dep: it
+  # is pinned by version and SHA256 in each Dockerfile, which no ecosystem here
+  # tracks, so bump it by hand. The core scientific stack (numpy, scipy,
   # pandas, … and the `anaconda` metapackage) is held at the 2026.06 baseline via
   # `ignore` below — a date-pin like `=2026.06` does NOT stop Dependabot proposing
   # the next release, so each is listed explicitly.
@@ -65,9 +66,10 @@ updates:
       # jupyter-book 2.x is a major rewrite — stay on 1.x until we opt in.
       - dependency-name: "jupyter-book"
         update-types: ["version-update:semver-major"]
-      # Cap node at the current LTS (24); don't propose the non-LTS 25+ lines.
-      - dependency-name: "nodejs"
-        versions: [">=25"]
+      # icu is held in the lean image at the version the old conda nodejs pinned,
+      # so dropping nodejs did not re-solve the native stack; bump it with the
+      # next Anaconda baseline, not on its own.
+      - dependency-name: "icu"
 
   # ── Third-party GitHub Actions ─────────────────────────────────────────────
   # "/" covers .github/workflows/; for github-actions, composite actions in
