@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   native stack does not re-solve. `netlify-cli@latest` (27.x, which needs node >=22.13) and
   `wrangler@latest` (which refuses to run below node 22), both installed into the image
   by `preview-netlify` and `preview-cloudflare`, are now inside their supported range.
+- **Templates**: `actions/checkout` moves from `@v4` to `@v7` in `ci.yml`, `cache.yml` and
+  `publish.yml`, matching this repo's own workflows and the consumer repositories in
+  `PLAN.md`'s table. `@v4` runs on node20, so every repository scaffolded from the templates brought
+  Node 20 back; `@v7` runs on node24. The `fetch-depth: 0` on the `cache.yml` and
+  `publish.yml` checkouts is kept. Templates reach a repository only when it is scaffolded,
+  so existing consumers and the `v0` tag are unaffected.
 
 ### Fixed
 - **Container images, `build-lectures`**: every page built in a container job lost its
