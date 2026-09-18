@@ -86,6 +86,54 @@ runs:
         fi
         echo "::endgroup::"
 
+    # Git history for page metadata. quantecon-book-theme dates each page and
+    # builds its changelog from `git log`, and when git fails it drops the
+    # "Last changed" header without a warning. In a container job git does
+    # fail: the runner creates the workspace as its own user (uid 1001) and
+    # bind-mounts it into the container, where steps run as root, so git
+    # refuses the work tree ("detected dubious ownership", exit 128).
+    # actions/checkout trusts the tree only in a temporary HOME that it
+    # deletes when its step ends, so later steps do not inherit the entry.
+    #
+    # `git config --global` writes $HOME/.gitconfig. In a container job HOME
+    # is /github/home, which the runner bind-mounts for the whole job, so the
+    # entry reaches the build step below and every later step in the job.
+    # The entry names the work-tree root found from source-dir, not
+    # $GITHUB_WORKSPACE: the two differ when the caller checks out into a
+    # subdirectory (test-containers-lectures.yml does), and git does not
+    # honour an entry for a subdirectory of the tree. A no-op wherever git
+    # can already read the tree (the hosted runner, or an image that trusts
+    # it system-wide).
+    - name: Check git history for page metadata
+      if: inputs.builder != 'pdflatex' && inputs.builder != 'jupyter'
+      shell: bash
+      env:
+        SOURCE_DIR: ${{ inputs.source-dir }}
+      run: |
+        # -c safe.directory='*' applies to this one command only (git reads
+        # safe.directory from command-line config), so it can find the root
+        # of a tree that git does not yet trust.
+        if ! command -v git >/dev/null 2>&1; then
+          echo "::warning::git is not installed, so pages will be built without their 'Last changed' date and changelog"
+        elif ! TOP=$(git -c safe.directory='*' -C "$SOURCE_DIR" rev-parse --show-toplevel 2>/dev/null); then
+          echo "::warning::$SOURCE_DIR is not in a git work tree, so pages will be built without their 'Last changed' date and changelog"
+        else
+          # Adds the entry only while git refuses the tree, so the repeat calls
+          # of multi-format callers and build-jupyter-cache add nothing, and a
+          # failed write falls through to the warning below, not a failed build.
+          if ! git -C "$SOURCE_DIR" rev-parse --git-dir >/dev/null 2>&1 \
+             && git config --global --add safe.directory "$TOP"; then
+            echo "Trusted $TOP for git (safe.directory in $HOME/.gitconfig)"
+          fi
+          if ! git -C "$SOURCE_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+            echo "::warning::git cannot read $TOP, so pages will be built without their 'Last changed' date and changelog: $(git -C "$SOURCE_DIR" rev-parse --git-dir 2>&1 | head -n 1)"
+          elif [ "$(git -C "$SOURCE_DIR" rev-parse --is-shallow-repository)" = "true" ]; then
+            echo "::warning::$TOP is a shallow clone, so every page's 'Last changed' date will be the checked-out commit's date. Set fetch-depth: 0 on actions/checkout to date each page from its own history."
+          else
+            echo "Git history available in $TOP"
+          fi
+        fi
+
     - name: Build lectures
       id: build
       shell: bash -l {0}

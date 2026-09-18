@@ -52,6 +52,17 @@ jobs:
           [ "$HOME" = "/github/home" ] \
             || { echo "::error::HOME=[$HOME], expected /github/home — this is no longer a container job"; exit 1; }
 
+      # The checkout belongs to the runner's user (uid 1001) and is bind-mounted
+      # into this container, where steps run as root: the shape in which git
+      # refuses the work tree and quantecon-book-theme silently drops every
+      # page's "Last changed" header. actions/checkout's own safe.directory
+      # entry is gone by now (it wrote it under a temporary HOME), so this
+      # passes only if the image itself trusts the tree.
+      - name: Assert git can read the checkout
+        run: |
+          git log -1 --format='HEAD %h %cI' \
+            || { echo "::error::git cannot read the checkout in a container job, so pages built with this image lose their 'Last changed' header"; exit 1; }
+
       - name: Smoke test
         run: ./containers/quantecon/tests/smoke-test.sh
 

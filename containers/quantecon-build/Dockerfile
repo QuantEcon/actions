@@ -102,6 +102,18 @@ RUN echo "quantecon-container" > /etc/quantecon-container && \
     echo "variant=build" >> /etc/quantecon-container && \
     echo "build_date=$(date -Iseconds)" >> /etc/quantecon-container
 
+# Trust every git work tree. In a GitHub Actions container job the runner
+# creates the workspace as its own user (uid 1001) and bind-mounts it here,
+# while steps run as root (this image declares no USER), so git refuses the
+# checkout ("detected dubious ownership", exit 128) in every step after
+# actions/checkout. quantecon-book-theme then silently drops each page's
+# "Last changed" header, and scripts/detect-changed-lectures.sh silently finds
+# no changed lectures. git's ownership check guards shared multi-user machines
+# against repositories planted by another user; this image runs one job's own
+# checkout, single-tenant and discarded afterwards, so there is nothing for it
+# to guard. System scope, so the entry holds whatever HOME a step sets.
+RUN git config --system --add safe.directory '*'
+
 # Set working directory
 WORKDIR /workspace
 

@@ -55,6 +55,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Full history: each page's "Last changed" date and changelog come
+          # from git log. A shallow clone dates every page to the checkout commit.
+          fetch-depth: 0
 
       # Build all requested formats and save cache.
       # Only saves if ALL builds succeed — preserves existing cache on failure.
