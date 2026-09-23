@@ -1,0 +1,72 @@
+name: Publish to Cloudflare Worker (Private)
+description: |
+  Deploy a static site to a Cloudflare Worker and enforce a Cloudflare Access
+  policy that restricts traffic to a specific GitHub team. The action also
+  verifies that the deployed endpoint is gated by checking for a 401 response
+  when accessed without authentication.
+inputs:
+  worker_name:
+    description: Name of the Cloudflare Worker to publish to
+    required: true
+  access_policy_id:
+    description: |
+      Cloudflare Access policy ID that should be applied to the Worker.
+      The policy must be pre‑configured to allow only the desired GitHub
+      team(s).
+    required: true
+  url:
+    description: |
+      Full URL of the Worker endpoint (e.g. https://example.com). Used
+      for the gating verification step.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install Wrangler
+      run: npm install -g @cloudflare/wrangler
+
+    - name: Publish to Worker
+      env:
+        CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+        CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+        CF_WORKER_NAME: ${{ inputs.worker_name }}
+      run: |
+        # The `--env production` flag ensures that the worker is published
+        # to the production environment rather than a preview.
+        wrangler publish --name $CF_WORKER_NAME --env production
+
+    - name: Apply Access policy
+      env:
+        CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+        CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+        CF_ACCESS_POLICY_ID: ${{ inputs.access_policy_id }}
+        CF_WORKER_NAME: ${{ inputs.worker_name }}
+      run: |
+        # Update the Access policy to target the worker's hostname.
+        # The policy must already exist; this step only updates its
+        # configuration to allow the specified GitHub team.
+        curl -s -X PATCH "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/access/policies/$CF_ACCESS_POLICY_ID" \
+          -H "Authorization: Bearer $CF_API_TOKEN" \
+          -H "Content-Type: application/json" \
+          --data '{"config":{"allow":{"identities":[{"type":"github","id":"${{ secrets.CF_GITHUB_TEAM_ID }}"}]}}}'
+
+    - name: Verify gating
+      env:
+        URL: ${{ inputs.url }}
+      run: |
+        # A request without authentication should return 401.
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" $URL)
+        if [ "$HTTP_CODE" -eq 401 ]; then
+          echo "✅ Gating verified: $URL returned 401 as expected."
+        else
+          echo "❌ Gating failed: $URL returned $HTTP_CODE."
+          exit 1
+        fi
