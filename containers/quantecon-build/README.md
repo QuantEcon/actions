@@ -15,7 +15,7 @@ ghcr.io/quantecon/quantecon-build:latest
 - TeX Live: the same apt packages as the full container, except `texlive-luatex`
 - Jupyter Book build tools
 
-**Size:** 2.93 GB compressed pull, 7.33 GB on disk (full container: 3.33 GB compressed, 8.60 GB on disk)
+**Size:** 2.93 GB compressed pull, 7.32 GB on disk (full container: 3.33 GB compressed, 8.60 GB on disk)
 
 **Use for:** CI/CD builds, GitHub Actions (a modestly smaller pull than the full container)
 
@@ -77,7 +77,7 @@ docker pull ghcr.io/quantecon/quantecon:latest
 | Feature | quantecon | quantecon-build |
 |---------|-----------|-----------------|
 | Size (compressed pull) | 3.33 GB | 2.93 GB |
-| Size (on disk) | 8.60 GB | 7.33 GB |
+| Size (on disk) | 8.60 GB | 7.32 GB |
 | Anaconda | Full 2026.06 | Explicit list (science stack pinned to 2026.06) |
 | TeX Live | Ubuntu 24.04 apt set, incl. `texlive-luatex` | Same set, without `texlive-luatex` |
 | Best for | Development | CI/CD |

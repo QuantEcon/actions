@@ -31,7 +31,7 @@ This repository provides **reusable GitHub Actions** for building QuantEcon lect
 quantecon/actions/
 ├── containers/
 │   ├── quantecon/          # Full container (3.33 GB compressed / 8.60 GB on disk): Anaconda + TexLive
-│   └── quantecon-build/     # Lean container (2.93 GB compressed / 7.33 GB on disk): Miniconda + explicit package list, same TexLive minus texlive-luatex
+│   └── quantecon-build/     # Lean container (2.93 GB compressed / 7.32 GB on disk): Miniconda + explicit package list, same TexLive minus texlive-luatex
 ├── setup-environment/       # Environment setup action
 ├── build-lectures/          # Jupyter Book build action
 ├── build-jupyter-cache/     # Cache generation action (weekly)
@@ -131,6 +131,6 @@ gh run view RUN_ID --log > /tmp/gh-logs.txt && cat /tmp/gh-logs.txt
 - **Created:** November 2025
 - **Updated:** June 16, 2026
 - **Current Phase:** Infrastructure complete, ready for production migration (latest release: v0.11.1)
-- **Containers:** ghcr.io/quantecon/quantecon:latest (full, 3.33 GB compressed / 8.60 GB on disk), ghcr.io/quantecon/quantecon-build:latest (lean, 2.93 GB compressed / 7.33 GB on disk)
+- **Containers:** ghcr.io/quantecon/quantecon:latest (full, 3.33 GB compressed / 8.60 GB on disk), ghcr.io/quantecon/quantecon-build:latest (lean, 2.93 GB compressed / 7.32 GB on disk)
 - **Actions:** 7 composite actions complete and tested
 - **Next:** Begin Phase 1 migration with lecture-dp repo

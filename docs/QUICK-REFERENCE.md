@@ -20,7 +20,7 @@ A cheat sheet for using QuantEcon composite actions in your workflows.
 
 Two container options:
 - `ghcr.io/quantecon/quantecon:latest` (3.33 GB compressed pull, 8.60 GB on disk) - Full Anaconda, max compatibility
-- `ghcr.io/quantecon/quantecon-build:latest` (2.93 GB compressed pull, 7.33 GB on disk) - Lean: no Anaconda metapackage, a modestly smaller pull
+- `ghcr.io/quantecon/quantecon-build:latest` (2.93 GB compressed pull, 7.32 GB on disk) - Lean: no Anaconda metapackage, a modestly smaller pull
 
 ```yaml
 name: CI
