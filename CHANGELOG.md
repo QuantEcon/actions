@@ -24,6 +24,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Node 20 back; `@v7` runs on node24. The `fetch-depth: 0` on the `cache.yml` and
   `publish.yml` checkouts is kept. Templates reach a repository only when it is scaffolded,
   so existing consumers and the `v0` tag are unaffected.
+- **Container tests**: the smoke fixture now builds with `quantecon_book_theme`, the theme both
+  images ship and every lecture site uses, instead of `sphinx_book_theme`, and no longer sets
+  `latex_elements.fontpkg: ""`. That override sent the PDF build down the TeX-defaults path,
+  so it never loaded the FreeFont `.otf` names that Sphinx's default xelatex `fontpkg` asks for
+  and both Dockerfiles symlink into place; a regression there could not fail the test. The
+  unused `containers/quantecon/tests/test-container.sh` (full image only, `set -e` only, in
+  no workflow) is deleted and the image README points at `smoke-test.sh` and the Test
+  Container workflow instead. `run-local-tests.sh` now passes `-W --keep-going` like the CI
+  script, so a warning that fails CI also fails locally. (#108)
 
 ### Fixed
 - **Container images, `build-lectures`**: every page built in a container job lost its
@@ -36,6 +45,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   trusts the source work tree when git cannot read it, and warns when it still cannot, or
   when the checkout is shallow (which dates every page to the checkout commit). The
   `publish.yml` and `cache.yml` templates now check out with `fetch-depth: 0`.
+- **CI**: the image-size job in `test-container.yml` has never reported a size, so the
+  v0.11.0 entry saying image size "is now reported from the manifest" (#108) did not hold.
+  `docker/build-push-action` attaches a provenance attestation by default, which makes each
+  `:latest` an OCI image index (the amd64 image plus an attestation manifest) with no
+  top-level `layers`. jq failed with "Cannot iterate over null" on every run, and without
+  `pipefail` the step took `tee`'s exit status and stayed green. The job now reads the
+  `linux/amd64` manifest out of the index and reports two labelled figures: **compressed**,
+  the sum of its layer sizes (what a cold pull downloads), and **on disk**, the unpacked
+  layers after a `docker pull` as `docker image inspect` reports them on the overlay2 graph
+  driver. It runs under `pipefail`, requires each figure to be a positive integer, and fails
+  under the containerd image store, where that inspect field is the compressed content size
+  instead. (#106, #108)
 
 ### Documentation
 - Swept the docs against the shipped code (#106, #109, #99): the Anaconda 2026.06 baseline (the

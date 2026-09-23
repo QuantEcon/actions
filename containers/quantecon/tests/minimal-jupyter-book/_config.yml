@@ -23,6 +23,11 @@ latex:
 
 sphinx:
   config:
-    html_theme: sphinx_book_theme
-    latex_elements:
-      fontpkg: ""  # Don't load font packages, use TeX defaults
+    # The theme both images ship and every lecture site builds with. With
+    # sphinx_book_theme here, a broken quantecon-book-theme install stayed green.
+    html_theme: quantecon_book_theme
+    # Deliberately no latex_elements.fontpkg override. Sphinx's default xelatex
+    # fontpkg loads the FreeFont faces with Extension=.otf, while Ubuntu ships
+    # them as .ttf; the .otf symlinks in both Dockerfiles exist for exactly that.
+    # The old `fontpkg: ""` took the TeX-defaults path instead, so a regression
+    # in those symlinks could not fail this build.
