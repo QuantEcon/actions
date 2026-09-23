@@ -70,8 +70,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   aborted the step at the assignment with a bare traceback, so the guard only ever fired on
   valid JSON lacking `deploy_url`/`url`. The parse is now `|| true`, and the guard prints the
   raw output and fails with an `::error::`. (#105)
+- **CI**: the image-size job in `test-container.yml` has never reported a size, so the
+  v0.11.0 entry saying image size "is now reported from the manifest" (#108) did not hold.
+  `docker/build-push-action` attaches a provenance attestation by default, which makes each
+  `:latest` an OCI image index (the amd64 image plus an attestation manifest) with no
+  top-level `layers`. jq failed with "Cannot iterate over null" on every run, and without
+  `pipefail` the step took `tee`'s exit status and stayed green. The job now reads the
+  `linux/amd64` manifest out of the index and reports two labelled figures: **compressed**,
+  the sum of its layer sizes (what a cold pull downloads), and **on disk**, the unpacked
+  layers after a `docker pull` as `docker image inspect` reports them on the overlay2 graph
+  driver. It runs under `pipefail`, requires each figure to be a positive integer, and fails
+  under the containerd image store, where that inspect field is the compressed content size
+  instead. (#106, #108)
 
 ### Security
+- **`preview-netlify`, `preview-cloudflare` READMEs**: the Security section suggested
+  `pull_request_target` for fork PRs. Following it builds and runs a fork's notebooks with the
+  deploy token and a write-scoped `GITHUB_TOKEN` in reach, the "pwn request" pattern, and it
+  would not have produced a preview anyway: both actions deploy only when
+  `github.event_name == 'pull_request'`, so under `pull_request_target` the fork check never
+  fires and the deploy step is skipped. Both READMEs now say fork previews are unsupported and
+  warn against `pull_request_target`. (#105)
 - **`preview-cloudflare`, `preview-netlify`**: `wrangler@latest` and `netlify-cli@latest` were
   installed on every run and then handed the deploy credentials — two unpinned npm packages
   with large dependency trees, in a repo that SHA-pins every third-party Action against tag
