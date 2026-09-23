@@ -50,6 +50,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the Actions Pages deploy ignores a CNAME file. New `templates/latex-requirements.txt` for
   standard-runner PDF builds; CONTRIBUTING.md documents staged releases and the `v0` rollback.
 
+### Security
+- **`preview-netlify`, `preview-cloudflare` READMEs**: the Security section suggested
+  `pull_request_target` for fork PRs. Following it builds and runs a fork's notebooks with the
+  deploy token and a write-scoped `GITHUB_TOKEN` in reach, the "pwn request" pattern, and it
+  would not have produced a preview anyway: both actions deploy only when
+  `github.event_name == 'pull_request'`, so under `pull_request_target` the fork check never
+  fires and the deploy step is skipped. Both READMEs now say fork previews are unsupported and
+  warn against `pull_request_target`. (#105)
+
 ## [0.11.1] - 2026-08-07
 
 ### Fixed

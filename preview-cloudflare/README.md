@@ -183,9 +183,15 @@ Use `preview-cloudflare` for private repositories, `preview-netlify` for public 
 
 This action automatically skips deployment for:
 - **Dependabot PRs** - Can't access secrets
-- **Fork PRs** - Can't access secrets (use `pull_request_target` if needed)
+- **Fork PRs** - Can't access secrets
 
 A notification is logged when deployment is skipped.
+
+> **Warning:** previews of pull requests from forks are not supported. Do not run this action
+> from `pull_request_target` to get around that. A workflow triggered that way builds and runs
+> the fork's notebooks with `CLOUDFLARE_API_TOKEN` and a write-scoped `GITHUB_TOKEN` in reach, which is
+> the "pwn request" pattern. It would not produce a preview either: the action deploys only
+> on `pull_request` events, so under `pull_request_target` its deploy step is skipped.
 
 ## Troubleshooting
 
