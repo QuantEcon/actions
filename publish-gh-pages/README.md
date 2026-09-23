@@ -5,7 +5,7 @@ Publishes QuantEcon lecture builds to GitHub Pages using native GitHub Pages dep
 ## Features
 
 - 📄 **Native GitHub Pages deployment** - No gh-pages branch needed
-- 🌐 **Custom domain support** via CNAME file
+- 🌐 **Custom domains** - set in Settings → Pages; the optional `cname` input only writes a `CNAME` file (see [Custom Domain Setup](#custom-domain-setup))
 - � **Release assets** - Optional HTML archive, checksum, and manifest
 - �📊 **Deployment statistics** (file count, size)
 - 🔗 **Automatic URL generation** from GitHub
@@ -51,6 +51,8 @@ This action uses GitHub's native Pages deployment (via artifacts) instead of pus
 ```
 
 ### With Custom Domain
+
+Set the domain itself in Settings → Pages → Custom domain; the Pages deploy does not read a `CNAME` file. `cname` only writes one into `build-dir` and the release archive, and the action warns that it has no effect on the deploy.
 
 ```yaml
 - uses: quantecon/actions/publish-gh-pages@v0
