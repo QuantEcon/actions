@@ -81,15 +81,28 @@ jobs:
           path: ${{ runner.temp }}/smoke-*/
           if-no-files-found: warn
 
-  # The old workflow reported image size via `docker images` after a pull. A
-  # container job cannot run docker, so this reads the manifest instead — note
-  # that is COMPRESSED layer size, a different (smaller) number than the old
-  # uncompressed one, so do not compare the two series directly.
+  # Two figures per image, each labelled, and the job fails if either cannot be
+  # computed. They measure different things, so compare each only with itself.
+  #
+  # Compressed: the layer sizes in the registry's linux/amd64 image manifest,
+  # i.e. what a cold pull downloads. build-push-action attaches a provenance
+  # attestation by default, so :latest is an OCI image index (the amd64 image
+  # plus an unknown/unknown attestation manifest) with no top-level .layers.
+  # The first version of this job (#125) read .layers off the index, and with
+  # no pipefail tee's exit status kept it green: it never produced a figure.
+  #
+  # On disk: the unpacked layers after a pull on this runner, as `docker image
+  # inspect` reports them on the classic graph driver (overlay2). That is the
+  # figure `docker images` printed in the job before #125 (lean image only).
+  # Under the containerd image store, the default for fresh installs from
+  # Docker Engine 29, the same field is the compressed content size, so the
+  # step fails there rather than print it as on-disk.
   size:
     name: 'Image size: ${{ matrix.image }}'
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
-    timeout-minutes: 10
+    # The pull dominates: the smoke job's container init takes ~2m10s.
+    timeout-minutes: 15
     permissions:
       contents: read
       packages: read
@@ -105,8 +118,46 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Report compressed image size
+      # `shell: bash` runs with pipefail, which the default shell does not.
+      - name: Report image size (compressed and on disk)
+        shell: bash
+        env:
+          NAME: ${{ matrix.image }}
+          REPO: ghcr.io/quantecon/${{ matrix.image }}
         run: |
-          docker manifest inspect ghcr.io/quantecon/${{ matrix.image }}:latest \
-            | jq -r '"${{ matrix.image }}: \(([.layers[].size] | add) / 1048576 | floor) MiB compressed"' \
-            | tee -a "$GITHUB_STEP_SUMMARY"
+          fail() { echo "::error::$NAME: $*"; exit 1; }
+          is_size() { [[ $1 =~ ^[1-9][0-9]*$ ]]; }
+          gb() { awk -v b="$1" 'BEGIN { printf "%.2f GB", b / 1e9 }'; }
+
+          # An index or manifest list: measure and pull its linux/amd64 image.
+          # A plain image manifest is measured as is.
+          top=$(docker manifest inspect "$REPO:latest") || fail "docker manifest inspect $REPO:latest failed"
+          if jq -e 'has("manifests")' <<<"$top" >/dev/null 2>&1; then
+            digest=$(jq -r '[.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64")]
+              | if length == 1 then .[0].digest else error("\(length) linux/amd64 manifests") end' <<<"$top") \
+              || fail "expected exactly one linux/amd64 manifest under $REPO:latest"
+            [[ $digest =~ ^sha256:[0-9a-f]{64}$ ]] || fail "bad linux/amd64 digest [$digest]"
+            ref="$REPO@$digest"
+            manifest=$(docker manifest inspect "$ref") || fail "docker manifest inspect $ref failed"
+          else
+            ref="$REPO:latest"
+            manifest=$top
+          fi
+          compressed=$(jq -r '[.layers[].size]
+            | if length > 0 and all(type == "number") then add else error("bad layer sizes") end' <<<"$manifest") \
+            || fail "no layer list in the manifest for $ref"
+          is_size "$compressed" || fail "compressed size [$compressed] is not a positive integer"
+
+          engine=$(docker version --format '{{.Server.Version}}')
+          driver=$(docker info --format '{{.Driver}}')
+          store=$(docker info --format '{{json .DriverStatus}}')
+          [[ $store != *io.containerd.snapshotter* ]] \
+            || fail "Docker $engine uses the containerd image store, where image inspect's Size is compressed content, not on-disk size"
+          docker pull --quiet "$ref" >/dev/null || fail "docker pull $ref failed"
+          on_disk=$(docker image inspect --format '{{.Size}}' "$ref") || fail "docker image inspect $ref failed"
+          is_size "$on_disk" || fail "on-disk size [$on_disk] is not a positive integer"
+
+          {
+            echo "- \`$NAME\` compressed: $(gb "$compressed") ($compressed bytes), sum of the layer sizes in the registry's linux/amd64 manifest (what a cold pull downloads)"
+            echo "- \`$NAME\` on disk: $(gb "$on_disk") ($on_disk bytes), unpacked layers after docker pull, per docker image inspect (Docker $engine, $driver)"
+          } | tee -a "$GITHUB_STEP_SUMMARY"

@@ -36,6 +36,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   trusts the source work tree when git cannot read it, and warns when it still cannot, or
   when the checkout is shallow (which dates every page to the checkout commit). The
   `publish.yml` and `cache.yml` templates now check out with `fetch-depth: 0`.
+- **CI**: the image-size job in `test-container.yml` has never reported a size, so the
+  v0.11.0 entry saying image size "is now reported from the manifest" (#108) did not hold.
+  `docker/build-push-action` attaches a provenance attestation by default, which makes each
+  `:latest` an OCI image index (the amd64 image plus an attestation manifest) with no
+  top-level `layers`. jq failed with "Cannot iterate over null" on every run, and without
+  `pipefail` the step took `tee`'s exit status and stayed green. The job now reads the
+  `linux/amd64` manifest out of the index and reports two labelled figures: **compressed**,
+  the sum of its layer sizes (what a cold pull downloads), and **on disk**, the unpacked
+  layers after a `docker pull` as `docker image inspect` reports them on the overlay2 graph
+  driver. It runs under `pipefail`, requires each figure to be a positive integer, and fails
+  under the containerd image store, where that inspect field is the compressed content size
+  instead. (#106, #108)
 
 ### Security
 - **`preview-netlify`, `preview-cloudflare` READMEs**: the Security section suggested
