@@ -13,8 +13,10 @@
 # (containers/*/Dockerfile in QuantEcon/actions), without the full image's
 # texlive-luatex: the lean image runs its pdflatex builds without it. The
 # images also install fonts-freefont-ttf and fonts-dejavu for PDF builds; add
-# them here if your build uses those fonts. To pin versions (package=version),
-# see scripts/check-latex-versions.sh in QuantEcon/actions.
+# them here if your build uses those fonts. make is listed because
+# jupyter-book's pdflatex builder runs `make all-pdf` in the LaTeX output
+# directory. To pin versions (package=version), see
+# scripts/check-latex-versions.sh in QuantEcon/actions.
 texlive-latex-recommended
 texlive-latex-extra
 texlive-fonts-recommended
@@ -25,3 +27,4 @@ xindy
 dvipng
 ghostscript
 cm-super
+make
