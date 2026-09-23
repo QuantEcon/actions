@@ -77,8 +77,15 @@ runs:
         echo "bin=$NETLIFY" >> "$GITHUB_OUTPUT"
 
         # The old `npm install -g` left netlify on PATH for later steps in the
-        # caller's job; keep that. The deploy step below uses the absolute path.
-        echo "$D/node_modules/.bin" >> "$GITHUB_PATH"
+        # caller's job; keep that, but expose only the CLI's own executables,
+        # not every dependency bin in node_modules/.bin (esbuild, tsc, semver,
+        # ...), which would shadow the caller's tools. The deploy step below
+        # uses the absolute path.
+        mkdir "$D/bin"
+        for b in netlify ntl; do
+          if [ -e "$D/node_modules/.bin/$b" ]; then ln -s "$D/node_modules/.bin/$b" "$D/bin/$b"; fi
+        done
+        echo "$D/bin" >> "$GITHUB_PATH"
 
     - name: Deploy to Netlify
       id: deploy

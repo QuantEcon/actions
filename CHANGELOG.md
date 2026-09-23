@@ -20,10 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`preview-cloudflare`, `preview-netlify`**: the CLI is no longer installed globally. Each
   job runs `npm ci` into a fresh temp directory — not `$GITHUB_ACTION_PATH`, which in a
   container job is the `_actions` directory mounted from the host — and the deploy step calls
-  the binary by the absolute path the install step now outputs as `bin`. That directory's
-  `node_modules/.bin` is added to `GITHUB_PATH`, so `wrangler` / `netlify` stay on `PATH` for
-  later steps in the caller's job, as the global install left them. Note it is prepended, and
-  it also holds the CLIs' own dependency bins (`esbuild`, `workerd`, …). (#105)
+  the binary by the absolute path the install step now outputs as `bin`. The
+  CLI's own executables (`wrangler`, `wrangler2`, `cf-wrangler`; `netlify`, `ntl`) are linked
+  into a `bin` directory added to `GITHUB_PATH`, so they stay on `PATH` for later steps in the
+  caller's job, as the global install left them, without the dependency bins in
+  `node_modules/.bin` shadowing the caller's tools. (#105)
 - **Container images**: Node.js moves from 20 (end-of-life 2026-04-30) to 24 LTS. The
   lean image carried 20.17.0 and the full image 20.20.2. It no longer comes from conda,
   which cannot supply 24 here: every `jupyterlab` below 4.6 on the defaults channel,
@@ -31,9 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   images now install Node from nodejs.org, pinned by version and SHA256 like Miniconda,
   after the conda layer. Dropping the conda `nodejs` leaves the full image's solve
   unchanged; the lean image holds `icu=73.1`, the version the old `nodejs` pinned, so its
-  native stack does not re-solve. `netlify-cli@latest` (27.x, which needs node >=22.13) and
-  `wrangler@latest` (which refuses to run below node 22), both installed into the image
-  by `preview-netlify` and `preview-cloudflare`, are now inside their supported range.
+  native stack does not re-solve. `netlify-cli` (27.x, which needs node >=22.13) and
+  `wrangler` (which refuses to run below node 22), which `preview-netlify` and
+  `preview-cloudflare` install per job, are now inside their supported range.
 - **Templates**: `actions/checkout` moves from `@v4` to `@v7` in `ci.yml`, `cache.yml` and
   `publish.yml`, matching this repo's own workflows and the consumer repositories in
   `PLAN.md`'s table. `@v4` runs on node20, so every repository scaffolded from the templates brought
