@@ -9,7 +9,9 @@
 # Prerequisites:
 #   1. cache.yml workflow running (provides the build cache)
 #   2. GitHub Pages enabled: Settings → Pages → Source → "GitHub Actions"
-#   3. (Optional) Custom domain configured in Settings → Pages → Custom domain
+#   3. (Optional) Custom domain configured in Settings → Pages → Custom domain.
+#      That setting is the only one that applies: this deploy ignores a CNAME
+#      file, so publish-gh-pages' `cname` input has no effect.
 #
 # Action versions: @v0 = latest 0.x release (floating); pin @v0.x.y for reproducibility. Latest at:
 #   https://github.com/quantecon/actions/releases
@@ -110,11 +112,18 @@ jobs:
         uses: quantecon/actions/publish-gh-pages@v0
         with:
           build-dir: '_build/html'
-          # cname: 'lectures.example.org'   # Custom domain (adds CNAME file)
+          # Custom domain: set it in Settings → Pages (see Prerequisites).
+          # The `cname` input just writes a CNAME file, which this deploy ignores.
 
           # ─── Release Assets (optional) ───────────────────────────
-          # Create downloadable archives on tagged releases.
-          # Only works when triggered by a tag push (e.g., v1.0.0).
+          # Create downloadable archives on tagged releases. As shipped,
+          # this file cannot; it needs two changes first:
+          #   1. A tag trigger. The action skips release assets (with a
+          #      warning) unless the run's ref is a tag, and this file
+          #      runs only on pushes to main and manual dispatch. Add,
+          #      e.g., `tags: ['publish*']` under `on.push`.
+          #   2. `contents: write` in the job's permissions above, which
+          #      grant only `contents: read`; the release upload needs it.
           # create-release-assets: 'true'
           # asset-name: 'lecture-python-html'
           # github-token: ${{ secrets.GITHUB_TOKEN }}

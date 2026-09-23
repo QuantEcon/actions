@@ -18,6 +18,8 @@ Reference GitHub Actions workflows for QuantEcon lecture repositories. Copy thes
 | [cache.yml](cache.yml) | Weekly / manual / env change | Full build → save cache for CI and publish |
 | [publish.yml](publish.yml) | Push to main | Restore cache → build → deploy to GitHub Pages |
 
+Also here: [latex-requirements.txt](latex-requirements.txt), an example LaTeX package list for PDF builds on a standard runner (see [Using a Standard Runner](#using-a-standard-runner-no-container)).
+
 ### [ci.yml](ci.yml) — PR Preview
 
 Runs on every pull request to `main`. Restores the build cache, runs an incremental HTML build (only changed notebooks re-execute), and deploys a Netlify preview with links to changed pages.
@@ -38,7 +40,7 @@ Runs weekly on Sunday, on manual dispatch, and when `environment.yml` changes on
 **Key features:**
 - Saves cache only when ALL builds pass (preserves last-good cache on failure)
 - Auto-creates GitHub issues on build failure
-- Uploads build artifacts for inspection
+- Uploads the `_build` directory as an artifact when a build fails, for inspection
 - Configurable builders: `html`, `jupyter`, `pdflatex`
 
 ### [publish.yml](publish.yml) — GitHub Pages Deployment
@@ -47,7 +49,7 @@ Runs on push to `main`. Restores the build cache, builds HTML, and deploys to Gi
 
 **Key features:**
 - Native GitHub Pages deployment (OIDC, no tokens)
-- Custom domain support (CNAME)
+- Custom domain via Settings → Pages (the `cname` input has no effect on this deploy)
 - Optional release asset creation for tagged releases
 - Optional PDF and notebook download staging
 
@@ -108,12 +110,11 @@ To enable PDF and notebook download links on the built site:
 
 Remove the `container:` block from each workflow and uncomment the standard runner `with:` block under `setup-environment`. See comments in each template.
 
+A `pdflatex` build on a standard runner installs LaTeX from `latex-requirements.txt` at the repository root, and fails if that file is missing. Copy [latex-requirements.txt](latex-requirements.txt) there to start: it lists the TeX packages the two container images have in common.
+
 ### Custom Domain
 
-In **publish.yml**, set the `cname` input:
-```yaml
-cname: 'lectures.example.org'
-```
+Set the domain in **Settings → Pages → Custom domain**. The Actions Pages deploy that `publish.yml` uses ignores a CNAME file, so `publish-gh-pages`' `cname` input has no effect.
 
 ### Switching to Cloudflare Pages
 

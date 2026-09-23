@@ -65,9 +65,9 @@ publish-gh-pages/     → Deploy to GitHub Pages
 - `build-jupyter-cache` - Weekly cache generation on main branch
   - Builds all formats, verifies success, saves cache
   - Creates issues on failure (duplicate prevention)
-  - Uses unique keys: `build-{env-hash}-{run-id}`
-- `restore-jupyter-cache` - Read-only restore for PRs
-  - Never saves (prevents cache corruption)
+  - Uses unique keys: `build-{env-hash}-{update-hash}-{run-id}`
+- `restore-jupyter-cache` - Cache restore for PRs
+  - Read-only by default; optional `save-cache` saves a PR-scoped cache at job end, which cannot affect `main` or other PRs
   - Prefix matching finds latest cache
   - Optional `fail-on-miss` for strict requirements
 
@@ -88,7 +88,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       # 7-8 minutes: Setup environment + LaTeX
       - uses: quantecon/actions/setup-environment@v0
@@ -119,7 +119,7 @@ jobs:
     runs-on: ubuntu-latest
     container: ghcr.io/quantecon/quantecon:latest  # ~1-2 min pull
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       # Install lecture-specific packages (1-2 min)
       - name: Install lecture dependencies

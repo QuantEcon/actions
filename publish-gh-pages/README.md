@@ -212,7 +212,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deploy.outputs.page-url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       - uses: quantecon/actions/setup-environment@v0
         with:

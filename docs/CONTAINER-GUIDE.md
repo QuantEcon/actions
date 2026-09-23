@@ -22,7 +22,7 @@ jobs:
     container:
       image: ghcr.io/quantecon/quantecon:latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       # Install lecture-specific packages
       - name: Install dependencies

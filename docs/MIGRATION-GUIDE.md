@@ -99,7 +99,7 @@ jobs:
   preview:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       - name: Setup Anaconda
         uses: conda-incubator/setup-miniconda@v3
@@ -134,7 +134,7 @@ jobs:
   preview:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       
@@ -187,7 +187,7 @@ jobs:
   cache:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       
       - name: Setup Anaconda
         uses: conda-incubator/setup-miniconda@v3
@@ -231,7 +231,7 @@ jobs:
       issues: write
       packages: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       - uses: quantecon/actions/build-jupyter-cache@v0
         with:
@@ -241,7 +241,7 @@ jobs:
 
 **Key Changes:**
 - Uses dedicated `build-jupyter-cache` action
-- Automatically handles cache key generation (`build-{env-hash}-{run-id}`)
+- Automatically handles cache key generation (`build-{env-hash}-{update-hash}-{run-id}`)
 - Creates issues on failure (with duplicate prevention)
 - Verifies build before saving cache
 - Push trigger rebuilds cache when `environment.yml` changes on main
@@ -262,7 +262,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
       
       - name: Setup Anaconda
         uses: conda-incubator/setup-miniconda@v3
@@ -304,7 +304,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deploy.outputs.page-url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       - uses: quantecon/actions/setup-environment@v0
         with:
@@ -336,7 +336,8 @@ jobs:
         id: deploy
         with:
           build-dir: ${{ steps.build.outputs.build-path }}
-          cname: 'python.quantecon.org'  # Adjust per repo
+          # Custom domain: configure it in Settings → Pages. This Actions-based
+          # deploy ignores a CNAME file, so a `cname:` input has no effect.
 ```
 
 **Key Changes:**
@@ -372,11 +373,14 @@ This workflow uses a different container and may need custom handling:
 # The Google Colab container environment is different from standard Ubuntu
 
 # Option 1: Keep as-is for now
-# Option 2: Use only build-lectures action
+# Option 2: Use only the cache-restore and build actions
+- uses: quantecon/actions/restore-jupyter-cache@v0  # restores what cache.yml saved
+  with:
+    cache-type: 'build'
 - uses: quantecon/actions/build-lectures@v0
   with:
-    build-html: 'true'
-    cache-workflow: 'cache.yml'
+    builder: 'html'
+    source-dir: 'lectures'
 ```
 
 ### Step 8: Testing
@@ -436,7 +440,7 @@ Before merging, verify:
    git add .github/workflows/
    git commit -m "Migrate to quantecon/actions composite actions
 
-   - Adds caching for conda, pip, and LaTeX
+   - Adds caching for conda and pip
    - Reduces setup time from 8-12 min to ~1 min (cached)
    - Centralizes workflow logic for easier maintenance
    - Tested with manual workflow runs"
@@ -473,7 +477,7 @@ jobs:
   preview:
     runs-on: "runs-on=${{ github.run_id }}/family=g4dn.2xlarge/image=quantecon_ubuntu2404/disk=large"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       - uses: quantecon/actions/setup-environment@v0
         with:
@@ -502,7 +506,7 @@ jobs:
       contents: read
       packages: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       - uses: quantecon/actions/setup-environment@v0
         with:

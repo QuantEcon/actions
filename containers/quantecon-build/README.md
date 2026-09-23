@@ -54,10 +54,10 @@ jobs:
       image: ghcr.io/quantecon/quantecon-build:latest
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       - name: Setup Environment
-        uses: quantecon/actions/setup-environment@main
+        uses: quantecon/actions/setup-environment@v0
         with:
           environment-update: 'environment-update.yml'  # Install lecture-specific delta packages
       

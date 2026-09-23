@@ -49,9 +49,9 @@ Weekly cache generation for main branch builds.
 **Features:** Multi-format builds (html, pdflatex, jupyter), validates all builds pass before saving, creates GitHub issues on failure, unique cache keys for safe updates
 
 ### 📥 [`restore-jupyter-cache`](./restore-jupyter-cache)
-Read-only cache restore for PR workflows.
+Cache restore for PR workflows.
 
-**Features:** Never saves (PRs can't corrupt cache), prefix matching for latest cache, detailed status logging, optional `fail-on-miss`
+**Features:** Read-only by default (optional `save-cache` saves a PR-scoped cache, which cannot affect `main` or other PRs), prefix matching for latest cache, detailed status logging, optional `fail-on-miss`
 
 ## Quick Start
 
@@ -68,9 +68,10 @@ jobs:
       image: ghcr.io/quantecon/quantecon-build:latest
     permissions:
       contents: read
+      pull-requests: write  # preview-netlify's PR comment
       packages: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       
@@ -111,7 +112,7 @@ jobs:
       issues: write
       packages: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       - uses: quantecon/actions/build-jupyter-cache@v0
         with:
@@ -128,7 +129,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       - uses: quantecon/actions/setup-environment@v0
         with:
@@ -202,11 +203,7 @@ See [TESTING.md](./TESTING.md) for our testing strategy and validation procedure
 
 ## Contributing
 
-1. Create a feature branch
-2. Make changes to composite actions
-3. Test using `@main` reference in a lecture repository
-4. Create a pull request with test results
-5. After merge, create a new version tag
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for the development workflow, how to test a change by pointing a lecture repository at your branch, and the release steps, including moving the floating `v0` tag.
 
 ## License
 

@@ -33,9 +33,10 @@ jobs:
       image: ghcr.io/quantecon/quantecon-build:latest  # Lean container for CI
     permissions:
       contents: read
+      pull-requests: write  # preview-netlify's PR comment
       packages: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: quantecon/actions/setup-environment@v0
@@ -64,7 +65,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: quantecon/actions/setup-environment@v0
@@ -103,7 +104,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deploy.outputs.page-url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: quantecon/actions/setup-environment@v0
         with:
           install-latex: 'true'
@@ -113,8 +114,9 @@ jobs:
         id: deploy
         with:
           build-dir: ${{ steps.build.outputs.build-path }}
-          cname: 'python.quantecon.org'
 ```
+
+Set a custom domain in **Settings → Pages**: this deploy ignores a CNAME file, so the `cname` input has no effect.
 
 ## 🔧 Common Customizations
 
@@ -153,16 +155,9 @@ Add `restore-jupyter-cache` before `build-lectures` to restore cached execution 
 
 **Note:** Requires a `cache.yml` workflow to generate the cache. See [MIGRATION-GUIDE.md](MIGRATION-GUIDE.md#step-5-update-cacheyml).
 
-### Preview with Custom URL
+### Preview URL
 
-```yaml
-- uses: quantecon/actions/preview-netlify@v0
-  with:
-    netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-    netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
-    build-dir: '_build/html'
-    alias: 'pr-${{ github.event.pull_request.number }}'
-```
+`preview-netlify` has no alias input: it always deploys to the `pr-{number}` alias, so a PR keeps one preview URL across pushes. Read it from the `deploy-url` output.
 
 ### Force Cache Rebuild
 
@@ -177,7 +172,7 @@ Add `restore-jupyter-cache` before `build-lectures` to restore cached execution 
 | Action | Cache Key | Invalidates On |
 |--------|-----------|----------------|
 | `setup-environment` (container) | No caching | N/A |
-| `setup-environment` (standard) | `conda-{OS}-{hash(env.yml)}-{version}` | env.yml changes, manual bump |
+| `setup-environment` (standard) | `conda-{OS}-{env-name}-py{python-version}-{hash(env.yml)}-{cache-version}`, path `$CONDA/envs/{env-name}` | env.yml, env name or Python version changes, manual bump |
 | `build-jupyter-cache` | `build-{hash(env.yml)}-{hash(env-update.yml)}-{run-id}` | env file changes, each run |
 | `restore-jupyter-cache` | `build-{hash(env.yml)}-{hash(env-update.yml)}-` (prefix) | env file changes |
 
@@ -235,7 +230,7 @@ lectures-dir: 'lectures'         # For change detection (default)
 
 ```yaml
 build-dir: '_build/html'         # Required
-cname: ''                        # Custom domain (optional)
+cname: ''                        # No effect on this deploy: set a custom domain in Settings → Pages
 ```
 
 **Note:** Uses native GitHub Pages deployment. Requires workflow permissions:
@@ -282,9 +277,8 @@ permissions:
 
 Look for in logs:
 ```
-Conda cache hit: true
-LaTeX cache hit: true
-Jupyter cache hit: false
+Conda: Restored from cache ✅ (saved ~5-6 minutes)   # setup-environment, standard mode
+✅ Cache restored successfully                        # restore-jupyter-cache
 ```
 
 ### Common Issues
@@ -311,9 +305,11 @@ gh secret list
 
 **Pages 404?**
 ```yaml
-# Ensure permissions set
+# The native Pages deploy needs these; a permissions block drops every scope it omits
 permissions:
-  contents: write
+  contents: read      # contents: write only if you set create-release-assets: 'true'
+  pages: write
+  id-token: write
 ```
 
 ## 📚 Full Documentation

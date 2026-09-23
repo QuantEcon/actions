@@ -37,7 +37,7 @@ jobs:
       image: ghcr.io/quantecon/quantecon:latest
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       - name: Build lectures
         run: jupyter-book build lectures/
@@ -58,7 +58,7 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # ... rest of your steps
 ```
 
@@ -113,7 +113,7 @@ conda list        # See all packages
 
 **Jupyter Book Build Tools:**
 - jupyter-book (1.0.4post1) - Document builder
-- quantecon-book-theme (0.18.0) - Custom theme
+- quantecon-book-theme (0.21.0) - Custom theme
 - Sphinx extensions (tojupyter, rediraffe, exercise, proof, youtube, togglebutton, reredirects)
 - quantecon-book-networks
 
