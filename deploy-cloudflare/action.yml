@@ -250,8 +250,12 @@ runs:
       run: |
         set -uo pipefail
         message="${GITHUB_REPOSITORY}@${GITHUB_SHA:0:7} run ${GITHUB_RUN_ID}"; message=${message:0:100}
+        # The runner starts this script with `bash -e`, which would end it at a
+        # failing pipeline, before the status and version id are read.
+        set +e
         "$WRANGLER" deploy --config "$CONFIG" --message "$message" 2>&1 | tee "$LOG"
         status=${PIPESTATUS[0]}
+        set -e
 
         # preview_urls: true gives every version its own preview URL,
         # https://<first 8 of the version id>-<worker>.<subdomain>.workers.dev,
@@ -291,8 +295,10 @@ runs:
         if [ -n "$VERSION_URL" ]; then
           urls+=("$VERSION_URL/")
           [ -z "$PROBE_PATH" ] || urls+=("$VERSION_URL$PROBE_PATH")
-        elif [ "$DEPLOY" = "success" ]; then
-          echo "::error::wrangler deployed but its output named no 'Current Version ID', so the new version's preview URL could not be checked."
+        else
+          # wrangler prints the id only after every post-upload step succeeds,
+          # so a deploy that failed after going live usually lacks it too.
+          echo "::error::wrangler's output named no 'Current Version ID', so the new version's preview URL could not be checked. Treat it as public until verified by hand with scripts/check-access-gate.sh."
           failed=1
         fi
         if ! bash "$GITHUB_ACTION_PATH/../scripts/check-access-gate.sh" "$TEAM" "${urls[@]}"; then

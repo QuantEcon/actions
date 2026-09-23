@@ -189,9 +189,9 @@ wrangler's own error is printed above the annotation. An authentication or permi
 
 This is the urgent one: the new build is live, or may be, and anonymous requests to production or to the new version's preview URL are not being redirected. The `FAIL` line above it names the hostname. Turn Access on for the Worker with *All traffic*, which covers production and every preview URL, or disable its `workers.dev` route. Then re-run the job to confirm.
 
-### "wrangler deployed but its output named no 'Current Version ID'"
+### "wrangler's output named no 'Current Version ID'"
 
-The deploy went through, but the new version's preview URL could not be worked out, so it was not checked. That usually means a wrangler upgrade changed its output. Check the preview URL by hand with `scripts/check-access-gate.sh`, and report it here.
+The new version's preview URL could not be worked out, so it was not checked, and the check fails. wrangler prints the ID only once every step after the upload has succeeded, so this follows most `wrangler deploy` failures; after a successful deploy it means a wrangler upgrade changed its output. Check the preview URL by hand with `scripts/check-access-gate.sh`, using the version ID from the dashboard.
 
 ### "The alias is uploaded but … is NOT behind Access"
 
