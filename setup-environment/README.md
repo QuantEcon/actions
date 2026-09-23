@@ -102,7 +102,7 @@ dependencies:
 | `environment-name` | Conda environment name | No | `quantecon` |
 | `cache-version` | Cache version for manual invalidation | No | `v1` |
 | `install-latex` | Install LaTeX packages (auto-disabled in container) | No | `false` |
-| `latex-requirements-file` | Path to latex-requirements.txt | No | `latex-requirements.txt` |
+| `latex-requirements-file` | Path to latex-requirements.txt: apt package names separated by whitespace or newlines, `#` starts a comment anywhere on a line. With `install-latex: true` it must exist and name at least one package | No | `latex-requirements.txt` |
 
 ## Outputs
 

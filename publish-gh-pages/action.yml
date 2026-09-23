@@ -7,7 +7,7 @@ inputs:
     description: 'Directory containing built site'
     required: true
   cname:
-    description: 'Custom domain for GitHub Pages (added as CNAME file)'
+    description: 'Domain to write into build-dir as a CNAME file (it also lands in the release archive). Has no effect on the Pages deploy, which ignores CNAME files: set the custom domain in Settings -> Pages.'
     required: false
     default: ''
   create-release-assets:
@@ -27,9 +27,6 @@ outputs:
   page-url:
     description: 'URL of the deployed GitHub Pages site'
     value: ${{ steps.deployment.outputs.page_url }}
-  asset-url:
-    description: 'URL of the uploaded release asset (if created)'
-    value: ${{ steps.upload-release.outputs.asset-url }}
 
 runs:
   using: "composite"
@@ -37,6 +34,8 @@ runs:
     - name: Prepare build directory
       id: prepare
       shell: bash
+      env:
+        CNAME: ${{ inputs.cname }}
       run: |
         echo "Preparing build directory: ${{ inputs.build-dir }}"
         
@@ -57,10 +56,14 @@ runs:
         echo "💾 Total size: $SIZE"
         echo "size-mb=$SIZE_MB" >> $GITHUB_OUTPUT
         
-        # Add CNAME file if specified
-        if [ -n "${{ inputs.cname }}" ]; then
-          echo "${{ inputs.cname }}" > "${{ inputs.build-dir }}/CNAME"
-          echo "🌐 Added CNAME: ${{ inputs.cname }}"
+        # Add CNAME file if specified. It still lands in the release tarball,
+        # but the Pages deploy below (configure-pages -> upload-pages-artifact
+        # -> deploy-pages) never reads it: with a GitHub Actions Pages source
+        # the custom domain lives only in the repository's Pages settings.
+        if [ -n "$CNAME" ]; then
+          echo "$CNAME" > "${{ inputs.build-dir }}/CNAME"
+          echo "🌐 Added CNAME: $CNAME"
+          echo "::warning::cname has no effect on the GitHub Pages deployment: a GitHub Actions Pages deploy ignores CNAME files. Set the custom domain in Settings -> Pages -> Custom domain (the CNAME file is still written into build-dir)."
         fi
         
         echo "✅ Preparation complete"
@@ -155,12 +158,14 @@ runs:
 
     - name: Display Deployment Info
       shell: bash
+      env:
+        CNAME: ${{ inputs.cname }}
       run: |
         echo "::group::Deployment Summary"
         echo "✅ Deployment successful!"
         echo "📍 Page URL: ${{ steps.deployment.outputs.page_url }}"
-        if [ -n "${{ inputs.cname }}" ]; then
-          echo "🌐 Custom domain: ${{ inputs.cname }}"
+        if [ -n "$CNAME" ]; then
+          echo "🌐 CNAME file: $CNAME (the custom domain itself is set in Settings -> Pages)"
         fi
         if [ "${{ steps.create-assets.outputs.assets-created }}" == "true" ]; then
           echo "📦 Release assets uploaded to: https://github.com/$GITHUB_REPOSITORY/releases/tag/$GITHUB_REF_NAME"

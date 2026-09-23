@@ -204,7 +204,26 @@ runs:
     - name: Report build failure
       if: failure()
       shell: bash
+      env:
+        BUILDER: ${{ inputs.builder }}
+        SOURCE_DIR: ${{ inputs.source-dir }}
+        OUTPUT_DIR: ${{ inputs.output-dir }}
+        UPLOAD_FAILURE_REPORTS: ${{ inputs.upload-failure-reports }}
+        # The same expression as the upload step's name: below, so the banner
+        # names the artifact actually uploaded (failure-artifact-name wins when
+        # set). Keep the two in step.
+        ARTIFACT_NAME: ${{ inputs.failure-artifact-name != '' && inputs.failure-artifact-name || format('execution-reports-{0}', inputs.builder) }}
       run: |
+        # The reports directory the upload step collects for this builder: the
+        # sphinx outdir, which for pdflatex is _build/latex, not _build/pdflatex.
+        # Mirrors the upload step's path list and the build-path case above.
+        case "$BUILDER" in
+          html)     REPORTS_DIR="${OUTPUT_DIR}/_build/html/reports" ;;
+          pdflatex) REPORTS_DIR="${OUTPUT_DIR}/_build/latex/reports" ;;
+          jupyter)  REPORTS_DIR="${OUTPUT_DIR}/_build/jupyter/reports" ;;
+          *)        REPORTS_DIR="" ;;
+        esac
+
         echo ""
         echo "::error::❌ BUILD FAILED - Jupyter Book build encountered errors"
         echo ""
@@ -212,19 +231,23 @@ runs:
         echo "║                    BUILD FAILURE SUMMARY                       ║"
         echo "╚════════════════════════════════════════════════════════════════╝"
         echo ""
-        echo "  Builder:   ${{ inputs.builder }}"
-        echo "  Source:    ${{ inputs.source-dir }}"
-        echo "  Output:    ${{ inputs.output-dir }}/_build"
+        echo "  Builder:   $BUILDER"
+        echo "  Source:    $SOURCE_DIR"
+        echo "  Output:    $OUTPUT_DIR/_build"
         echo ""
         echo "════════════════════════════════════════════════════════════════════"
         echo ""
-        if [ "${{ inputs.upload-failure-reports }}" = "true" ]; then
-          echo "📦 Execution reports will be uploaded as artifact: execution-reports-${{ inputs.builder }}"
+        if [ "$UPLOAD_FAILURE_REPORTS" = "true" ]; then
+          echo "📦 Execution reports will be uploaded as artifact: $ARTIFACT_NAME"
           echo ""
           echo "To debug this failure:"
-          echo "  1. Download the 'execution-reports-${{ inputs.builder }}' artifact from this workflow run"
-          echo "  2. Check _build/${{ inputs.builder }}/reports/ for notebook execution logs"
-          echo "  3. Check _build/.jupyter_cache/ for cached notebook states"
+          echo "  1. Download the '$ARTIFACT_NAME' artifact from this workflow run"
+          if [ -n "$REPORTS_DIR" ]; then
+            echo "  2. Check $REPORTS_DIR/ for notebook execution logs"
+          else
+            echo "  2. The artifact holds no reports directory for builder '$BUILDER'; check the build log above"
+          fi
+          echo "  3. Check $OUTPUT_DIR/_build/.jupyter_cache/ for cached notebook states"
           echo ""
         else
           echo "💡 Tip: Enable 'upload-failure-reports: true' to get execution reports for debugging"
