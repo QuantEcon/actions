@@ -25,8 +25,8 @@ PY_BIN="$(command -v python3 || command -v python || true)"
 [ -n "$PY_BIN" ] || { echo "ERROR: no python3/python on PATH."; exit 1; }
 echo "✓ python found: $PY_BIN ($("$PY_BIN" --version 2>&1))"
 
-"$PY_BIN" -c "import numpy, scipy, pandas, matplotlib, plotly" 2>/dev/null || {
-  echo "ERROR: the smoke fixture needs numpy, scipy, pandas, matplotlib and plotly."
+"$PY_BIN" -c "import numpy, scipy, pandas, matplotlib, plotly, quantecon_book_theme" 2>/dev/null || {
+  echo "ERROR: the smoke fixture needs numpy, scipy, pandas, matplotlib, plotly and quantecon-book-theme."
   echo "       Install them, or run the real test inside the image:"
   echo "         docker run --rm -v \$(pwd)/../../..:/w -w /w ghcr.io/quantecon/quantecon:latest \\"
   echo "           ./containers/quantecon/tests/smoke-test.sh"
@@ -83,7 +83,7 @@ echo "=============================================="
 cd minimal-jupyter-book
 rm -rf _build
 
-if jb build . --builder html 2>&1 | tee /tmp/local-jb-html.log; then
+if jb build . --builder html -W --keep-going 2>&1 | tee /tmp/local-jb-html.log; then
     echo "✅ SUCCESS: HTML build completed"
     ls -lh _build/html/index.html
 else
@@ -96,7 +96,7 @@ echo ""
 echo "=============================================="
 echo "TEST 3: Jupyter Book PDF build"
 echo "=============================================="
-if jb build . --builder pdflatex 2>&1 | tee /tmp/local-jb-pdf.log; then
+if jb build . --builder pdflatex -W --keep-going 2>&1 | tee /tmp/local-jb-pdf.log; then
     echo "✅ SUCCESS: PDF build completed"
     ls -lh _build/latex/*.pdf
     open _build/latex/*.pdf
