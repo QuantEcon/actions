@@ -9,10 +9,10 @@ Our next-generation CI/CD system combines three complementary elements:
 **Pre-built Docker images solve the LaTeX bottleneck:**
 
 - **Images:** `ghcr.io/quantecon/quantecon:latest` (full) and `ghcr.io/quantecon/quantecon-build:latest` (lean) — CPU only
-- **Contents:** Ubuntu 24.04 LTS + TexLive (latest) + Miniconda + Anaconda 2025.12 base + Jupyter Book tools
+- **Contents:** Ubuntu 24.04 LTS + TexLive (latest) + Miniconda + Anaconda 2026.06 base (lean: an explicit package list pinned to that baseline) + Jupyter Book tools
 - **Build:** Weekly automated builds via GitHub Actions (Monday 2am UTC)
 - **Registry:** GitHub Container Registry (GHCR) - free for public repos
-- **Size:** full ~8.3 GB / lean ~7.1 GB on disk (~3 GB compressed pull, fetched each run on GitHub-hosted runners)
+- **Size:** full 8.60 GB / lean 7.33 GB on disk (3.33 / 2.93 GB compressed pull, fetched each run on GitHub-hosted runners)
 
 **Performance impact:**
 - ❌ Current: LaTeX setup takes 2-3 minutes every build
@@ -50,9 +50,9 @@ publish-gh-pages/     → Deploy to GitHub Pages
 **Layer 1: Environment Cache (Container Image)**
 - What: Python + LaTeX + all dependencies
 - Where: GitHub Container Registry
-- Size: ~7.1 GB (lean) / ~8.3 GB (full) on disk; ~3 GB compressed pull
+- Size: 7.33 GB (lean) / 8.60 GB (full) on disk; 2.93 / 3.33 GB compressed pull
 - Lifespan: Weekly rebuilds
-- Pull time: ~1-2 min on GitHub-hosted runners (~3 GB compressed, fetched each run); near-instant on self-hosted runners with the image pre-cached
+- Pull time: ~1-2 min on GitHub-hosted runners (2.9–3.3 GB compressed, fetched each run); near-instant on self-hosted runners with the image pre-cached
 
 **Layer 2: Build Cache (GitHub Actions Cache)**
 - What: `_build/` directory from Jupyter Book
@@ -183,7 +183,7 @@ jobs:
 - All lectures use same Python scientific stack (Anaconda base provides common packages)
 - Lecture-specific packages (quantecon, cvxpy, etc.) installed from each lecture's environment.yml
 - LaTeX requirements identical across all lectures
-- Disk space is cheap (~7-8 GB acceptable)
+- Disk space is cheap (7.3–8.6 GB on disk acceptable)
 - Massive reduction in complexity
 - Easy to update (one PR to container, lectures install their own dependencies)
 

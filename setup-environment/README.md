@@ -31,8 +31,8 @@ Two container variants are available:
 
 | Container | Image | Size | Best For |
 |-----------|-------|------|----------|
-| **Full** | `ghcr.io/quantecon/quantecon:latest` | ~8GB | Max compatibility |
-| **Lean** | `ghcr.io/quantecon/quantecon-build:latest` | ~3GB | CI builds (faster pull) |
+| **Full** | `ghcr.io/quantecon/quantecon:latest` | 3.33 GB compressed, 8.60 GB on disk | Max compatibility |
+| **Lean** | `ghcr.io/quantecon/quantecon-build:latest` | 2.93 GB compressed, 7.33 GB on disk | CI builds (modestly smaller pull) |
 
 ```yaml
 jobs:

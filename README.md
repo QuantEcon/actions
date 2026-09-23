@@ -144,8 +144,8 @@ jobs:
 
 ### Container-Based Setup
 - Pre-built container images with LaTeX and Python environment
-- `ghcr.io/quantecon/quantecon:latest` - Full image (~8.3 GB on disk, ~3.2 GB compressed pull)
-- `ghcr.io/quantecon/quantecon-build:latest` - Lean image (~7.1 GB on disk, ~2.9 GB compressed pull); drops the full Anaconda metapackage, so it's only modestly smaller
+- `ghcr.io/quantecon/quantecon:latest` - Full image (8.60 GB on disk, 3.33 GB compressed pull)
+- `ghcr.io/quantecon/quantecon-build:latest` - Lean image (7.33 GB on disk, 2.93 GB compressed pull); drops the full Anaconda metapackage, so it's only modestly smaller
 - Setup time: ~2-3 minutes (container pull + lecture-specific packages)
 - Weekly automated builds (Monday 2am UTC) for security updates
 
