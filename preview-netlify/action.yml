@@ -54,44 +54,98 @@ runs:
       run: bash "$GITHUB_ACTION_PATH/../scripts/detect-changed-lectures.sh"
 
     - name: Install Netlify CLI
+      id: install-cli
       if: steps.check-trust.outputs.skip != 'true'
       shell: bash
-      run: npm install -g netlify-cli@latest
+      run: |
+        # Exactly the version in package.json / package-lock.json beside this
+        # file, not `netlify-cli@latest` (#105): this CLI is handed the deploy
+        # token, so it is pinned like every third-party Action in this repo,
+        # and Dependabot's npm entry keeps the pin current.
+        #
+        # Installed into a fresh temp dir rather than $GITHUB_ACTION_PATH,
+        # which in a container job is the _actions directory mounted from the
+        # host. Install scripts stay on, as they were for the global install.
+        D="$(mktemp -d)"
+        cp "$GITHUB_ACTION_PATH/package.json" "$GITHUB_ACTION_PATH/package-lock.json" "$D/"
+        npm ci --prefix "$D" --no-audit --no-fund \
+          || { echo "::error::npm ci of the pinned netlify-cli failed — see the npm output above (it needs registry.npmjs.org)"; exit 1; }
+
+        NETLIFY="$D/node_modules/.bin/netlify"
+        "$NETLIFY" --version \
+          || { echo "::error::netlify-cli installed but does not run — see the output above"; exit 1; }
+        echo "bin=$NETLIFY" >> "$GITHUB_OUTPUT"
+
+        # The old `npm install -g` left netlify on PATH for later steps in the
+        # caller's job; keep that. The deploy step below uses the absolute path.
+        echo "$D/node_modules/.bin" >> "$GITHUB_PATH"
 
     - name: Deploy to Netlify
       id: deploy
       if: steps.check-trust.outputs.skip != 'true' && github.event_name == 'pull_request'
       shell: bash
+      env:
+        # netlify-cli reads both natively: the token as the fallback for
+        # --auth, the site as the default for `deploy --site`. So the token is
+        # no longer on the command line, where the old `--auth=` flag put it,
+        # nor interpolated into the step script the runner writes to disk.
+        NETLIFY_AUTH_TOKEN: ${{ inputs.netlify-auth-token }}
+        NETLIFY_SITE_ID: ${{ inputs.netlify-site-id }}
+        # Read from env rather than interpolated into the script body, matching
+        # preview-cloudflare and the comment step below.
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+        BUILD_DIR: ${{ inputs.build-dir }}
+        NETLIFY: ${{ steps.install-cli.outputs.bin }}
       run: |
-        PR_NUMBER="${{ github.event.pull_request.number }}"
-        COMMIT_SHA="${{ github.event.pull_request.head.sha }}"
         SHORT_SHA="${COMMIT_SHA:0:7}"
-        
+
         echo "🔍 Deploying preview for PR #${PR_NUMBER}..."
-        
-        DEPLOY_OUTPUT=$(netlify deploy \
-          --dir="${{ inputs.build-dir }}" \
-          --site="${{ inputs.netlify-site-id }}" \
-          --auth="${{ inputs.netlify-auth-token }}" \
+
+        # Only stdout goes to the file, because that is where --json writes
+        # its result. stderr stays on the log: it carries netlify's readable
+        # errors, and on a successful deploy it can carry npm or Node notices
+        # that would corrupt the JSON if merged in.
+        #
+        # `set +e` because the step runs under `bash -eo pipefail`: a failing
+        # netlify would otherwise abort the step before EXIT= could read
+        # PIPESTATUS, and the output dump used to sit after that point (#105).
+        JSON="$(mktemp)"
+        echo "::group::Deployment Output"
+        set +e
+        "$NETLIFY" deploy \
+          --dir="${BUILD_DIR}" \
           --alias="pr-${PR_NUMBER}" \
           --message="PR #${PR_NUMBER} (${SHORT_SHA})" \
-          --json)
-        
-        echo "::group::Deployment Output"
-        echo "$DEPLOY_OUTPUT"
+          --json | tee "$JSON"
+        EXIT=${PIPESTATUS[0]}
+        set -e
+        # --json output has no trailing newline, and a workflow command is only
+        # read at the start of a line, so end the line or ::endgroup:: is text.
+        [ -z "$(tail -c 1 "$JSON")" ] || echo
         echo "::endgroup::"
-        
-        # Extract URL from JSON output (use Python instead of jq for container compatibility)
-        DEPLOY_URL=$(echo "$DEPLOY_OUTPUT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('deploy_url') or d.get('url',''))")
-        
+
+        if [ "$EXIT" -ne 0 ]; then
+          echo "❌ Error: Netlify deployment failed"
+          echo "::error::netlify deploy failed (exit $EXIT) — see the Deployment Output group above"
+          exit "$EXIT"
+        fi
+
+        # Extract URL from JSON output (use Python instead of jq for container compatibility).
+        # `|| true`: under `set -e` a parse failure used to abort the step here,
+        # so the guard below never saw the non-JSON output it was written for.
+        DEPLOY_URL="$(python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('deploy_url') or d.get('url',''))" < "$JSON" 2>/dev/null || true)"
+
         # Validate deployment URL
         if [ -z "$DEPLOY_URL" ]; then
           echo "❌ Error: Failed to extract deployment URL from Netlify response"
           echo "Raw output was:"
-          echo "$DEPLOY_OUTPUT"
+          cat "$JSON"
+          [ -z "$(tail -c 1 "$JSON")" ] || echo
+          echo "::error::no deploy URL in netlify's --json output — see the raw output above"
           exit 1
         fi
-        
+
         echo "deploy-url=$DEPLOY_URL" >> $GITHUB_OUTPUT
         
         echo "✅ Deployment successful!"

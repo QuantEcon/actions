@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **`preview-cloudflare`, `preview-netlify`**: the CLI is no longer installed globally. Each
+  job runs `npm ci` into a fresh temp directory — not `$GITHUB_ACTION_PATH`, which in a
+  container job is the `_actions` directory mounted from the host — and the deploy step calls
+  the binary by the absolute path the install step now outputs as `bin`. That directory's
+  `node_modules/.bin` is added to `GITHUB_PATH`, so `wrangler` / `netlify` stay on `PATH` for
+  later steps in the caller's job, as the global install left them. Note it is prepended, and
+  it also holds the CLIs' own dependency bins (`esbuild`, `workerd`, …). (#105)
 - **Container images**: Node.js moves from 20 (end-of-life 2026-04-30) to 24 LTS. The
   lean image carried 20.17.0 and the full image 20.20.2. It no longer comes from conda,
   which cannot supply 24 here: every `jupyterlab` below 4.6 on the defaults channel,
@@ -36,6 +43,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   trusts the source work tree when git cannot read it, and warns when it still cannot, or
   when the checkout is shallow (which dates every page to the checkout commit). The
   `publish.yml` and `cache.yml` templates now check out with `fetch-depth: 0`.
+- **`preview-cloudflare`**: a failed deploy printed no diagnostic at all. Under
+  `bash -eo pipefail`, `DEPLOY_OUTPUT=$(wrangler pages deploy … 2>&1)` aborted the step on
+  wrangler's non-zero exit with wrangler's stderr captured into the variable, so the log ended
+  at `🔍 Deploying preview…` and the output dump and error branch after it were unreachable
+  (`DEPLOY_EXIT_CODE=$?` could only ever read 0). wrangler's output now streams into the
+  `Deployment Output` group through `tee`, the exit code is read from `PIPESTATUS` with `set -e`
+  suspended around the call, and a failure ends with an `::error::` annotation and wrangler's
+  own exit code. Neither preview action had any `::error::` annotation before. (#105)
+- **`preview-netlify`**: the same abort-before-dump shape threw away the captured `--json`
+  error payload of a failed deploy; netlify's readable error on stderr did reach the log.
+  stdout now goes through `tee` to a file, with the same `PIPESTATUS` capture and `::error::`.
+  It is stdout only: merging stderr would corrupt the JSON whenever a successful deploy prints
+  an npm or Node notice. Separately, the "Raw output was:" guard could not fire in the case it
+  was written for. `python3 -c "…json.load…"` exits non-zero on non-JSON stdout, and `set -e`
+  aborted the step at the assignment with a bare traceback, so the guard only ever fired on
+  valid JSON lacking `deploy_url`/`url`. The parse is now `|| true`, and the guard prints the
+  raw output and fails with an `::error::`. (#105)
+
+### Security
+- **`preview-cloudflare`, `preview-netlify`**: `wrangler@latest` and `netlify-cli@latest` were
+  installed on every run and then handed the deploy credentials — two unpinned npm packages
+  with large dependency trees, in a repo that SHA-pins every third-party Action against tag
+  hijacking. Each CLI is now pinned to an exact version (wrangler 4.136.3, netlify-cli 27.8.1)
+  by a `package.json` and `package-lock.json` beside its `action.yml`, and `npm ci` installs
+  exactly that lockfile, integrity hashes included. A new Dependabot `npm` entry keeps both
+  current, grouped like the other ecosystems: minor/patch bumps of the two CLIs in one PR,
+  majors in another. (#105)
+- **`preview-netlify`**: the auth token is off the command line and out of the generated step
+  script. `--auth="${{ inputs.netlify-auth-token }}"` wrote the token into the script file the
+  runner puts on disk and into the argv of the netlify process. The step now passes it as
+  `NETLIFY_AUTH_TOKEN` and the site as `NETLIFY_SITE_ID`, both read natively by netlify-cli
+  (checked against 27.8.1's source), and drops `--auth` and `--site`. The PR number, head SHA
+  and `build-dir`, also interpolated into the script before, move into `env:` in the same
+  edit, as v0.11.1 did for `preview-cloudflare`. Closes `PLAN.md` backlog item 8. (#105)
 
 ## [0.11.1] - 2026-08-07
 

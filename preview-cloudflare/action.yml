@@ -66,9 +66,32 @@ runs:
       run: bash "$GITHUB_ACTION_PATH/../scripts/detect-changed-lectures.sh"
 
     - name: Install Wrangler CLI
+      id: install-cli
       if: steps.check-trust.outputs.skip != 'true'
       shell: bash
-      run: npm install -g wrangler@latest
+      run: |
+        # Exactly the version in package.json / package-lock.json beside this
+        # file, not `wrangler@latest` (#105): this CLI is handed the deploy
+        # token, so it is pinned like every third-party Action in this repo,
+        # and Dependabot's npm entry keeps the pin current.
+        #
+        # Installed into a fresh temp dir rather than $GITHUB_ACTION_PATH,
+        # which in a container job is the _actions directory mounted from the
+        # host. Install scripts stay on, as they were for the global install:
+        # workerd and esbuild use theirs to put their native binaries in place.
+        D="$(mktemp -d)"
+        cp "$GITHUB_ACTION_PATH/package.json" "$GITHUB_ACTION_PATH/package-lock.json" "$D/"
+        npm ci --prefix "$D" --no-audit --no-fund \
+          || { echo "::error::npm ci of the pinned wrangler failed — see the npm output above (it needs registry.npmjs.org)"; exit 1; }
+
+        WRANGLER="$D/node_modules/.bin/wrangler"
+        "$WRANGLER" --version \
+          || { echo "::error::wrangler installed but does not run — see the output above"; exit 1; }
+        echo "bin=$WRANGLER" >> "$GITHUB_OUTPUT"
+
+        # The old `npm install -g` left wrangler on PATH for later steps in the
+        # caller's job; keep that. The deploy step below uses the absolute path.
+        echo "$D/node_modules/.bin" >> "$GITHUB_PATH"
 
     - name: Deploy to Cloudflare Pages
       id: deploy
@@ -83,29 +106,43 @@ runs:
         COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
         PROJECT_NAME: ${{ inputs.project-name }}
         BUILD_DIR: ${{ inputs.build-dir }}
+        WRANGLER: ${{ steps.install-cli.outputs.bin }}
       run: |
         SHORT_SHA="${COMMIT_SHA:0:7}"
         BRANCH_ALIAS="pr-${PR_NUMBER}"
 
         echo "🔍 Deploying preview for PR #${PR_NUMBER} to Cloudflare Pages..."
 
-        # Deploy to Cloudflare Pages with branch alias
-        DEPLOY_OUTPUT=$(wrangler pages deploy "${BUILD_DIR}" \
+        # Deploy to Cloudflare Pages with branch alias. The output streams to
+        # the log as wrangler runs, stderr included, and tee keeps a copy for
+        # the URL extraction below.
+        #
+        # `set +e` because the step runs under `bash -eo pipefail`: a failing
+        # wrangler would otherwise abort the step before EXIT= could read
+        # PIPESTATUS. The old `DEPLOY_OUTPUT=$(wrangler … 2>&1)` hit exactly
+        # that, with wrangler's error captured into the variable, so a failed
+        # deploy ended the log at the line above with no diagnostic (#105).
+        LOG="$(mktemp)"
+        echo "::group::Deployment Output"
+        set +e
+        "$WRANGLER" pages deploy "${BUILD_DIR}" \
           --project-name="${PROJECT_NAME}" \
           --branch="${BRANCH_ALIAS}" \
           --commit-hash="${COMMIT_SHA}" \
           --commit-message="PR #${PR_NUMBER} (${SHORT_SHA})" \
-          2>&1)
-
-        DEPLOY_EXIT_CODE=$?
-
-        echo "::group::Deployment Output"
-        echo "$DEPLOY_OUTPUT"
+          2>&1 | tee "$LOG"
+        EXIT=${PIPESTATUS[0]}
+        set -e
+        # A workflow command is only read at the start of a line, so end any
+        # unterminated last line first or ::endgroup:: is printed as text.
+        [ -z "$(tail -c 1 "$LOG")" ] || echo
         echo "::endgroup::"
+        DEPLOY_OUTPUT="$(cat "$LOG")"
 
-        if [ $DEPLOY_EXIT_CODE -ne 0 ]; then
+        if [ "$EXIT" -ne 0 ]; then
           echo "❌ Error: Cloudflare Pages deployment failed"
-          exit 1
+          echo "::error::wrangler pages deploy failed (exit $EXIT) — see the Deployment Output group above"
+          exit "$EXIT"
         fi
 
         # The alias URL is CONSTRUCTED, never parsed (#14). Two reasons:
