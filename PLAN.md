@@ -2,7 +2,7 @@
 
 Working plan for `QuantEcon/actions`: current state, prioritized backlog, dependency policy, and rollout status.
 
-**Last updated:** 2026-09-23 — the #106/#109 docs sweep: the consumers table is current again (Dependabot moved all six exact pins to `v0.11.1`), the issues opened since the July review have refreshed dispositions (#135 added), and item 10's size-figure half is done. Before that, 2026-08-11 — release gating added as P0 (#135, #136) and the consumers table corrected: five lecture repos are still on exact pins, which this document previously said did not exist. Before that, 2026-08-07 — after the **v0.11.0** and **v0.11.1** releases and the move of `lecture-dp` and `lecture-python.myst` to `@v0`, which is the first to carry both alerting fixes (#122, #127) to consumers: `build-jupyter-cache` reaches its siblings through the pinned `@v0` ref, so neither fix existed for any consumer until `v0` moved to this release. The backlog below is still the July 2026 review; individual items carry their own closure notes.
+**Last updated:** 2026-09-23 — the #106/#109 docs sweep: the consumers table is current again (all eight exact pins, across six repos, are on `v0.11.1`), the issues opened since the July review have refreshed dispositions (#135 added), and item 10's size-figure half is done. Before that, 2026-08-11 — release gating added as P0 (#135, #136) and the consumers table corrected: five lecture repos are still on exact pins, which this document previously said did not exist. Before that, 2026-08-07 — after the **v0.11.0** and **v0.11.1** releases and the move of `lecture-dp` and `lecture-python.myst` to `@v0`, which is the first to carry both alerting fixes (#122, #127) to consumers: `build-jupyter-cache` reaches its siblings through the pinned `@v0` ref, so neither fix existed for any consumer until `v0` moved to this release. The backlog below is still the July 2026 review; individual items carry their own closure notes.
 
 ---
 
@@ -150,7 +150,7 @@ Issues opened after the July review, dispositioned in the August 2026 triage and
 
 Incremental migration, previews first (see [meta#327](https://github.com/QuantEcon/meta/issues/327)), CPU-only full chains next, GPU last:
 
-**`publish-gh-pages` is separately at 7/7** across the publishing lecture repos and is not tracked by this table — the table is about the *full chain*. Five of those seven are on exact pins; see Consumers in production above.
+**`publish-gh-pages` is separately at 8/8** across the publishing lecture repos and is not tracked by this table — the table is about the *full chain*. Six of those eight are on exact pins; see Consumers in production above.
 
 | # | Repository | Runner | Status |
 |---|---|---|---|
