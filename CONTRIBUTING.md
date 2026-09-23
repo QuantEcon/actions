@@ -169,6 +169,7 @@ Update these docs when adding features:
 | `docs/QUICK-REFERENCE.md` | New inputs added |
 | `docs/MIGRATION-GUIDE.md` | Workflow patterns change |
 | `docs/FUTURE-DEVELOPMENT.md` | Features completed/planned |
+| `PLAN.md` | A backlog item or tracked issue opens, closes or changes scope; a consumer changes the ref it pins |
 
 ## Questions?
 

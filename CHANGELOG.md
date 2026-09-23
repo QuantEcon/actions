@@ -37,6 +37,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   when the checkout is shallow (which dates every page to the checkout commit). The
   `publish.yml` and `cache.yml` templates now check out with `fetch-depth: 0`.
 
+### Documentation
+- Swept the docs against the shipped code (#106, #109, #99): the Anaconda 2026.06 baseline both
+  images ship; image sizes measured on 2026-09-23 and labelled by metric (full 3.33 GB compressed
+  / 8.60 GB on disk, lean 2.93 / 7.33 GB), replacing "~8GB / ~3GB" and "~60% smaller"; the lean
+  image's TeX Live is the full image's minus `texlive-luatex`, not "minimal". Examples that call a
+  preview action grant `pull-requests: write`, and `actions/checkout` examples move to `@v7`.
+  Nonexistent inputs (`preview-netlify`'s `alias`, `build-lectures`' `build-html` and
+  `cache-workflow`), an invented LaTeX-cache log line, a Pages-404 fix that dropped `pages` and
+  `id-token`, and stale cache keys are corrected; custom domains point at Settings → Pages, since
+  the Actions Pages deploy ignores a CNAME file. New `templates/latex-requirements.txt` for
+  standard-runner PDF builds; CONTRIBUTING.md documents staged releases and the `v0` rollback.
+
 ## [0.11.1] - 2026-08-07
 
 ### Fixed
