@@ -38,6 +38,7 @@ quantecon/actions/
 ├── restore-jupyter-cache/   # Cache restore action (PRs)
 ├── preview-netlify/         # Netlify PR preview action
 ├── preview-cloudflare/      # Cloudflare Pages PR preview action
+├── deploy-cloudflare/       # Members-only Worker deploy behind Cloudflare Access
 ├── publish-gh-pages/        # GitHub Pages publishing action
 ├── templates/               # Workflow templates for lecture repos
 └── docs/                    # Comprehensive documentation

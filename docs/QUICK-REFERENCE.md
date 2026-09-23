@@ -12,6 +12,7 @@ A cheat sheet for using QuantEcon composite actions in your workflows.
 | `restore-jupyter-cache` | Cache restore for PRs (read-only by default; optional `save-cache`) | ~14 min (avoids full rebuild) |
 | `preview-netlify` | PR preview deployment (Netlify) | ~1 min |
 | `preview-cloudflare` | PR preview deployment (Cloudflare) | ~1 min |
+| `deploy-cloudflare` | Members-only site on a Cloudflare Worker behind Access, gate-checked | ~1 min |
 | `publish-gh-pages` | GitHub Pages deployment | ~30 sec |
 
 ## 🚀 Quick Start
@@ -231,6 +232,19 @@ build-dir: '_build/html'         # Required
 lectures-dir: 'lectures'         # For change detection (default)
 ```
 
+### deploy-cloudflare
+
+```yaml
+cloudflare-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}  # Required - Editor on this Worker only
+cloudflare-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}  # Required
+worker-name: 'members-dashboard'  # Required - must already exist and be behind Access
+account-subdomain: 'my-subdomain' # Required - *.my-subdomain.workers.dev
+team-domain: 'my-team.cloudflareaccess.com'  # Required - the gate must redirect here
+build-dir: '_site'               # Required
+alias: ''                        # Optional permanent preview alias, e.g. report-2026-08
+require-access: 'true'           # Gate check before and after deploying (default)
+```
+
 ### publish-gh-pages
 
 ```yaml
@@ -265,6 +279,17 @@ permissions:
 # Access:
 # - ${{ steps.netlify.outputs.deploy-url }}
 # - ${{ steps.netlify.outputs.changed-files }}
+```
+
+### deploy-cloudflare
+
+```yaml
+- id: private
+  uses: quantecon/actions/deploy-cloudflare@v0
+
+# Access:
+# - ${{ steps.private.outputs.deploy-url }}
+# - ${{ steps.private.outputs.alias-url }}
 ```
 
 ### publish-gh-pages

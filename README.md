@@ -38,6 +38,11 @@ Deploys preview builds to Cloudflare Pages for pull requests.
 
 **Features:** Free for public & private repos, predictable URLs (`pr-N.project.pages.dev`), changed lecture detection, smart PR comments
 
+### 🔒 [`deploy-cloudflare`](./deploy-cloudflare)
+Publishes members-only sites to a Cloudflare Worker behind Cloudflare Access, from `push`, `schedule` or `workflow_dispatch`.
+
+**Features:** Proves the site is gated before and after every deploy (an anonymous request must redirect to your Access team's login) and refuses to upload otherwise, optional permanent preview alias per build, pinned wrangler, job-summary report
+
 ### 🚀 [`publish-gh-pages`](./publish-gh-pages)
 Publishes production builds to GitHub Pages using native artifact-based deployment.
 
