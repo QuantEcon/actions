@@ -33,7 +33,7 @@ container:
 
 - Miniconda + explicit package list instead of the `anaconda` metapackage, with the science stack pinned to the Anaconda 2026.06 baseline
 - The same TeX Live apt packages as the full image, except `texlive-luatex` (it adds `graphviz`)
-- Jupyter Book build tools only
+- Jupyter Book build tools
 
 ```yaml
 container:

@@ -97,8 +97,8 @@ Known limits:
   runs the candidate against the previous release's siblings. A fix to either sibling reaches
   that chain untested until `v0` moves.
 - `preview-cloudflare` has no consumer and no project to deploy to, so nothing exercises it.
-- The canary never sets `create-release-assets`, so `publish-gh-pages`' release-asset path is
-  not exercised.
+- Steps 2-3 never run `publish-gh-pages` (the canary's `publish.yml` fires only on a `publish*`
+  tag) or `setup-environment` at the candidate ref.
 - Repositories pinned to an exact tag get a Dependabot bump PR as soon as the tag exists;
   merging it stays a human decision.
 - Container images do not stage: a merge touching `containers/**` rebuilds and pushes `:latest`

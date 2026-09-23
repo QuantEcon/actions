@@ -6,9 +6,8 @@
 # Not needed in the QuantEcon containers: LaTeX is pre-installed there and
 # install-latex is ignored.
 #
-# Format: one Ubuntu apt package per line. Blank lines and lines whose first
-# character is '#' are skipped. A '#' after a package name is not a comment:
-# it is passed to apt-get along with the words after it.
+# Format: one Ubuntu apt package per line; blank lines are skipped. Put
+# comments on lines of their own, with '#' as the first character.
 #
 # These are the TeX packages and build tools both container images install
 # (containers/*/Dockerfile in QuantEcon/actions), without the full image's

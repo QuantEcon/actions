@@ -117,13 +117,17 @@ jobs:
 
           # ─── Release Assets (optional) ───────────────────────────
           # Create downloadable archives on tagged releases. As shipped,
-          # this file cannot; it needs two changes first:
+          # this file cannot; it needs three changes first:
           #   1. A tag trigger. The action skips release assets (with a
           #      warning) unless the run's ref is a tag, and this file
           #      runs only on pushes to main and manual dispatch. Add,
           #      e.g., `tags: ['publish*']` under `on.push`.
           #   2. `contents: write` in the job's permissions above, which
           #      grant only `contents: read`; the release upload needs it.
+          #   3. The tag pattern (e.g. `publish*`) allowed under Settings →
+          #      Environments → github-pages → Deployment branches and tags.
+          #      By default only the default branch may deploy there, so
+          #      environment protection rejects a tag run before it starts.
           # create-release-assets: 'true'
           # asset-name: 'lecture-python-html'
           # github-token: ${{ secrets.GITHUB_TOKEN }}
