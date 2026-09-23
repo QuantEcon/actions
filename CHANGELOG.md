@@ -65,6 +65,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `deploy-pages`) ignores `CNAME` files; the custom domain is set only in Settings → Pages,
   which the input description and README now say. The value reaches the shell through
   `env:` rather than `${{ }}` interpolation. (#109)
+- **Container tests**: the smoke fixture now builds with `quantecon_book_theme`, the theme both
+  images ship and every lecture site uses, instead of `sphinx_book_theme`, and no longer sets
+  `latex_elements.fontpkg: ""`. That override sent the PDF build down the TeX-defaults path,
+  so it never loaded the FreeFont `.otf` names that Sphinx's default xelatex `fontpkg` asks for
+  and both Dockerfiles symlink into place; a regression there could not fail the test. The
+  unused `containers/quantecon/tests/test-container.sh` (full image only, `set -e` only, in
+  no workflow) is deleted and the image README points at `smoke-test.sh` and the Test
+  Container workflow instead. `run-local-tests.sh` now passes `-W --keep-going` like the CI
+  script, so a warning that fails CI also fails locally. (#108)
 
 ### Removed
 - **`publish-gh-pages`**: the `asset-url` output. It was bound to
