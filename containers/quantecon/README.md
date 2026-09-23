@@ -220,25 +220,29 @@ The container includes a test suite to verify LaTeX and Jupyter Book functionali
 
 ### Running Tests
 
-To run all tests:
+CI runs `tests/smoke-test.sh` inside each image, in a real `container:` job, through the
+**Test Container** workflow (`.github/workflows/test-container.yml`) after every image
+build. To test a branch's fixture against the published `:latest` images:
 
 ```bash
-cd containers/quantecon
-./tests/test-container.sh
+gh workflow run test-container.yml --ref <your-branch>
 ```
 
-The test script will:
-1. Pull the latest container from GHCR
-2. Test XeLaTeX compilation with fontspec and unicode
-3. Test Jupyter Book HTML build
-4. Test Jupyter Book PDF build via pdflatex
+The smoke test:
+1. Checks the container marker (`/etc/quantecon-container`)
+2. Compiles `test-xelatex.tex` with XeLaTeX (fontspec and unicode)
+3. Builds the fixture book as HTML with `quantecon_book_theme`, executing every cell, under `-W --keep-going`
+4. Builds it as a PDF with the `pdflatex` builder (XeLaTeX engine, Sphinx's default FreeFont `fontpkg`)
+
+`smoke-test.sh --self-test` stages a raising cell and fails if the build does not go red.
+Run it in a `container:` job, not `docker run`: `docker run` leaves `HOME=/root`, so it
+cannot reproduce failures such as #85 that depend on the runner's `HOME=/github/home`.
 
 ### Test Files
 
 - `tests/test-xelatex.tex` - Minimal XeLaTeX document testing fonts and unicode
 - `tests/minimal-jupyter-book/` - Minimal Jupyter Book whose cells actually execute, so a broken science stack fails the build
 - `tests/smoke-test.sh` - What CI runs, inside the image; `--self-test` asserts the fixture can still fail
-- `tests/test-container.sh` - Older automated test script for Docker container
 - `tests/run-local-tests.sh` - Local test script for macOS development
 
 ### Local Testing (macOS)
@@ -256,6 +260,7 @@ cd containers/quantecon/tests
 - DejaVu Serif fonts (`brew install --cask font-dejavu`)
 - numpy, scipy, pandas, matplotlib, and plotly with a working `kaleido<1.0` — the
   fixture executes its cells now, so these are no longer optional
+- quantecon-book-theme (`pip install quantecon-book-theme`), the fixture's HTML theme
 
 The script runs the same tests as the container test suite locally.
 
