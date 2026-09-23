@@ -34,7 +34,8 @@ The container fixture at `containers/quantecon/tests/minimal-jupyter-book/` also
 | `setup-environment` | Standard-mode conda cache, two-run miss→hit chain (the #33/#78 path, previously never confirmed by CI) |
 | `build-lectures` | Real HTML build of the fixture on the cache-restored conda env, executed-cell output asserted; plus the negative direction — a page whose code cell raises must fail the step, so a regression that swallows the build status cannot pass silently |
 | `build-jupyter-cache` | Smoke build + outputs, then a full round-trip into `restore-jupyter-cache` for both cache types. ⚠️ Its internal `setup-environment`/`build-lectures` calls run `@v0`, not the PR — GitHub forbids expressions in `uses:`, so that chain is untestable pre-release by construction (see #100) |
-| `publish-gh-pages`, `preview-netlify`, `preview-cloudflare` | ❌ Not covered — need real deploy targets and secrets; owned by the post-release canary repo (stage 2+ of #100) |
+| `preview-netlify`, `preview-cloudflare` | CLI install only: `npm ci` from each action's lockfile on Node 24, then the CLI must start and report the pinned version, so a Dependabot CLI bump gets some signal (#105). The actions themselves, deploys included, are ❌ not covered — they need real deploy targets and secrets; owned by the post-release canary repo (stage 2+ of #100) |
+| `publish-gh-pages` | ❌ Not covered — needs real deploy targets and secrets; owned by the post-release canary repo (stage 2+ of #100) |
 
 ---
 

@@ -144,7 +144,9 @@ updates:
   # `npm ci` from the package.json + package-lock.json beside each action.yml,
   # pinned to an exact version because the CLI is handed the deploy token
   # (#105). The groups bump both CLIs in one PR (a second one for majors). As the
-  # header says, such a PR cannot run a preview deploy.
+  # header says, such a PR cannot run a preview deploy, so the harness's
+  # preview-cli-install job — an `npm ci` from each lockfile plus `--version` —
+  # is its only CI signal.
   - package-ecosystem: "npm"
     directories:
       - "/preview-cloudflare"

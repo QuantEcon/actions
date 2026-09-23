@@ -127,7 +127,9 @@ jobs:
           # avoid. Only real step invocations count.
           DIRS=$(grep -oE '^[[:space:]]*uses: \./[A-Za-z0-9_.-]+' .github/workflows/test-actions.yml | sed 's|.*\./||' | sort -u)
           [ -n "$DIRS" ] || { echo "::error::gate self-test: no 'uses: ./<action>' found in the harness — refusing to decide"; exit 1; }
-          MUST_RUN=".github/workflows/test-actions.yml .github/fixtures/mini-lectures/environment.yml"
+          # The lockfiles are listed by hand: preview-cli-install tests them
+          # without a `uses: ./` line, because the actions need deploy secrets.
+          MUST_RUN=".github/workflows/test-actions.yml .github/fixtures/mini-lectures/environment.yml preview-cloudflare/package-lock.json preview-netlify/package-lock.json"
           for d in $DIRS; do MUST_RUN="$MUST_RUN $d/action.yml"; done
           for p in $MUST_RUN; do
             if grep -Eq "$IGNORED" <<< "$p"; then
@@ -858,6 +860,56 @@ jobs:
           echo "✅ execution cache round-trip: build-jupyter-cache → restore-jupyter-cache"
 
   # ==========================================================================
+  # preview-* — the pinned CLIs (install only; a deploy needs provider secrets)
+  # ==========================================================================
+
+  preview-cli-install:
+    # #105: preview-cloudflare and preview-netlify install their CLI with
+    # `npm ci` from a lockfile beside action.yml, and Dependabot bumps those
+    # lockfiles. The actions themselves cannot run here — a deploy needs the
+    # provider's token, and they skip Dependabot's PRs outright — so without
+    # this job a CLI bump would merge with no CI signal at all.
+    #
+    # Scope, stated honestly: this proves each lockfile installs on a clean
+    # runner and that the CLI it installs starts and reports the pinned
+    # version. It does not run the actions' install step itself, and it cannot
+    # tell whether the new CLI still deploys; that is for the next real PR.
+    name: 'preview-*: pinned CLIs install from their lockfiles and run'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    steps:
+      - uses: actions/checkout@v7
+
+      # The Node the READMEs tell hosted-runner callers to set up, and the major
+      # the QuantEcon containers ship.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: npm ci from each lockfile, then run the CLI
+        run: |
+          set -euo pipefail
+          echo "node $(node --version), npm $(npm --version)"
+          # action dir, npm package, bin name
+          for spec in preview-cloudflare:wrangler:wrangler preview-netlify:netlify-cli:netlify; do
+            IFS=: read -r dir pkg bin <<< "$spec"
+            want=$(node -p "require('./$dir/package.json').dependencies['$pkg']")
+            echo "::group::$dir: npm ci ($pkg $want)"
+            D="$(mktemp -d)"
+            cp "$dir/package.json" "$dir/package-lock.json" "$D/"
+            npm ci --prefix "$D" --no-audit --no-fund
+            echo "::endgroup::"
+            got=$("$D/node_modules/.bin/$bin" --version) \
+              || { echo "::error::$dir: $bin installed from the lockfile but does not run"; exit 1; }
+            echo "$bin --version: $got"
+            grep -qF "$want" <<< "$got" \
+              || { echo "::error::$dir: $bin reports [$got], expected the pinned $want"; exit 1; }
+          done
+          echo "✅ both pinned CLIs install from their lockfiles and run"
+
+  # ==========================================================================
   # Single anchor for branch protection
   # ==========================================================================
 
@@ -883,6 +935,7 @@ jobs:
       - bjc-abort-guard
       - bjc-restore-build
       - bjc-restore-exec
+      - preview-cli-install
     steps:
       # This is the job intended to be the single required status check, so it
       # has to be correct in BOTH shapes the gate can produce, and must never be

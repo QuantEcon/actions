@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **CI**: `preview-cli-install` harness job — `npm ci` from each preview action's lockfile on
+  Node 24, after which the CLI must start and report the pinned version. The preview actions
+  themselves cannot run in the harness (a deploy needs the provider's token, and they skip
+  Dependabot's PRs outright), so without this job the Dependabot CLI bumps added below would
+  merge with no CI signal at all. It does not exercise a deploy: a new CLI still needs a real PR
+  against each provider. The gate's self-test now also treats the two lockfiles as must-run
+  paths. (#105)
+
 ### Changed
 - **`preview-cloudflare`, `preview-netlify`**: the CLI is no longer installed globally. Each
   job runs `npm ci` into a fresh temp directory — not `$GITHUB_ACTION_PATH`, which in a
