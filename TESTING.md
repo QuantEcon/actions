@@ -133,7 +133,7 @@ jobs:
     container:
       image: ghcr.io/quantecon/quantecon:latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       # Install lecture-specific packages
       - name: Install dependencies
@@ -182,7 +182,7 @@ Before production rollout:
 **Goal:** Verify container pulls quickly from GHCR
 
 **Check workflow logs:**
-- First pull: ~1-2 min (download ~2 GB)
+- First pull: ~1-2 min (downloads 3.33 GB compressed for the full image, 2.93 GB for the lean one)
 - Subsequent pulls: ~10-20 sec (runner cache)
 
 ### Test 2: Environment Validation

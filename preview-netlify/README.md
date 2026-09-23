@@ -83,6 +83,9 @@ on:
 jobs:
   preview:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write      # Required for the PR preview comment
     steps:
       - uses: actions/checkout@v7
         with:

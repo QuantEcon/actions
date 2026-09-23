@@ -31,8 +31,8 @@ Two container variants are available:
 
 | Container | Image | Size | Best For |
 |-----------|-------|------|----------|
-| **Full** | `ghcr.io/quantecon/quantecon:latest` | ~8GB | Max compatibility |
-| **Lean** | `ghcr.io/quantecon/quantecon-build:latest` | ~3GB | CI builds (faster pull) |
+| **Full** | `ghcr.io/quantecon/quantecon:latest` | 3.33 GB compressed, 8.60 GB on disk | Max compatibility |
+| **Lean** | `ghcr.io/quantecon/quantecon-build:latest` | 2.93 GB compressed, 7.32 GB on disk | CI builds (modestly smaller pull) |
 
 ```yaml
 jobs:
@@ -41,7 +41,7 @@ jobs:
     container:
       image: ghcr.io/quantecon/quantecon-build:latest  # or quantecon:latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       - uses: quantecon/actions/setup-environment@v0
         # environment-update defaults to '' - uses pre-installed packages
@@ -129,8 +129,8 @@ dependencies:
 - See [issue #18](https://github.com/QuantEcon/actions/issues/18) for future caching improvements
 
 ### Standard Mode
-- **Key**: `conda-{os}-{hash(environment.yml)}-{version}`
-- **Path**: `/home/runner/miniconda3/envs/{name}`, `/home/runner/conda_pkgs_dir`
+- **Key**: `conda-{os}-{environment-name}-py{python-version}-{hash(environment)}-{cache-version}`
+- **Path**: `$CONDA/envs/{environment-name}` (the runner's pre-installed conda)
 - **What's cached**: Full Conda environment
 
 ## Delta environment-update.yml for Containers
@@ -212,7 +212,7 @@ jobs:
   build:
     runs-on: [runs-on, gpu=1, image=your-gpu-ami]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: quantecon/actions/setup-environment@v0
         with:

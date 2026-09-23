@@ -12,7 +12,7 @@ ghcr.io/quantecon/quantecon:latest
 - Ubuntu 24.04 LTS
 - TexLive (latest from Ubuntu 24.04 repos)
 - Miniconda with Python 3.13
-- Anaconda 2025.12 (numpy, scipy, pandas, matplotlib, jupyter, etc.)
+- Anaconda 2026.06 (numpy, scipy, pandas, matplotlib, jupyter, etc.)
 - Jupyter Book build tools
 - LaTeX build tools (latexmk, xindy, dvipng)
 
@@ -37,7 +37,7 @@ jobs:
       image: ghcr.io/quantecon/quantecon:latest
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       - name: Build lectures
         run: jupyter-book build lectures/
@@ -58,7 +58,7 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # ... rest of your steps
 ```
 
@@ -104,7 +104,7 @@ conda list        # See all packages
 
 ### Installed Packages
 
-**Base Environment (Anaconda 2025.12):**
+**Base Environment (Anaconda 2026.06):**
 - NumPy, SciPy, Pandas - Scientific computing
 - Matplotlib, Seaborn - Visualization
 - NetworkX - Network analysis
@@ -113,7 +113,7 @@ conda list        # See all packages
 
 **Jupyter Book Build Tools:**
 - jupyter-book (1.0.4post1) - Document builder
-- quantecon-book-theme (0.18.0) - Custom theme
+- quantecon-book-theme (0.22.0) - Custom theme
 - Sphinx extensions (tojupyter, rediraffe, exercise, proof, youtube, togglebutton, reredirects)
 - quantecon-book-networks
 

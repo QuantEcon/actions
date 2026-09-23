@@ -6,8 +6,8 @@ Quick guide for using QuantEcon container infrastructure.
 
 Two container images (see [ARCHITECTURE.md](./ARCHITECTURE.md) for the rationale):
 
-- **`ghcr.io/quantecon/quantecon:latest`** — full image (~8.3 GB on disk, ~3.2 GB compressed pull): Ubuntu 24.04 LTS + TexLive + Miniconda/Python 3.13 + Anaconda 2025.12 (numpy, scipy, pandas, matplotlib, jupyter) + Jupyter Book 1.0.4post1 and extensions.
-- **`ghcr.io/quantecon/quantecon-build:latest`** — lean image (~7.1 GB on disk, ~2.9 GB compressed pull): the build toolchain (LaTeX for PDF builds + Jupyter Book) without the full Anaconda metapackage; repos install their own packages from `environment.yml`. (LaTeX dominates, so it's only modestly smaller than the full image.)
+- **`ghcr.io/quantecon/quantecon:latest`** — full image (8.60 GB on disk, 3.33 GB compressed pull): Ubuntu 24.04 LTS + TexLive + Miniconda/Python 3.13 + Anaconda 2026.06 (numpy, scipy, pandas, matplotlib, jupyter) + Jupyter Book 1.0.4post1 and extensions.
+- **`ghcr.io/quantecon/quantecon-build:latest`** — lean image (7.32 GB on disk, 2.93 GB compressed pull): the build toolchain (LaTeX for PDF builds + Jupyter Book) without the full Anaconda metapackage; repos install their own packages from `environment.yml`. (LaTeX dominates, so it's only modestly smaller than the full image.)
 
 **Updates:** Weekly automated builds (Monday 2am UTC)
 
@@ -22,7 +22,7 @@ jobs:
     container:
       image: ghcr.io/quantecon/quantecon:latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       # Install lecture-specific packages
       - name: Install dependencies
@@ -61,7 +61,7 @@ docker run -it --rm \
 | Base packages | 3-4 min | 0 min | Pre-installed in container |
 | **Total setup** | **7-8 min** | **~2 min** | **60-70% faster** |
 
-**Container initialization:** The 2-minute container load time is unavoidable on GitHub-hosted runners as the compressed image (~2.9 GB lean / ~3.2 GB full) must be pulled from GHCR. However, this is still faster than installing LaTeX and Python packages separately.
+**Container initialization:** The 2-minute container load time is unavoidable on GitHub-hosted runners as the compressed image (2.93 GB lean / 3.33 GB full) must be pulled from GHCR. However, this is still faster than installing LaTeX and Python packages separately.
 
 **For faster startup times:** Consider self-hosted runners where the container can be pre-pulled and cached locally, reducing initialization to < 10 seconds.
 
