@@ -113,7 +113,7 @@ conda list        # See all packages
 
 **Jupyter Book Build Tools:**
 - jupyter-book (1.0.4post1) - Document builder
-- quantecon-book-theme (0.21.0) - Custom theme
+- quantecon-book-theme (0.22.0) - Custom theme
 - Sphinx extensions (tojupyter, rediraffe, exercise, proof, youtube, togglebutton, reredirects)
 - quantecon-book-networks
 
