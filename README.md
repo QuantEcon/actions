@@ -41,7 +41,7 @@ Deploys preview builds to Cloudflare Pages for pull requests.
 ### 🚀 [`publish-gh-pages`](./publish-gh-pages)
 Publishes production builds to GitHub Pages using native artifact-based deployment.
 
-**Features:** Custom domain support, native GitHub Pages deployment (no gh-pages branch), optional release assets
+**Features:** Native GitHub Pages deployment (no gh-pages branch), optional release assets; custom domains are set in Settings → Pages
 
 ### 💾 [`build-jupyter-cache`](./build-jupyter-cache)
 Weekly cache generation for main branch builds.

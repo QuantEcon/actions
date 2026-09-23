@@ -64,6 +64,9 @@ on: [pull_request]
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write  # preview-netlify's PR comment
     steps:
       - uses: actions/checkout@v7
         with:

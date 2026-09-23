@@ -87,6 +87,9 @@ publish-gh-pages/     → Deploy to GitHub Pages
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write  # preview-netlify's PR comment
     steps:
       - uses: actions/checkout@v7
       
@@ -118,6 +121,10 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     container: ghcr.io/quantecon/quantecon:latest  # ~1-2 min pull
+    permissions:
+      contents: read
+      packages: read
+      pull-requests: write  # preview-netlify's PR comment
     steps:
       - uses: actions/checkout@v7
       

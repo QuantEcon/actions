@@ -133,6 +133,9 @@ on: [pull_request]
 jobs:
   preview:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write  # preview-netlify's PR comment
     steps:
       - uses: actions/checkout@v7
         with:
@@ -440,7 +443,7 @@ Before merging, verify:
    git add .github/workflows/
    git commit -m "Migrate to quantecon/actions composite actions
 
-   - Adds caching for conda and pip
+   - Adds conda environment caching
    - Reduces setup time from 8-12 min to ~1 min (cached)
    - Centralizes workflow logic for easier maintenance
    - Tested with manual workflow runs"

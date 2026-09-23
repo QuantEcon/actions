@@ -120,8 +120,8 @@ Issues opened after the July review, dispositioned in the August 2026 triage and
 
 | Issue | Status | Disposition |
 |---|---|---|
-| #105 preview error surfacing, CLI pinning, fork guidance | One half-item shipped in v0.11.1 (#131). The `pull_request_target` README warning is open as #170; the deploy-error surfacing and CLI pinning (a `package-lock.json` per preview action, decision 2 on #110) are in progress, to open as a draft since they need real Netlify and Cloudflare deploys to verify | Closes backlog item 8; release staged (decision 4 on #110) |
-| #107 correctness batch across the actions | Seven of ten items live; three shipped in v0.11.0. Fix in progress, carrying #109's three code items | Closes backlog items 7, 15; release staged (decision 4 on #110) |
+| #105 preview error surfacing, CLI pinning, fork guidance | One half-item shipped in v0.11.1 (#131). The `pull_request_target` README warning is open as #170; the deploy-error surfacing and CLI pinning (a `package-lock.json` per preview action, decision 2 on #110) are in draft PR #174, awaiting a real deploy on each provider | Closes backlog item 8; release staged (decision 4 on #110) |
+| #107 correctness batch across the actions | Seven of ten items live; three shipped in v0.11.0. Fix open as #173, carrying #109's three code items | Closes backlog items 7, 15; release staged (decision 4 on #110) |
 | #106 docs sweep to the 2026.06 baseline | Addressed by the #106/#109 docs PR: baseline, both measured image sizes from the size job as fixed by #172 (open; run 35856865426), the TeX Live wording, this table and CONTRIBUTING's `PLAN.md` row | Closes when that PR lands |
 | #109 reconcile READMEs and templates with the code | Docs half addressed by the same PR, except the failure-only artifact wording in `build-jupyter-cache/README.md`, which #107's PR owns; the code items ride with #107 | Closes when both land; see backlog items 10, 11 |
 | #99 QUICK-REFERENCE Pages-404 permissions | Fixed in the same PR, with the two stale `build-jupyter-cache` key lines | Close as duplicate of #109 when that PR lands |
