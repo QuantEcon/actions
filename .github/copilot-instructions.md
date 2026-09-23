@@ -133,5 +133,5 @@ gh run view RUN_ID --log > /tmp/gh-logs.txt && cat /tmp/gh-logs.txt
 - **Updated:** June 16, 2026
 - **Current Phase:** Infrastructure complete, ready for production migration (latest release: v0.8.0)
 - **Containers:** ghcr.io/quantecon/quantecon:latest (full, ~8GB), ghcr.io/quantecon/quantecon-build:latest (lean, ~3GB)
-- **Actions:** 7 composite actions complete and tested
+- **Actions:** 8 composite actions (`deploy-cloudflare`'s real deploy is not exercised in CI; see TESTING.md)
 - **Next:** Begin Phase 1 migration with lecture-dp repo

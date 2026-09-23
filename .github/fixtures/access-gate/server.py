@@ -11,6 +11,8 @@ against every shape it must tell apart without a Cloudflare account:
   /missing        404 (no Worker on this hostname)
   /broken         500 (retried by the probe, then fails)
   /mixed-case     302 to the team domain in mixed case with an explicit :443
+  /userinfo       302 whose real host is not the team domain, hidden behind
+                  `\\@team-domain` userinfo
 
 Usage: python3 server.py <port>
 """
@@ -36,6 +38,8 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(302, {})
         elif path == "/broken":
             self.reply(500, {})
+        elif path == "/userinfo":
+            self.reply(302, {"Location": "https://evil.example\\@quantecon-harness.cloudflareaccess.com/"})
         elif path == "/mixed-case":
             self.reply(302, {"Location": "https://QuantEcon-Harness.CloudflareAccess.com:443/cdn-cgi/access/login/site"})
         else:

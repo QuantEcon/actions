@@ -43,9 +43,10 @@ inputs:
     default: ''
   require-access:
     description: >-
-      Prove the site is gated: before uploading, and again after, an
+      Prove the site is gated: before uploading, after deploying (production
+      and the new version's preview URL) and on the alias after its upload, an
       unauthenticated request must be redirected to team-domain. `false` skips
-      both checks and should never be used for private content.
+      every one of these checks and should never be used for private content.
     required: false
     default: 'true'
 
@@ -108,6 +109,8 @@ runs:
           *) fail "require-access must be 'true' or 'false', got [$REQUIRE_ACCESS]." ;;
         esac
 
+        # A newline would inject keys into GITHUB_OUTPUT below.
+        [[ "$BUILD_DIR" != *$'\n'* && "$BUILD_DIR" != *$'\r'* ]] || fail "build-dir must not contain line breaks."
         [ -d "$BUILD_DIR" ] || fail "build-dir [$BUILD_DIR] is not a directory."
         BUILD_DIR=$(cd "$BUILD_DIR" && pwd -P)
         [ -n "$(find "$BUILD_DIR" -type f -print -quit)" ] || fail "build-dir [$BUILD_DIR] contains no files."
@@ -116,15 +119,19 @@ runs:
         # One real non-HTML file to probe besides the root, so a gate that
         # covers only the document root cannot pass (the pilot's
         # data/latest.json check). Deterministic, URL-safe paths only, so no
-        # encoding is needed; dotfiles and wrangler's own control files are
-        # skipped because they are never served. `awk` reads to the end rather
-        # than exiting early, which under pipefail would fail on sort's SIGPIPE.
+        # encoding is needed. Dotfiles and the _headers/_redirects/_worker.js
+        # names are skipped to keep the choice predictable: wrangler does not
+        # serve the control files, and a gated site redirects every path
+        # anyway. `awk` reads to the end rather than exiting early, which under
+        # pipefail would fail on sort's SIGPIPE.
         probe_path=$(cd "$BUILD_DIR" && find . -type f ! -path '*/.*' ! -iname '*.html' ! -iname '*.htm' \
             ! -name '_headers' ! -name '_redirects' ! -name '_worker.js' -print \
           | LC_ALL=C sort \
           | awk '!found && /^\.\/[A-Za-z0-9._~\/-]+$/ { print substr($0, 2); found = 1 }' || true)
 
         deploy_url="https://${WORKER_NAME}.${subdomain}.workers.dev"
+        # Every version and alias is served at <prefix>-<worker>.<subdomain>.workers.dev.
+        preview_suffix="-${WORKER_NAME}.${subdomain}.workers.dev"
         alias_url=""
         [ -z "$ALIAS" ] || alias_url="https://${ALIAS}-${WORKER_NAME}.${subdomain}.workers.dev"
 
@@ -133,6 +140,7 @@ runs:
           echo "build-dir=$BUILD_DIR"
           echo "probe-path=$probe_path"
           echo "deploy-url=$deploy_url"
+          echo "preview-suffix=$preview_suffix"
           echo "alias-url=$alias_url"
         } >> "$GITHUB_OUTPUT"
 
@@ -223,9 +231,9 @@ runs:
         cat "$CONFIG"
         echo "path=$CONFIG" >> "$GITHUB_OUTPUT"
 
-    # wrangler runs uncaptured, so its errors reach the log as they happen.
-    # #105 is what capturing into a variable under pipefail does: the step
-    # aborts at the assignment and the output is never printed.
+    # wrangler's output is teed, never captured into a variable, so its errors
+    # reach the log as they happen. #105 is what capturing under pipefail does:
+    # the step aborts at the assignment and the output is never printed.
     - name: Deploy to production
       id: deploy
       shell: bash
@@ -236,36 +244,62 @@ runs:
         CI: 'true'
         WRANGLER: ${{ steps.wrangler.outputs.bin }}
         CONFIG: ${{ steps.config.outputs.path }}
+        LOG: ${{ steps.wrangler.outputs.dir }}/${{ inputs.worker-name }}.deploy.log
         DEPLOY_URL: ${{ steps.inputs.outputs.deploy-url }}
+        PREVIEW_SUFFIX: ${{ steps.inputs.outputs.preview-suffix }}
       run: |
         set -uo pipefail
         message="${GITHUB_REPOSITORY}@${GITHUB_SHA:0:7} run ${GITHUB_RUN_ID}"; message=${message:0:100}
-        if ! "$WRANGLER" deploy --config "$CONFIG" --message "$message"; then
-          echo "::error::wrangler deploy failed; see its output above. A permissions error usually means the token lacks Editor on this Worker."
+        "$WRANGLER" deploy --config "$CONFIG" --message "$message" 2>&1 | tee "$LOG"
+        status=${PIPESTATUS[0]}
+
+        # preview_urls: true gives every version its own preview URL,
+        # https://<first 8 of the version id>-<worker>.<subdomain>.workers.dev,
+        # which the check below must cover too. Read from the log, unlike the
+        # URLs this action hands out, because it is only ever probed: if the
+        # line is missing the check fails closed rather than skipping it.
+        version=$(sed -n 's/.*Current Version ID: \([0-9a-f]\{8\}\)[0-9a-f-]*.*/\1/p' "$LOG" | tail -n 1)
+        [ -z "$version" ] || echo "version-preview-url=https://${version}${PREVIEW_SUFFIX}" >> "$GITHUB_OUTPUT"
+
+        if [ "$status" -ne 0 ]; then
+          echo "::error::wrangler deploy failed (exit $status); see its output above. It can fail after the new version is already live, so the gate is checked anyway. A permissions error usually means the token lacks Editor on this Worker."
           exit 1
         fi
         echo "deploy-url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
         echo "✅ Deployed $DEPLOY_URL"
 
-    # A regression guard: the pilot showed Access survives a redeploy, and the
-    # check before deploying already proved the gate. It stays because it is
-    # one request and the failure it guards is a private site gone public.
+    # A regression guard for production (the pilot showed Access survives a
+    # redeploy, and the check before deploying already proved it), and the only
+    # check of the new version's own preview URL, which a gate on the production
+    # hostname alone would leave public. It also runs when wrangler failed,
+    # because wrangler can exit non-zero after the new version is already live.
     - name: Check the Access gate after deploying
       id: gate-after
-      if: inputs.require-access == 'true'
+      if: ${{ !cancelled() && inputs.require-access == 'true' && steps.gate-before.outcome == 'success' && (steps.deploy.outcome == 'success' || steps.deploy.outcome == 'failure') }}
       shell: bash
       env:
         TEAM: ${{ steps.inputs.outputs.team-domain }}
         URL: ${{ steps.inputs.outputs.deploy-url }}
         PROBE_PATH: ${{ steps.inputs.outputs.probe-path }}
+        DEPLOY: ${{ steps.deploy.outcome }}
+        VERSION_URL: ${{ steps.deploy.outputs.version-preview-url }}
       run: |
         set -uo pipefail
+        failed=0
         urls=("$URL/")
         [ -z "$PROBE_PATH" ] || urls+=("$URL$PROBE_PATH")
-        if ! bash "$GITHUB_ACTION_PATH/../scripts/check-access-gate.sh" "$TEAM" "${urls[@]}"; then
-          echo "::error::The new build is deployed but $URL is NOT behind Access for $TEAM. Treat the site as public until this is fixed: turn Access on (All traffic) for the Worker, or disable its workers.dev route."
-          exit 1
+        if [ -n "$VERSION_URL" ]; then
+          urls+=("$VERSION_URL/")
+          [ -z "$PROBE_PATH" ] || urls+=("$VERSION_URL$PROBE_PATH")
+        elif [ "$DEPLOY" = "success" ]; then
+          echo "::error::wrangler deployed but its output named no 'Current Version ID', so the new version's preview URL could not be checked."
+          failed=1
         fi
+        if ! bash "$GITHUB_ACTION_PATH/../scripts/check-access-gate.sh" "$TEAM" "${urls[@]}"; then
+          echo "::error::A hostname serving this Worker is NOT behind Access for $TEAM (see above). Treat the site as public until this is fixed: turn Access on for the Worker with All traffic, which also covers its preview URLs, or disable its workers.dev route."
+          failed=1
+        fi
+        exit "$failed"
 
     - name: Upload preview alias
       id: alias
@@ -324,6 +358,7 @@ runs:
         INPUTS: ${{ steps.inputs.outcome }}
         GATE_BEFORE: ${{ steps.gate-before.outcome }}
         DEPLOY: ${{ steps.deploy.outcome }}
+        VERSION_URL: ${{ steps.deploy.outputs.version-preview-url }}
         GATE_AFTER: ${{ steps.gate-after.outcome }}
         ALIAS: ${{ steps.alias.outcome }}
         GATE_ALIAS: ${{ steps.gate-alias.outcome }}
@@ -331,7 +366,7 @@ runs:
         gate() {
           case "$1" in
             success) echo "✅ redirects to \`$TEAM\`" ;;
-            failure) echo "🚨 **NOT GATED**, treat as public" ;;
+            failure) echo "🚨 **not proven gated**, treat as public" ;;
             *)       [ "$REQUIRE_ACCESS" = "true" ] && echo "not checked" || echo "⚠️ not checked (\`require-access: false\`)" ;;
           esac
         }
@@ -342,12 +377,17 @@ runs:
             echo "❌ Inputs rejected, nothing was deployed. See the step log."
           elif [ "$GATE_BEFORE" = "failure" ]; then
             echo "⛔ **Refused.** $DEPLOY_URL is not behind Access for \`$TEAM\`, so nothing was uploaded."
+          elif [ "$DEPLOY" = "failure" ]; then
+            echo "❌ **wrangler deploy failed.** The new build may already be live; see the step log."
+            echo
+            echo "Production gate after the failure: $(gate "$GATE_AFTER")"
           elif [ "$DEPLOY" != "success" ]; then
-            echo "❌ The deploy did not complete. See the wrangler output in the step log."
+            echo "❌ The deploy did not run. See the step log."
           else
             echo "| | URL | Access gate |"
             echo "|---|---|---|"
             echo "| Production | $DEPLOY_URL | $(gate "$GATE_AFTER") |"
+            [ -z "$VERSION_URL" ] || echo "| This version | $VERSION_URL | $(gate "$GATE_AFTER") |"
             if [ "$ALIAS" = "success" ]; then
               echo "| Alias | $ALIAS_URL | $(gate "$GATE_ALIAS") |"
             elif [ "$ALIAS" = "failure" ]; then

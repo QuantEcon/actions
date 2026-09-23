@@ -32,8 +32,14 @@ if [ "$#" -lt 2 ]; then
   exit 2
 fi
 
-team=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+raw_team=$1
+team=$(printf '%s' "$raw_team" | tr '[:upper:]' '[:lower:]')
 shift
+# An empty team would equal the empty host of a redirect with no Location.
+if ! [[ "$team" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?\.cloudflareaccess\.com$ ]]; then
+  echo "usage: team-domain must be <team>.cloudflareaccess.com, got [$raw_team]" >&2
+  exit 2
+fi
 
 failed=0
 for url in "$@"; do
@@ -51,11 +57,15 @@ for url in "$@"; do
 
   case "$code" in
     301|302|303|307|308)
-      host=${location#*://}
-      host=${host%%/*}
-      host=${host##*@}
-      host=${host%%:*}
-      host=$(printf '%s' "$host" | tr '[:upper:]' '[:lower:]')
+      authority=${location#*://}
+      authority=$(printf '%s' "${authority%%[/?#]*}" | tr '[:upper:]' '[:lower:]')
+      # Userinfo or a backslash makes the real host ambiguous (browsers read
+      # `\` as `/`, so https://x.com\@team... goes to x.com). Access never
+      # sends either, so refuse rather than guess.
+      case "$authority" in
+        *@*|*\\*) host="<ambiguous Location authority: $authority>" ;;
+        *) host=${authority%%:*} ;;
+      esac
       if [ "$host" = "$team" ]; then
         echo "PASS  $code -> $host  $url"
       elif [[ "$host" == *.cloudflareaccess.com ]]; then

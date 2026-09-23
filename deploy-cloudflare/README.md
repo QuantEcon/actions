@@ -7,7 +7,7 @@ GitHub Pages stays the route for everything public ([`publish-gh-pages`](../publ
 ## Features
 
 - 🔒 **Proves the gate before uploading.** If an anonymous request to the Worker is not redirected to your Access team's login, nothing is uploaded. That refuses a Worker that does not exist, one that is public, and one gated by the wrong Access organisation.
-- 🔁 **Proves it again after deploying**, on the site root and on one real file from the build, so a site that is silently public fails the job instead of passing it.
+- 🔁 **Proves it again after deploying**, on production and on the new version's own preview URL, each at the site root and at one real file from the build. A site that is silently public fails the job instead of passing it.
 - 🗂️ **Optional preview alias**, for example `report-2026-08`: a permanent URL for this build alongside the moving production URL. The alias is gate-checked too.
 - 📌 **Pinned wrangler**, installed with `npm ci` from a committed lockfile and kept current by Dependabot.
 - 📝 **Job summary.** On `push`, `schedule` and `workflow_dispatch` there is no PR to comment on, so the result (including "refused" or "deployed but not gated") goes to the job summary.
@@ -87,9 +87,9 @@ A monthly report that also keeps a permanent URL per month:
 | `team-domain` | The Access team's login domain, `<team>.cloudflareaccess.com` (a bare `<team>` is accepted) | Yes | - |
 | `build-dir` | Directory with the built site | Yes | - |
 | `alias` | Also upload this build as a named preview alias. Lowercase letters, digits and dashes, **starting with a letter** (`report-2026-08`, not `2026-08`), and `<alias>-<worker-name>` must fit in 63 characters | No | `''` |
-| `require-access` | Check the gate before and after deploying. `false` skips both checks, with a warning. Never set it for private content | No | `true` |
+| `require-access` | Check the gate before uploading, after deploying (production and the new version's preview URL) and on the alias. `false` skips every check, with a warning. Never set it for private content | No | `true` |
 
-The URLs are **constructed** from `worker-name`, `account-subdomain` and `alias`, never parsed from wrangler's output, following the same approach as `preview-cloudflare` (#131).
+The output URLs are **constructed** from `worker-name`, `account-subdomain` and `alias`, never parsed from wrangler's output, following the same approach as `preview-cloudflare` (#131). The one address read from wrangler's output is the new version's preview URL, which is only probed and never handed out.
 
 ## Outputs
 
@@ -106,6 +106,7 @@ The check is [`scripts/check-access-gate.sh`](../scripts/check-access-gate.sh), 
 |----------|---------|
 | `301/302/303/307/308` to exactly `team-domain` | ✅ gated |
 | Redirect to a different `*.cloudflareaccess.com` | ❌ gated by the **wrong Access organisation** |
+| Redirect whose `Location` carries userinfo or a backslash | ❌ the real host is ambiguous, and Access never sends one |
 | `2xx` | ❌ **the site is public** |
 | `404` | ❌ no Worker answers on that hostname, or its `workers.dev` route is off |
 | Anything else, or unreachable | ❌ the gate could not be verified. The check fails closed |
@@ -115,8 +116,8 @@ Every check probes the site root **and one non-HTML file from `build-dir`** (the
 The action runs the check at three points:
 
 1. **Before uploading.** This is prevention. Deploying content first and turning Access on afterwards would leave private data on a public hostname for the length of the setup.
-2. **After deploying.** This is a regression guard. The pilot showed Access survives a redeploy, but the check is one request, and it guards against a private site silently going public.
-3. **After the alias upload.** Preview URLs can be gated separately from production, so the alias gets its own check.
+2. **After deploying**, on production and on the new version's own preview URL. For production this is a regression guard: the pilot showed Access survives a redeploy, but the check is one request, and it guards against a private site silently going public. The preview URL is checked for the first time here. Every deploy gets one, `https://<first 8 of the version id>-{worker}.{subdomain}.workers.dev`, because the config enables preview URLs, and an Access setup that covers only the production hostname would leave it public. Its address comes from the `Current Version ID` line in wrangler's output; if that line is missing, the check fails rather than being skipped. The check also runs when `wrangler deploy` fails, because wrangler can exit with an error after the new version is already live.
+3. **After the alias upload.** The alias is one more preview URL, so it gets its own check.
 
 You can run the same check by hand:
 
@@ -163,7 +164,7 @@ The Access application is one-time per Worker, and the identity provider is one-
 ## Notes
 
 - **Custom domains** are a per-Worker setting in the dashboard, and the Worker's Access application picks them up automatically. The action does not manage domains: its generated config declares no routes, so a deploy leaves dashboard-attached domains alone, and it always checks the `workers.dev` URL.
-- **The generated config** ([`write-config.js`](write-config.js)) sets the name, a fixed `compatibility_date`, `assets.directory`, `workers_dev: true` and `preview_urls: true`. It is written to `RUNNER_TEMP` for each run, so consumer repositories need no wrangler config. wrangler running in CI overwrites settings changed in the dashboard (such as the placeholder's script) without prompting.
+- **The generated config** ([`write-config.js`](write-config.js)) sets the name, a fixed `compatibility_date`, `assets.directory`, `workers_dev: true` and `preview_urls: true`. It is written to `RUNNER_TEMP` for each run, so consumer repositories need no wrangler config. `preview_urls: true` turns preview URLs on for the Worker at every deploy, even if they were turned off in the dashboard; the check after deploying covers the new version's preview URL for that reason. wrangler running in CI overwrites settings changed in the dashboard (such as the placeholder's script) without prompting. Dotfiles in `build-dir` (Sphinx's `.buildinfo`, for example) are uploaded like any other file unless listed in a `.assetsignore`.
 - **A blank page after access is granted.** On the first load after access is granted or restored, cached Access redirects for `style.css`, `app.js` and data files can be served in place of the real assets. A plain refresh fixes it.
 - **A user added to the team after being denied** may stay denied until they revoke the OAuth app in their GitHub settings and log in again. This is documented Cloudflare behaviour, though it did not reproduce on the path the pilot tested.
 - **Limits.** Workers static assets allow 20,000 files and 25 MiB per file per version on the free plan (100,000 files on paid). The 1,000 most recent preview aliases are kept per Worker. Lecture-sized Jupyter Books are a few thousand files.
@@ -176,15 +177,21 @@ Nothing was uploaded. The line above it says why:
 - **`answered 404`**: no Worker by that name under that `account-subdomain`, or its `workers.dev` route is off. Check both, and create the Worker first if it is new.
 - **`THE SITE IS PUBLIC`**: Access is off for the Worker, or set to *Previews only*. Turn it on with *All traffic*.
 - **`wrong Access organisation`**: the Worker's Access application belongs to a different Zero Trust team, or `team-domain` is wrong.
+- **`not to the Access login domain`**: the site redirected somewhere other than `team-domain`, or sent no `Location`, so Access is not answering for this hostname. Check that Access is on with *All traffic* and that `team-domain` is right.
+- **`expected a redirect to the Access login domain`**: an unexpected status such as `401`, `403` or `5xx`. Check the Worker in the dashboard, then re-run the job.
 - **`could not be reached`**: a network problem between the runner and Cloudflare. Re-run the job.
 
 ### "wrangler deploy failed"
 
-wrangler's own error is printed above the annotation. An authentication or permission error usually means the token lacks Editor on this Worker, the account ID is wrong, or the token has expired.
+wrangler's own error is printed above the annotation. An authentication or permission error usually means the token lacks Editor on this Worker, the account ID is wrong, or the token has expired. wrangler can fail after the new version is already live, so the job summary reports the gate check that ran after the failure.
 
-### "The new build is deployed but … is NOT behind Access"
+### "A hostname serving this Worker is NOT behind Access"
 
-This is the urgent one: the content is live and anonymous requests are not being redirected. Turn Access on (*All traffic*) for the Worker, or disable its `workers.dev` route, then re-run the job to confirm.
+This is the urgent one: the new build is live, or may be, and anonymous requests to production or to the new version's preview URL are not being redirected. The `FAIL` line above it names the hostname. Turn Access on for the Worker with *All traffic*, which covers production and every preview URL, or disable its `workers.dev` route. Then re-run the job to confirm.
+
+### "wrangler deployed but its output named no 'Current Version ID'"
+
+The deploy went through, but the new version's preview URL could not be worked out, so it was not checked. That usually means a wrangler upgrade changed its output. Check the preview URL by hand with `scripts/check-access-gate.sh`, and report it here.
 
 ### "The alias is uploaded but … is NOT behind Access"
 

@@ -16,10 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `<team>.cloudflareaccess.com` login domain. A `2xx` fails as "the site is public", a redirect to
   another Access organisation fails, and so does anything else, including an unreachable host.
   The check runs **before** uploading, so a Worker that does not exist, is public, or is gated by
-  the wrong organisation is refused with nothing uploaded. It runs again after the deploy, and on
-  an optional preview alias (`alias: report-2026-08`) after its upload. Each check probes the site
-  root and one real non-HTML file from the build, so a gate on the entry point alone cannot pass.
-  The URLs are constructed from inputs, never parsed from wrangler's output. The action does not
+  the wrong organisation is refused with nothing uploaded. It runs again after the deploy, on
+  production and on the new version's own preview URL (the config enables preview URLs, and a
+  gate on the production hostname alone would leave that one public). It also runs when wrangler
+  fails, because wrangler can fail after the version is live. An optional preview alias
+  (`alias: report-2026-08`) is checked after its upload. Each check probes the site root and one
+  real non-HTML file from the build, so a gate on the entry point alone cannot pass. The output
+  URLs are constructed from inputs, never parsed from wrangler's output; only the version
+  preview URL, which is probed but never output, comes from wrangler's version ID. The action does not
   create Workers or provision Access: an admin creates and gates each Worker once, and the deploy
   token is account-owned with Editor on that one Worker, so it cannot create an ungated Worker
   either. It takes the lessons of #105 for itself. wrangler is pinned exactly and installed with
@@ -30,7 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CI**: four `deploy-cloudflare` harness jobs, none needing a Cloudflare account.
   `dc-gate-probe` runs the probe against a local stand-in (`.github/fixtures/access-gate/`) for
   every response shape. `dc-refuses-ungated` asserts that a Worker which does not exist is refused
-  before wrangler is even installed. `dc-inputs` asserts that every invalid input fails in
+  before wrangler is even installed, with a positive control showing the same inputs reach
+  wrangler once the gate is off. `dc-inputs` asserts that every invalid input fails in
   validation, including #163's own example alias `2026-08`, which Cloudflare rejects because
   aliases must start with a letter. `dc-wrangler-config` dry-runs the generated config through the
   pinned wrangler, which is what a Dependabot bump of the lockfile is tested against. A real deploy
