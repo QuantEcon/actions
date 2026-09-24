@@ -143,9 +143,12 @@ Restores only `.jupyter_cache` directory containing cached notebook execution ou
 ## Cache Status Report
 
 The action prints a cache status report for debugging. This is a read-only restore of a build
-cache that found an earlier save. Saved keys end in the saving run's id, so a read-only restore
-never matches its key exactly: `Cache Hit` reads `false` and `Matched Key` shows what was restored.
-The lines from `Path:` down sit in a collapsible "Cache Contents" group.
+cache that found an earlier save. With the generated key, saved keys end in the saving run's id,
+so a read-only restore never matches its key exactly. The report's `Cache Hit` line is
+`actions/cache`'s exact-match flag and reads `false`; `Matched Key` shows what was restored, and the
+action's own `cache-hit` output is `true`. `{update-hash}` is empty when `environment-update` is
+unset, so the key then reads `build-{env-hash}--`. The lines from `Path:` down sit in a collapsible
+"Cache Contents" group.
 
 ```
 ╔════════════════════════════════════════════════════════════════╗
@@ -153,9 +156,9 @@ The lines from `Path:` down sit in a collapsible "Cache Contents" group.
 ╚════════════════════════════════════════════════════════════════╝
 
   Cache Type:     build
-  Requested Key:  build-<env-hash>-<update-hash>-
+  Requested Key:  build-{env-hash}-{update-hash}-
   Cache Hit:      false (exact key match)
-  Matched Key:    build-<env-hash>-<update-hash>-35963034770
+  Matched Key:    build-{env-hash}-{update-hash}-35963034770
   Save Cache:     false
 
 ════════════════════════════════════════════════════════════════════
@@ -164,9 +167,9 @@ The lines from `Path:` down sit in a collapsible "Cache Contents" group.
 
 Path: _build
 
-Total Size: 156M
+Total Size: 164M
 
-Files: 1247
+Files: 1342
 Directories: 89
 
 ── Directory Sizes ──
@@ -178,7 +181,7 @@ Directories: 89
   html/: 120M (1100 files)
   latex/: 30M (45 files)
   jupyter/: 7.0M (95 files)
-  .jupyter_cache/: 6M
+  .jupyter_cache/: 6.0M
 ```
 
 ## Setting Up Cache Generation
