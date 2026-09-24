@@ -85,7 +85,7 @@ runs:
         # file's own name:, so a delta saying `name: lecture-python` went to
         # envs/lecture-python, which is not on PATH, and the build then failed
         # with ModuleNotFoundError. -n "$ENV_NAME" is no better: a container-mode
-        # host whose stack lives in base (docs/GPU-AMI-SETUP.md) would get a fresh
+        # host whose stack lives in base (docs/dev/GPU-AMI-SETUP.md) would get a fresh
         # envs/quantecon, because conda env update creates a missing prefix
         # without a word. So target the prefix, and require it to be a conda env.
         if ! TARGET="$(python -c 'import sys; print(sys.prefix)')" || [ ! -d "$TARGET/conda-meta" ]; then

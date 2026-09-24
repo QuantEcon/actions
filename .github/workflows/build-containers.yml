@@ -5,6 +5,12 @@ on:
     branches: [main]
     paths:
       - 'containers/**'
+      # READMEs only: the Dockerfiles COPY nothing but environment.yml, so a
+      # README edit cannot change an image, and without this it rebuilds and
+      # pushes both :latest tags and re-runs the container test workflows.
+      # Not every .md: the smoke-test fixture's pages under tests/ are
+      # Markdown, and an edit there must still reach test-container.yml.
+      - '!containers/**/README.md'
       - '.github/workflows/build-containers.yml'
   schedule:
     # Weekly Monday at 2am UTC

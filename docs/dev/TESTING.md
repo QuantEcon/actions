@@ -44,7 +44,7 @@ The container fixture at `containers/quantecon/tests/minimal-jupyter-book/` also
 
 ### `tests/local/` (git-ignored)
 
-Scratch space for local clones of real lecture repos, used to test workflows on your own machine against something larger than the committed fixture. Ignored via `tests/local/` in `.gitignore`, so it exists only in your working tree — never committed, and read by no workflow. See [tests/README.md](tests/README.md) for the wider layout.
+Scratch space for local clones of real lecture repos, used to test workflows on your own machine against something larger than the committed fixture. Ignored via `tests/local/` in `.gitignore`, so it exists only in your working tree — never committed, and read by no workflow. See [tests/README.md](../../tests/README.md) for the wider layout.
 
 > **Not to be confused with [`QuantEcon/test-actions-lecture-intro`](https://github.com/QuantEcon/test-actions-lecture-intro)**, the canary repo that runs the actions in real CI (#100 stage 2). This is a throwaway directory; that is a live repo.
 >
@@ -366,6 +366,6 @@ ls -la ~/.conda/pkgs || echo "No conda cache"
 
 ## See Also
 
-- [docs/CONTAINER-GUIDE.md](./docs/CONTAINER-GUIDE.md) - Container usage
-- [docs/MIGRATION-GUIDE.md](./docs/MIGRATION-GUIDE.md) - Migration steps
-- [containers/quantecon/README.md](./containers/quantecon/README.md) - Container details
+- [docs/CONTAINER-GUIDE.md](../CONTAINER-GUIDE.md) - Container usage
+- [docs/MIGRATION-GUIDE.md](../MIGRATION-GUIDE.md) - Migration steps
+- [containers/quantecon/README.md](../../containers/quantecon/README.md) - Container details

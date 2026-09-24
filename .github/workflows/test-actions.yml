@@ -109,7 +109,7 @@ jobs:
           # therefore makes the harness RUN. Forgetting to extend this list
           # costs CI minutes (free on a public repo); forgetting to extend a
           # cover list would silently rubber-stamp untested action changes.
-          IGNORED='^(CHANGELOG|README|PLAN|TESTING|CONTRIBUTING|PROJECT-OPTIMIZE-PREVIEWS)\.md$|^LICENSE$|^\.gitignore$|^docs/|^tests/|^templates/|^\.github/(ISSUE_TEMPLATE|PULL_REQUEST_TEMPLATE|dependabot\.yml)|^[A-Za-z0-9_.-]+/README\.md$'
+          IGNORED='^(AGENTS|CHANGELOG|README|CONTRIBUTING)\.md$|^LICENSE$|^\.gitignore$|^docs/|^tests/|^templates/|^\.github/(ISSUE_TEMPLATE|PULL_REQUEST_TEMPLATE|dependabot\.yml)|^[A-Za-z0-9_.-]+/README\.md$'
 
           run_everything() { echo "relevant=true" >> "$GITHUB_OUTPUT"; echo "$1"; exit 0; }
 
@@ -136,7 +136,7 @@ jobs:
               echo "::error::gate self-test: IGNORED matches [$p], which must always run the harness"; exit 1
             fi
           done
-          for p in CHANGELOG.md .gitignore PLAN.md tests/README.md; do
+          for p in CHANGELOG.md AGENTS.md .gitignore docs/dev/PLAN.md tests/README.md; do
             if ! grep -Eq "$IGNORED" <<< "$p"; then
               echo "::error::gate self-test: IGNORED no longer matches [$p]"; exit 1
             fi
@@ -935,7 +935,7 @@ jobs:
     # Asserting "aborted before setup" needs a run in which setup would NOT
     # have failed, or the old code's setup-phase abort (no environment.yml
     # here) would pass the same assertions. So the runner is made a
-    # container-mode host, the same marker file docs/GPU-AMI-SETUP.md puts on a
+    # container-mode host, the same marker file docs/dev/GPU-AMI-SETUP.md puts on a
     # GPU AMI: the internal setup-environment@v0 then skips conda entirely, and
     # every build the parser enables fails in seconds on the missing
     # source-dir. The per-builder statuses therefore record exactly which

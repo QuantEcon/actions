@@ -4,7 +4,7 @@ Quick guide for using QuantEcon container infrastructure.
 
 ## What's Available
 
-Two container images (see [ARCHITECTURE.md](./ARCHITECTURE.md) for the rationale):
+Two container images (see [ARCHITECTURE.md](./dev/ARCHITECTURE.md) for the rationale):
 
 - **`ghcr.io/quantecon/quantecon:latest`** — full image (8.60 GB on disk, 3.33 GB compressed pull): Ubuntu 24.04 LTS + TexLive + Miniconda/Python 3.13 + Anaconda 2026.06 (numpy, scipy, pandas, matplotlib, jupyter) + Jupyter Book 1.0.4post1 and extensions.
 - **`ghcr.io/quantecon/quantecon-build:latest`** — lean image (7.32 GB on disk, 2.93 GB compressed pull): the build toolchain (LaTeX for PDF builds + Jupyter Book) without the full Anaconda metapackage; repos install their own packages from `environment.yml`. (LaTeX dominates, so it's only modestly smaller than the full image.)
@@ -149,5 +149,4 @@ gh workflow run build-containers.yml
 ## See Also
 
 - [containers/quantecon/README.md](../containers/quantecon/README.md) - Detailed container docs
-- [FUTURE-DEVELOPMENT.md](./FUTURE-DEVELOPMENT.md) - GPU support plans
 - [MIGRATION-GUIDE.md](./MIGRATION-GUIDE.md) - Migrating lecture repos

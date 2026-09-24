@@ -449,7 +449,7 @@ export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
 - Slower to iterate vs pulling a container
 - Per-cloud-provider setup
 
-**Future:** If GitHub launches official GPU runners, we may sunset the custom AMI approach. See [FUTURE-DEVELOPMENT.md](FUTURE-DEVELOPMENT.md).
+**Future:** If GitHub launches official GPU runners, we may sunset the custom AMI approach.
 
 ### JAX Bundled CUDA vs System CUDA
 
