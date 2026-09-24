@@ -32,6 +32,7 @@ restore-jupyter-cache/→ Restore execution cache (PR workflows)
 build-lectures/       → Build Jupyter Book (multi-format, asset assembly)
 preview-netlify/      → Deploy to Netlify for PR previews
 preview-cloudflare/   → Deploy to Cloudflare Pages for PR previews
+deploy-cloudflare/    → Deploy a members-only site to a Cloudflare Worker behind Access
 publish-gh-pages/     → Deploy to GitHub Pages
 ```
 
