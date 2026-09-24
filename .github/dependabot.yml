@@ -85,6 +85,7 @@ updates:
       - "/restore-jupyter-cache"
       - "/preview-netlify"
       - "/preview-cloudflare"
+      - "/deploy-cloudflare"
       - "/publish-gh-pages"
     schedule:
       interval: "weekly"
@@ -108,6 +109,34 @@ updates:
     ignore:
       # Don't propose bumps to our own internal sibling references (floating @v0).
       - dependency-name: "quantecon/actions*"
+
+  # ── npm (deploy-cloudflare's wrangler) ─────────────────────────────────────
+  # deploy-cloudflare installs wrangler with `npm ci` from the lockfile in its
+  # own directory, so the exact version is committed and bumps arrive here.
+  # The action harness dry-runs the generated config through the bumped
+  # wrangler (dc-wrangler-config), so a bump that breaks it goes red in CI.
+  - package-ecosystem: "npm"
+    directories:
+      - "/deploy-cloudflare"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "maintenance"
+    commit-message:
+      prefix: "deps"
+    groups:
+      npm:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      npm-major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
 
   # ── Container base image ───────────────────────────────────────────────────
   # Tracks the `FROM ubuntu:24.04` base in each Dockerfile (not the Miniconda

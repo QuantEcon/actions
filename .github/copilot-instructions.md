@@ -38,6 +38,7 @@ quantecon/actions/
 ├── restore-jupyter-cache/   # Cache restore action (PRs)
 ├── preview-netlify/         # Netlify PR preview action
 ├── preview-cloudflare/      # Cloudflare Pages PR preview action
+├── deploy-cloudflare/       # Members-only Worker deploy behind Cloudflare Access
 ├── publish-gh-pages/        # GitHub Pages publishing action
 ├── templates/               # Workflow templates for lecture repos
 └── docs/                    # Comprehensive documentation
@@ -132,5 +133,5 @@ gh run view RUN_ID --log > /tmp/gh-logs.txt && cat /tmp/gh-logs.txt
 - **Updated:** June 16, 2026
 - **Current Phase:** Infrastructure complete, ready for production migration (latest release: v0.11.1)
 - **Containers:** ghcr.io/quantecon/quantecon:latest (full, 3.33 GB compressed / 8.60 GB on disk), ghcr.io/quantecon/quantecon-build:latest (lean, 2.93 GB compressed / 7.32 GB on disk)
-- **Actions:** 7 composite actions complete and tested
+- **Actions:** 8 composite actions (`deploy-cloudflare`'s real deploy is not exercised in CI; see TESTING.md)
 - **Next:** Begin Phase 1 migration with lecture-dp repo

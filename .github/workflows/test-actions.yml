@@ -1112,6 +1112,335 @@ jobs:
           echo "✅ execution cache round-trip: build-jupyter-cache → restore-jupyter-cache"
 
   # ==========================================================================
+  # deploy-cloudflare (#163) — no Cloudflare account, no secrets
+  # ==========================================================================
+  #
+  # A real deploy needs a gated Worker and a token, which a PR harness cannot
+  # hold, so the first real deploy is the only proof of that half. What these
+  # jobs can prove without one: that the gate probe tells every response shape
+  # apart, that the action refuses before installing anything when the gate is
+  # absent, that bad inputs fail fast, and that the pinned wrangler (which
+  # Dependabot bumps) still accepts the config the action generates.
+
+  dc-gate-probe:
+    name: 'deploy-cloudflare: the Access gate probe tells every response shape apart'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    steps:
+      - uses: actions/checkout@v7
+
+      # server.py answers each path the way one real configuration would; see
+      # its docstring. The probe's expected-failure annotations are rewritten
+      # so a green run does not show a wall of red ::error:: lines.
+      - name: Probe a local stand-in for each gate configuration
+        env:
+          TEAM: quantecon-harness.cloudflareaccess.com
+        run: |
+          set -euo pipefail
+          python3 .github/fixtures/access-gate/server.py 8765 > "$RUNNER_TEMP/server.log" 2>&1 &
+          for _ in $(seq 1 50); do curl -s -o /dev/null http://127.0.0.1:8765/missing && break; sleep 0.2; done
+          B=http://127.0.0.1:8765
+
+          expect() {
+            local want=$1 pattern=$2; shift 2
+            local got=0 out
+            out=$(bash scripts/check-access-gate.sh "$@" 2>&1) || got=$?
+            printf '%s\n' "${out//::error::/  (expected) }"
+            [ "$got" = "$want" ] || { echo "::error::probe exited [$got], expected [$want] for: $*"; exit 1; }
+            grep -q -- "$pattern" <<< "$out" || { echo "::error::probe output lacks [$pattern] for: $*"; exit 1; }
+          }
+
+          # Gated: the redirect lands on exactly the team domain, on the root
+          # and on an asset path, including a mixed-case host with :443.
+          expect 0 'PASS  302' "$TEAM" "$B/gated/" "$B/gated/data/latest.json"
+          expect 0 'PASS  302' "$TEAM" "$B/mixed-case"
+          expect 0 'PASS  302' "QuantEcon-Harness.CloudflareAccess.com" "$B/gated/"
+
+          # Not gated, each for its own reason.
+          expect 1 'wrong Access organisation' "$TEAM" "$B/wrong-org/"
+          expect 1 'THE SITE IS PUBLIC'        "$TEAM" "$B/public/"
+          expect 1 'not behind Access'         "$TEAM" "$B/same-host/"
+          expect 1 '<no Location>'             "$TEAM" "$B/no-location"
+          expect 1 'answered 404'              "$TEAM" "$B/missing"
+          expect 1 'answered 500'              "$TEAM" "$B/broken"
+          expect 1 'ambiguous Location'        "$TEAM" "$B/userinfo"
+          expect 1 'could not be reached'      "$TEAM" "http://127.0.0.1:9/"
+          # One public path fails the whole check, even when the root is gated:
+          # the case the asset probe exists for.
+          expect 1 'THE SITE IS PUBLIC'        "$TEAM" "$B/gated/" "$B/public/data/latest.json"
+
+          expect 2 'usage:' "$TEAM"
+          # An empty team must not match the empty host of a Location-less 302.
+          expect 2 'must be <team>' "" "$B/no-location"
+          echo "✅ check-access-gate.sh passes only a redirect to the exact team domain"
+
+  dc-refuses-ungated:
+    name: 'deploy-cloudflare: refuses before installing anything when the Worker is not gated'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Create a site to (not) deploy
+        run: |
+          mkdir -p harness-site/data
+          echo '<h1>private</h1>' > harness-site/index.html
+          echo '{}' > harness-site/data/latest.json
+
+      # A real request to workers.dev for a Worker that does not exist: the
+      # answer is a 404 or an error, never a redirect to the team domain. If
+      # workers.dev is unreachable the probe fails too, so this cannot go
+      # green by accident. The token is fake: if the action got as far as
+      # wrangler, the directory assertion below would catch it.
+      - name: Deploy to a Worker that does not exist (expected to refuse)
+        id: deploy
+        continue-on-error: true
+        uses: ./deploy-cloudflare
+        with:
+          cloudflare-api-token: 'harness-fake-token'
+          cloudflare-account-id: '00000000000000000000000000000000'
+          worker-name: 'harness-no-such-worker'
+          account-subdomain: 'quantecon-harness-nonexistent'
+          team-domain: 'quantecon-harness'
+          build-dir: 'harness-site'
+
+      - name: Assert the refusal came before wrangler
+        env:
+          OUTCOME: ${{ steps.deploy.outcome }}
+          DEPLOY_URL: ${{ steps.deploy.outputs.deploy-url }}
+        run: |
+          [ "$OUTCOME" = "failure" ] || { echo "::error::outcome: expected [failure] for an ungated Worker, got [$OUTCOME]"; exit 1; }
+          [ -z "$DEPLOY_URL" ] || { echo "::error::deploy-url: expected empty (nothing deployed), got [$DEPLOY_URL]"; exit 1; }
+          # The prevention claim: wrangler was never even installed, so nothing
+          # can have been uploaded.
+          [ ! -e "$RUNNER_TEMP/deploy-cloudflare" ] || { echo "::error::$RUNNER_TEMP/deploy-cloudflare exists — the action reached the wrangler install despite the failed gate check"; exit 1; }
+          echo "✅ an ungated Worker is refused before anything is installed or uploaded"
+
+      # Positive control, so the refusal above is attributable to the gate
+      # check: the same inputs with the gate off pass validation, set up Node
+      # and install the pinned wrangler, and only then fail (the token is fake).
+      - name: Same inputs with the gate off (expected to reach wrangler, then fail)
+        id: control
+        continue-on-error: true
+        uses: ./deploy-cloudflare
+        with:
+          cloudflare-api-token: 'harness-fake-token'
+          cloudflare-account-id: '00000000000000000000000000000000'
+          worker-name: 'harness-no-such-worker'
+          account-subdomain: 'quantecon-harness-nonexistent'
+          team-domain: 'quantecon-harness'
+          build-dir: 'harness-site'
+          require-access: 'false'
+
+      - name: Assert only the gate check stood between these inputs and wrangler
+        env:
+          OUTCOME: ${{ steps.control.outcome }}
+          DEPLOY_URL: ${{ steps.control.outputs.deploy-url }}
+        run: |
+          [ "$OUTCOME" = "failure" ] || { echo "::error::outcome: expected [failure] with a fake token, got [$OUTCOME]"; exit 1; }
+          [ -z "$DEPLOY_URL" ] || { echo "::error::deploy-url: expected empty with a fake token, got [$DEPLOY_URL]"; exit 1; }
+          [ -x "$RUNNER_TEMP/deploy-cloudflare/node_modules/.bin/wrangler" ] || { echo "::error::wrangler was not installed — the same inputs did not get past validation and the Node/npm steps with the gate off"; exit 1; }
+          [ -f "$RUNNER_TEMP/deploy-cloudflare/harness-no-such-worker.wrangler.jsonc" ] || { echo "::error::the generated config is missing — the action stopped before writing it"; exit 1; }
+          echo "✅ with the gate off the same inputs reach wrangler, so the refusal above came from the gate check"
+
+  dc-inputs:
+    name: 'deploy-cloudflare: invalid inputs fail before anything runs'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Create a site
+        run: |
+          mkdir -p harness-site
+          echo '<h1>private</h1>' > harness-site/index.html
+
+      # Every case but `require` also sets require-access: 'false', so a
+      # validation rule that went missing would reach the wrangler install (the
+      # gate check would otherwise fail the case for a different reason) and
+      # the directory assertion at the end would catch it.
+
+      # Secrets arrive empty, not absent, on fork and Dependabot runs.
+      - name: Empty token
+        id: token
+        continue-on-error: true
+        uses: ./deploy-cloudflare
+        with:
+          cloudflare-api-token: ''
+          cloudflare-account-id: '00000000000000000000000000000000'
+          worker-name: 'harness-worker'
+          account-subdomain: 'quantecon-harness'
+          team-domain: 'quantecon-harness'
+          build-dir: 'harness-site'
+          require-access: 'false'
+
+      # The URL is constructed from the name, so it must be a hostname label.
+      - name: Worker name that is not a hostname label
+        id: worker
+        continue-on-error: true
+        uses: ./deploy-cloudflare
+        with:
+          cloudflare-api-token: 'harness-fake-token'
+          cloudflare-account-id: '00000000000000000000000000000000'
+          worker-name: 'Harness_Worker'
+          account-subdomain: 'quantecon-harness'
+          team-domain: 'quantecon-harness'
+          build-dir: 'harness-site'
+          require-access: 'false'
+
+      # #163's own example. Cloudflare requires a leading letter and wrangler
+      # does not check before uploading.
+      - name: Alias starting with a digit
+        id: alias-digit
+        continue-on-error: true
+        uses: ./deploy-cloudflare
+        with:
+          cloudflare-api-token: 'harness-fake-token'
+          cloudflare-account-id: '00000000000000000000000000000000'
+          worker-name: 'harness-worker'
+          account-subdomain: 'quantecon-harness'
+          team-domain: 'quantecon-harness'
+          build-dir: 'harness-site'
+          require-access: 'false'
+          alias: '2026-08'
+
+      - name: Alias too long for one hostname label
+        id: alias-long
+        continue-on-error: true
+        uses: ./deploy-cloudflare
+        with:
+          cloudflare-api-token: 'harness-fake-token'
+          cloudflare-account-id: '00000000000000000000000000000000'
+          worker-name: 'harness-worker'
+          account-subdomain: 'quantecon-harness'
+          team-domain: 'quantecon-harness'
+          build-dir: 'harness-site'
+          require-access: 'false'
+          alias: 'report-2026-08-with-a-description-long-enough-to-overflow'
+
+      - name: Team domain that is not an Access login domain
+        id: team
+        continue-on-error: true
+        uses: ./deploy-cloudflare
+        with:
+          cloudflare-api-token: 'harness-fake-token'
+          cloudflare-account-id: '00000000000000000000000000000000'
+          worker-name: 'harness-worker'
+          account-subdomain: 'quantecon-harness'
+          team-domain: 'quantecon.example.com'
+          build-dir: 'harness-site'
+          require-access: 'false'
+
+      # A typo must never read as "off". The one case left with the gate on:
+      # an unrecognised value must not reach it, or skip it.
+      - name: require-access that is neither true nor false
+        id: require
+        continue-on-error: true
+        uses: ./deploy-cloudflare
+        with:
+          cloudflare-api-token: 'harness-fake-token'
+          cloudflare-account-id: '00000000000000000000000000000000'
+          worker-name: 'harness-worker'
+          account-subdomain: 'quantecon-harness'
+          team-domain: 'quantecon-harness'
+          build-dir: 'harness-site'
+          require-access: 'yes'
+
+      - name: Missing build directory
+        id: build-dir
+        continue-on-error: true
+        uses: ./deploy-cloudflare
+        with:
+          cloudflare-api-token: 'harness-fake-token'
+          cloudflare-account-id: '00000000000000000000000000000000'
+          worker-name: 'harness-worker'
+          account-subdomain: 'quantecon-harness'
+          team-domain: 'quantecon-harness'
+          build-dir: 'harness-no-such-dir'
+          require-access: 'false'
+
+      - name: Assert every invalid input failed and nothing was installed
+        env:
+          RESULTS: |
+            token ${{ steps.token.outcome }} ${{ steps.token.outputs.deploy-url }}
+            worker ${{ steps.worker.outcome }} ${{ steps.worker.outputs.deploy-url }}
+            alias-digit ${{ steps.alias-digit.outcome }} ${{ steps.alias-digit.outputs.deploy-url }}
+            alias-long ${{ steps.alias-long.outcome }} ${{ steps.alias-long.outputs.deploy-url }}
+            team ${{ steps.team.outcome }} ${{ steps.team.outputs.deploy-url }}
+            require ${{ steps.require.outcome }} ${{ steps.require.outputs.deploy-url }}
+            build-dir ${{ steps.build-dir.outcome }} ${{ steps.build-dir.outputs.deploy-url }}
+        run: |
+          set -euo pipefail
+          bad=0 n=0
+          while read -r case outcome url; do
+            [ -n "$case" ] || continue
+            n=$((n + 1))
+            if [ "$outcome" != "failure" ] || [ -n "${url:-}" ]; then
+              echo "::error::[$case]: expected outcome=failure and no deploy-url, got outcome=[$outcome] deploy-url=[${url:-}]"
+              bad=1
+            else
+              echo "✓ $case rejected"
+            fi
+          done <<< "$RESULTS"
+          [ "$n" -eq 7 ] || { echo "::error::expected 7 cases, read $n"; exit 1; }
+          [ ! -e "$RUNNER_TEMP/deploy-cloudflare" ] || { echo "::error::$RUNNER_TEMP/deploy-cloudflare exists — an invalid input got as far as the wrangler install"; bad=1; }
+          [ "$bad" -eq 0 ]
+          echo "✅ every invalid input fails in validation, before any network call or install"
+
+  dc-wrangler-config:
+    name: 'deploy-cloudflare: the pinned wrangler accepts the generated config'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    steps:
+      - uses: actions/checkout@v7
+
+      # The action installs Node itself only below 22; the runner's default
+      # may be older, so set it here the way the action would.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      # Same lockfile, same config writer, same flags as the action, with
+      # --dry-run so no account is needed. This is the check a Dependabot bump
+      # of wrangler in deploy-cloudflare/package-lock.json runs against.
+      - name: Dry-run a deploy and an alias upload
+        env:
+          CI: 'true'
+          WRANGLER_SEND_METRICS: 'false'
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/wrangler-check"
+          mkdir -p "$dir" "$RUNNER_TEMP/site/data"
+          cp deploy-cloudflare/package.json deploy-cloudflare/package-lock.json "$dir/"
+          npm ci --prefix "$dir" --no-audit --no-fund
+          echo '<h1>ok</h1>' > "$RUNNER_TEMP/site/index.html"
+          echo '{}' > "$RUNNER_TEMP/site/data/latest.json"
+
+          node deploy-cloudflare/write-config.js "$dir/harness.wrangler.jsonc" harness-worker "$RUNNER_TEMP/site"
+          cat "$dir/harness.wrangler.jsonc"
+
+          wrangler="$dir/node_modules/.bin/wrangler"
+          "$wrangler" deploy --config "$dir/harness.wrangler.jsonc" --message "harness" --dry-run 2>&1 | tee "$RUNNER_TEMP/deploy.log"
+          grep -q 'files from the assets directory' "$RUNNER_TEMP/deploy.log" \
+            || { echo "::error::wrangler deploy --dry-run did not read the assets directory from the generated config"; exit 1; }
+          "$wrangler" versions upload --config "$dir/harness.wrangler.jsonc" --preview-alias report-2026-08 --message "harness" --dry-run 2>&1 | tee "$RUNNER_TEMP/upload.log"
+          # wrangler only warns on a config key it no longer knows, and a
+          # dropped key (preview_urls, say) would silently change behaviour.
+          if grep -q 'Unexpected fields' "$RUNNER_TEMP/deploy.log" "$RUNNER_TEMP/upload.log"; then
+            echo "::error::the pinned wrangler does not recognise a key in the generated config (see 'Unexpected fields' above)"; exit 1
+          fi
+          echo "✅ wrangler $("$wrangler" --version | tail -1) accepts the generated config for deploy and versions upload"
+
+  # ==========================================================================
   # Single anchor for branch protection
   # ==========================================================================
 
@@ -1139,6 +1468,10 @@ jobs:
       - bjc-builders-parse
       - bjc-restore-build
       - bjc-restore-exec
+      - dc-gate-probe
+      - dc-refuses-ungated
+      - dc-inputs
+      - dc-wrangler-config
     steps:
       # This is the job intended to be the single required status check, so it
       # has to be correct in BOTH shapes the gate can produce, and must never be
