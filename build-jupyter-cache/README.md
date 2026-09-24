@@ -17,11 +17,12 @@ This ensures PRs always have a working cache to restore, even when the weekly bu
 
 | Input | Description | Required | Default |
 |-------|-------------|----------|---------|
-| `builders` | Comma-separated builders: jupyter, pdflatex, html | No | `html` |
+| `builders` | Comma-separated builders: jupyter, pdflatex, html (whitespace also separates; an unknown name fails the run) | No | `html` |
 | `environment` | Path to environment.yml (non-container builds) | No | `environment.yml` |
 | `environment-update` | Path to delta environment.yml for container builds | No | `''` |
 | `source-dir` | Source directory for lectures | No | `lectures` |
-| `upload-artifact` | Upload _build as artifact | No | `true` |
+| `latex-requirements-file` | Path to the `latex-requirements.txt` passed to `setup-environment`. Used only in standard (non-container) mode when `pdflatex` is among the builders | No | `latex-requirements.txt` |
+| `upload-artifact` | Upload `_build` as an artifact when a build fails (on success the cache already holds it) | No | `true` |
 | `artifact-retention-days` | Days to retain artifact | No | `30` |
 | `create-issue-on-failure` | Create GitHub issue on failure | No | `true` |
 | `issue-assignees` | Comma-separated usernames for issue | No | `''` |
@@ -86,7 +87,7 @@ jobs:
       issues: write             # required while create-issue-on-failure is true
       packages: read            # required to pull the container image
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: quantecon/actions/build-jupyter-cache@v0
 ```
 
@@ -138,8 +139,7 @@ jobs:
 ├─────────────────────────────────────────────────────────────┤
 │ 4a. ALL PASSED                                             │
 │     ├── Save build cache                                   │
-│     ├── Save execution cache                               │
-│     └── Upload artifact                                    │
+│     └── Save execution cache                               │
 ├─────────────────────────────────────────────────────────────┤
 │ 4b. ANY FAILED                                             │
 │     ├── DO NOT save cache (preserve existing)              │
@@ -187,7 +187,7 @@ jobs:
     container:
       image: ghcr.io/quantecon/quantecon:latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: quantecon/actions/build-jupyter-cache@v0
 ```
 
@@ -203,7 +203,7 @@ jobs:
   cache:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: quantecon/actions/build-jupyter-cache@v0
         with:
           builders: 'jupyter,pdflatex,html'

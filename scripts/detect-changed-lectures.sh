@@ -26,7 +26,11 @@ echo "Detecting changed lecture files in ${lectures_dir}..."
 git fetch origin "${BASE_SHA}:refs/remotes/origin/pr-base" 2>/dev/null || true
 git fetch origin "${HEAD_SHA}:refs/remotes/origin/pr-head" 2>/dev/null || true
 
-all_changed=$(git diff --name-status "${BASE_SHA}..${HEAD_SHA}" 2>/dev/null || echo "")
+# --no-renames: a rename is reported as R<score> with two paths, which the
+# A/M filter below drops, so a renamed lecture got no preview link. Without
+# rename detection it decomposes into D (old path) + A (new path), and the A
+# half is kept like any other added lecture.
+all_changed=$(git diff --no-renames --name-status "${BASE_SHA}..${HEAD_SHA}" 2>/dev/null || echo "")
 
 changed_lecture_files=""
 if [ -n "$all_changed" ]; then

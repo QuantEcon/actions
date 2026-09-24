@@ -44,7 +44,10 @@ jobs:
       # ─── Standard Runner Alternative ───────────────────────────────
       # Remove the 'container' block. The build-jupyter-cache action
       # calls setup-environment internally, which will install Conda
-      # and (optionally) LaTeX on a standard runner.
+      # and, when builders include pdflatex, LaTeX on a standard runner.
+      # That LaTeX install reads latex-requirements.txt at the repository
+      # root and fails if it is missing; start from the example at
+      # https://github.com/QuantEcon/actions/blob/main/templates/latex-requirements.txt
       # ───────────────────────────────────────────────────────────────
 
     permissions:
@@ -54,7 +57,11 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+        with:
+          # Full history: each page's "Last changed" date and changelog come
+          # from git log. A shallow clone dates every page to the checkout commit.
+          fetch-depth: 0
 
       # Build all requested formats and save cache.
       # Only saves if ALL builds succeed — preserves existing cache on failure.
@@ -89,5 +96,5 @@ jobs:
           # issue-labels: 'build-failure,automated'
 
           # ─── Artifacts ─────────────────────────────────────────
-          upload-artifact: 'true'              # Upload _build for inspection
+          upload-artifact: 'true'              # Upload _build when a build fails, for inspection
           artifact-retention-days: '30'

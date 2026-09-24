@@ -109,7 +109,7 @@ jobs:
           # therefore makes the harness RUN. Forgetting to extend this list
           # costs CI minutes (free on a public repo); forgetting to extend a
           # cover list would silently rubber-stamp untested action changes.
-          IGNORED='^(CHANGELOG|README|PLAN|TESTING|CONTRIBUTING|PROJECT-OPTIMIZE-PREVIEWS)\.md$|^LICENSE$|^\.gitignore$|^docs/|^tests/|^templates/|^\.github/(ISSUE_TEMPLATE|PULL_REQUEST_TEMPLATE|dependabot\.yml)|^[A-Za-z0-9_.-]+/README\.md$'
+          IGNORED='^(AGENTS|CHANGELOG|README|CONTRIBUTING)\.md$|^LICENSE$|^\.gitignore$|^docs/|^tests/|^templates/|^\.github/(ISSUE_TEMPLATE|PULL_REQUEST_TEMPLATE|dependabot\.yml)|^[A-Za-z0-9_.-]+/README\.md$'
 
           run_everything() { echo "relevant=true" >> "$GITHUB_OUTPUT"; echo "$1"; exit 0; }
 
@@ -127,14 +127,16 @@ jobs:
           # avoid. Only real step invocations count.
           DIRS=$(grep -oE '^[[:space:]]*uses: \./[A-Za-z0-9_.-]+' .github/workflows/test-actions.yml | sed 's|.*\./||' | sort -u)
           [ -n "$DIRS" ] || { echo "::error::gate self-test: no 'uses: ./<action>' found in the harness — refusing to decide"; exit 1; }
-          MUST_RUN=".github/workflows/test-actions.yml .github/fixtures/mini-lectures/environment.yml"
+                    # The lockfiles are listed by hand: preview-cli-install tests them
+          # without a `uses: ./` line, because the actions need deploy secrets.
+          MUST_RUN=".github/workflows/test-actions.yml .github/fixtures/mini-lectures/environment.yml preview-cloudflare/package-lock.json preview-netlify/package-lock.json"
           for d in $DIRS; do MUST_RUN="$MUST_RUN $d/action.yml"; done
           for p in $MUST_RUN; do
             if grep -Eq "$IGNORED" <<< "$p"; then
               echo "::error::gate self-test: IGNORED matches [$p], which must always run the harness"; exit 1
             fi
           done
-          for p in CHANGELOG.md .gitignore PLAN.md tests/README.md; do
+          for p in CHANGELOG.md AGENTS.md .gitignore docs/dev/PLAN.md tests/README.md; do
             if ! grep -Eq "$IGNORED" <<< "$p"; then
               echo "::error::gate self-test: IGNORED no longer matches [$p]"; exit 1
             fi
@@ -187,6 +189,68 @@ jobs:
             echo "relevant=false" >> "$GITHUB_OUTPUT"
             echo "every changed path is on the ignore list — the harness does not apply"
           fi
+
+      # #109: templates/ is copied into consumer repos, so its third-party pins
+      # must not fall behind this repo's own workflows, and nothing else keeps
+      # them current. Dependabot's github-actions ecosystem scans
+      # .github/workflows/ and named action.yml files only; a `/templates` entry
+      # in dependabot.yml is a no-op. This lives in the gate, not in a gated
+      # job, because a templates-only PR matches IGNORED: a gated job would be
+      # skipped on exactly the PRs that can introduce drift, and
+      # harness-summary requires every gated job to skip then. Consequence: a
+      # Dependabot bump of such an action (actions/checkout) goes red here until
+      # the templates move in the same PR.
+      - name: Check templates/ pin the same third-party actions as .github/workflows/
+        run: |
+          set -euo pipefail
+
+          # owner/repo (lowercased: GitHub treats it case-insensitively) and ref
+          # of a remote `uses:`, with any sub-path dropped, so actions/cache/save@v6
+          # counts as actions/cache@v6. Commented-out lines never match.
+          re='^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]*([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)[^@[:space:]]*@([^[:space:]#]+)'
+          # A local action or a docker image: no pin to compare.
+          local_re='uses:[[:space:]]*(\./|docker://)'
+
+          # One "file:line<TAB>owner/repo<TAB>ref" per uses: in the given files.
+          # A remote uses: that the regex cannot read is emitted with repo '?',
+          # so the template check below fails closed on it instead of skipping.
+          pins() {
+            local hit file rest line text
+            while IFS= read -r hit; do
+              file=${hit%%:*}; rest=${hit#*:}; line=${rest%%:*}; text=${rest#*:}
+              text=${text//[\"\']/}
+              if [[ $text =~ $re ]]; then
+                printf '%s:%s\t%s\t%s\n' "$file" "$line" "${BASH_REMATCH[2],,}" "${BASH_REMATCH[3]}"
+              elif [[ ! $text =~ $local_re ]]; then
+                printf '%s:%s\t?\t%s\n' "$file" "$line" "${text#"${text%%[![:space:]]*}"}"
+              fi
+            done < <(grep -HnE '^[[:space:]]*(-[[:space:]]+)?uses:' "$@" || true)
+          }
+
+          WORKFLOW_PINS=$(pins .github/workflows/*.yml)
+          drift=0
+          checked=0
+          while IFS=$'\t' read -r loc repo ref; do
+            [ "$repo" != "quantecon/actions" ] || continue
+            checked=$((checked + 1))
+            if [ "$repo" = "?" ]; then
+              echo "::error file=${loc%%:*},line=${loc##*:}::cannot read the action reference in [$ref] at $loc, so its pin cannot be checked against .github/workflows/"
+              drift=1
+            elif awk -F'\t' -v r="$repo" -v v="$ref" '$2 == r && $3 == v { found = 1 } END { exit !found }' <<< "$WORKFLOW_PINS"; then
+              echo "  ok: $repo@$ref ($loc)"
+            else
+              have=$(awk -F'\t' -v r="$repo" '$2 == r { print $3 }' <<< "$WORKFLOW_PINS" | sort -u | paste -sd' ' -)
+              if [ -n "$have" ]; then
+                echo "::error file=${loc%%:*},line=${loc##*:}::$loc pins $repo@$ref, but .github/workflows/ pins it at [$have]. Dependabot bumps the workflows and cannot see templates/, so move the template to the same ref, in the same PR as the bump."
+              else
+                echo "::error file=${loc%%:*},line=${loc##*:}::$loc pins $repo@$ref, which .github/workflows/ never uses, so nothing keeps it current (Dependabot cannot see templates/). Pin it in a workflow too, or drop it from the template."
+              fi
+              drift=1
+            fi
+          done < <(pins templates/*.yml)
+
+          [ "$drift" -eq 0 ] || exit 1
+          echo "✅ templates/ third-party pins match .github/workflows/ ($checked checked)"
 
   # ==========================================================================
   # restore-jupyter-cache — unit jobs (synthetic fixtures, no conda, seconds)
@@ -464,7 +528,12 @@ jobs:
     timeout-minutes: 30
     needs: env-seed
     steps:
+      # Full history, so build-lectures' git check reads "Git history
+      # available" rather than warning about a shallow clone on every run. The
+      # fixture is an untracked copy, so its dates are not what this tests.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Recreate salted fixture
         run: |
@@ -519,7 +588,12 @@ jobs:
     timeout-minutes: 30
     needs: env-seed
     steps:
+      # Full history, so build-lectures' git check reads "Git history
+      # available" rather than warning about a shallow clone on every run. The
+      # fixture is an untracked copy, so its dates are not what this tests.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       # Same salt as env-seed, so the conda env restores from its cache.
       - name: Recreate salted fixture with a deliberately broken page
@@ -582,6 +656,77 @@ jobs:
             || { echo "::error::$REPORT is not the failure this job stages (missing the fixture's assertion message)"; sed -n '1,60p' "$REPORT"; exit 1; }
 
           echo "✅ a failing build fails the step, and the red is the staged CellExecutionError ($REPORT)"
+
+  # ==========================================================================
+  # setup-environment — container mode, in the real lean image
+  # ==========================================================================
+
+  env-container-update:
+    # #107: container mode ran `conda env update -f <file>` with no target, so
+    # conda took it from the file's own name: and a delta saying anything but
+    # the image's env went to a new envs/<name> that is not on PATH, while the
+    # step printed success and the build failed later on an import. The delta
+    # here deliberately says `name: wrong-name`; it must land in the env whose
+    # python is on PATH, create nothing else, and leave the image's own
+    # packages in place (no --prune).
+    #
+    # The package is a pip one, pinned, tiny and pure-Python, so the only conda
+    # work is a no-op solve for pip itself. It is checked absent from the image
+    # before the action runs, so a pass cannot come from the image alone.
+    name: 'setup-environment: container-mode delta lands in the env on PATH'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    permissions:
+      contents: read
+      packages: read          # pull the container image
+    container:
+      image: ghcr.io/quantecon/quantecon-build:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user root
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Write a delta file whose name is not the active environment
+        run: |
+          if python -c 'import cowsay' 2>/dev/null; then
+            echo "::error::cowsay is already importable in the image, so this job cannot tell whether the delta was applied. Pick a package the image does not ship."
+            exit 1
+          fi
+          mkdir -p harness
+          printf '%s\n' \
+            'name: wrong-name' \
+            'dependencies:' \
+            '  - pip' \
+            '  - pip:' \
+            '    - cowsay==6.1' > harness/environment-update.yml
+          cat harness/environment-update.yml
+
+      # Expect a ::warning:: that the file's name: disagrees with the active
+      # env — that is the action reporting the mismatch it now ignores.
+      - name: Setup environment (container mode, with the delta)
+        id: setup
+        uses: ./setup-environment
+        with:
+          environment-update: 'harness/environment-update.yml'
+
+      - name: Assert the delta landed in the environment on PATH
+        env:
+          CONTAINER_MODE: ${{ steps.setup.outputs.container-mode }}
+        run: |
+          [ "$CONTAINER_MODE" = "true" ] || { echo "::error::container-mode: expected [true] inside the quantecon-build image, got [$CONTAINER_MODE]"; exit 1; }
+          PREFIX=$(python -c 'import sys; print(sys.prefix)')
+          python -c 'import cowsay' \
+            || { echo "::error::cowsay is not importable by the python on PATH ($PREFIX): the delta went to some other environment"; exit 1; }
+          BASE=$(conda info --base)
+          [ ! -e "$BASE/envs/wrong-name" ] \
+            || { echo "::error::$BASE/envs/wrong-name exists: the update followed the delta file's name: key (the #107 defect)"; exit 1; }
+          python -c 'import jupyter_book, numpy' \
+            || { echo "::error::the image's own packages are gone from $PREFIX after the update: was it run with --prune?"; exit 1; }
+          echo "✅ the delta landed in $PREFIX, the environment on PATH, and the image's packages survived"
 
   # ==========================================================================
   # build-jupyter-cache — smoke + round-trip into restore-jupyter-cache.
@@ -717,8 +862,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Aborts in `Validate builders input` — this repo's own code, no conda,
-      # seconds. The composite never reaches setup-environment.
+      # Aborts in `Validate and parse builders input` — this repo's own code, no
+      # conda, seconds. The composite never reaches setup-environment.
       - name: Abort before setup (invalid builders input)
         id: pre
         continue-on-error: true
@@ -780,6 +925,127 @@ jobs:
           [ "$CACHE_SAVED" = "false" ] || { echo "::error::cache-saved: expected [false], got [$CACHE_SAVED]"; exit 1; }
           [ -z "$HTML_STATUS" ] || { echo "::error::html-status: expected empty (the build never started), got [$HTML_STATUS]"; exit 1; }
           echo "✅ a setup-environment failure resolves to build-success=false"
+
+  bjc-builders-parse:
+    # #107: `builders` used to be matched by substring, so 'html,pdf' passed
+    # validation and built html alone without a word, and 'nojupyter' switched
+    # the jupyter build ON. bjc-abort-guard's 'nonsense' cannot catch either:
+    # it contains no valid name at all, so the old code rejected it too.
+    #
+    # Asserting "aborted before setup" needs a run in which setup would NOT
+    # have failed, or the old code's setup-phase abort (no environment.yml
+    # here) would pass the same assertions. So the runner is made a
+    # container-mode host, the same marker file docs/dev/GPU-AMI-SETUP.md puts on a
+    # GPU AMI: the internal setup-environment@v0 then skips conda entirely, and
+    # every build the parser enables fails in seconds on the missing
+    # source-dir. The per-builder statuses therefore record exactly which
+    # builders were parsed: 'failure' = requested and attempted, 'skipped' =
+    # left out, empty = the parse aborted before anything ran. The two control
+    # cases come first; they prove the setup above is really a no-op, so the
+    # empty statuses of the rejected inputs cannot be a setup failure instead.
+    name: 'build-jupyter-cache: builders is parsed by exact token'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Mark the runner as a container-mode host
+        run: |
+          printf 'quantecon-container\nimage=harness-container-mode-host\n' | sudo tee /etc/quantecon-container
+
+      - name: 'Control: three comma-separated builders'
+        id: all
+        continue-on-error: true
+        uses: ./build-jupyter-cache
+        with:
+          builders: 'jupyter,pdflatex,html'
+          source-dir: 'harness/no-such-lectures'
+          create-issue-on-failure: 'false'
+          upload-artifact: 'false'
+          upload-failure-reports: 'false'
+
+      - name: Assert all three builders were attempted
+        env:
+          JUPYTER_STATUS: ${{ steps.all.outputs.jupyter-status }}
+          PDFLATEX_STATUS: ${{ steps.all.outputs.pdflatex-status }}
+          HTML_STATUS: ${{ steps.all.outputs.html-status }}
+        run: |
+          [ "$JUPYTER_STATUS/$PDFLATEX_STATUS/$HTML_STATUS" = "failure/failure/failure" ] \
+            || { echo "::error::expected every builder attempted (failure/failure/failure against a missing source-dir), got jupyter/pdflatex/html = [$JUPYTER_STATUS/$PDFLATEX_STATUS/$HTML_STATUS]. All empty means the builds never started: the container-mode host marker no longer makes setup a no-op, and the rejection cases below prove nothing until it does."; exit 1; }
+          echo "✅ 'jupyter,pdflatex,html' enabled all three builders"
+
+      # A YAML block value: newline, trailing comma and indentation all separate.
+      - name: 'Control: a block value with a trailing comma'
+        id: block
+        continue-on-error: true
+        uses: ./build-jupyter-cache
+        with:
+          builders: |
+            html,
+            pdflatex
+          source-dir: 'harness/no-such-lectures'
+          create-issue-on-failure: 'false'
+          upload-artifact: 'false'
+          upload-failure-reports: 'false'
+
+      - name: Assert exactly html and pdflatex were attempted
+        env:
+          JUPYTER_STATUS: ${{ steps.block.outputs.jupyter-status }}
+          PDFLATEX_STATUS: ${{ steps.block.outputs.pdflatex-status }}
+          HTML_STATUS: ${{ steps.block.outputs.html-status }}
+        run: |
+          [ "$JUPYTER_STATUS/$PDFLATEX_STATUS/$HTML_STATUS" = "skipped/failure/failure" ] \
+            || { echo "::error::expected jupyter/pdflatex/html = [skipped/failure/failure] for a two-line block value, got [$JUPYTER_STATUS/$PDFLATEX_STATUS/$HTML_STATUS]"; exit 1; }
+          echo "✅ a multi-line builders value parsed to html + pdflatex"
+
+      # Expect "Unknown builder" ::error:: annotations from these two in this
+      # job's log — they are the parser working correctly.
+      - name: Reject a partly unknown list ('html,pdf')
+        id: partial
+        continue-on-error: true
+        uses: ./build-jupyter-cache
+        with:
+          builders: 'html,pdf'
+          source-dir: 'harness/no-such-lectures'
+          create-issue-on-failure: 'false'
+          upload-artifact: 'false'
+          upload-failure-reports: 'false'
+
+      - name: Reject a name that merely contains a builder ('nojupyter')
+        id: substring
+        continue-on-error: true
+        uses: ./build-jupyter-cache
+        with:
+          builders: 'nojupyter'
+          source-dir: 'harness/no-such-lectures'
+          create-issue-on-failure: 'false'
+          upload-artifact: 'false'
+          upload-failure-reports: 'false'
+
+      # Same assertions as bjc-abort-guard's pre-setup abort, applied to both.
+      - name: Assert both aborted before setup, with no builder run
+        env:
+          PARTIAL_OUTCOME: ${{ steps.partial.outcome }}
+          PARTIAL_SUCCESS: ${{ steps.partial.outputs.build-success }}
+          PARTIAL_STATUSES: ${{ steps.partial.outputs.jupyter-status }}/${{ steps.partial.outputs.pdflatex-status }}/${{ steps.partial.outputs.html-status }}
+          SUBSTRING_OUTCOME: ${{ steps.substring.outcome }}
+          SUBSTRING_SUCCESS: ${{ steps.substring.outputs.build-success }}
+          SUBSTRING_STATUSES: ${{ steps.substring.outputs.jupyter-status }}/${{ steps.substring.outputs.pdflatex-status }}/${{ steps.substring.outputs.html-status }}
+        run: |
+          fail=0
+          check() {  # label outcome build-success statuses
+            if [ "$2" != "failure" ] || [ "$3" != "false" ] || [ "$4" != "//" ]; then
+              echo "::error::builders '$1': expected outcome=failure, build-success=false and no builder run (jupyter/pdflatex/html empty), got outcome=[$2] build-success=[$3] statuses=[$4]. A non-empty status means the parser accepted the input and built something."
+              fail=1
+            else
+              echo "✅ builders '$1' was rejected before setup"
+            fi
+          }
+          check 'html,pdf' "$PARTIAL_OUTCOME" "$PARTIAL_SUCCESS" "$PARTIAL_STATUSES"
+          check 'nojupyter' "$SUBSTRING_OUTCOME" "$SUBSTRING_SUCCESS" "$SUBSTRING_STATUSES"
+          exit "$fail"
 
   bjc-restore-build:
     name: 'round-trip: restore-jupyter-cache reads build-jupyter-cache (build)'
@@ -848,6 +1114,385 @@ jobs:
           echo "✅ execution cache round-trip: build-jupyter-cache → restore-jupyter-cache"
 
   # ==========================================================================
+  # deploy-cloudflare (#163) — no Cloudflare account, no secrets
+  # ==========================================================================
+  #
+  # A real deploy needs a gated Worker and a token, which a PR harness cannot
+  # hold, so the first real deploy is the only proof of that half. What these
+  # jobs can prove without one: that the gate probe tells every response shape
+  # apart, that the action refuses before installing anything when the gate is
+  # absent, that bad inputs fail fast, and that the pinned wrangler (which
+  # Dependabot bumps) still accepts the config the action generates.
+
+  dc-gate-probe:
+    name: 'deploy-cloudflare: the Access gate probe tells every response shape apart'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    steps:
+      - uses: actions/checkout@v7
+
+      # server.py answers each path the way one real configuration would; see
+      # its docstring. The probe's expected-failure annotations are rewritten
+      # so a green run does not show a wall of red ::error:: lines.
+      - name: Probe a local stand-in for each gate configuration
+        env:
+          TEAM: quantecon-harness.cloudflareaccess.com
+        run: |
+          set -euo pipefail
+          python3 .github/fixtures/access-gate/server.py 8765 > "$RUNNER_TEMP/server.log" 2>&1 &
+          for _ in $(seq 1 50); do curl -s -o /dev/null http://127.0.0.1:8765/missing && break; sleep 0.2; done
+          B=http://127.0.0.1:8765
+
+          expect() {
+            local want=$1 pattern=$2; shift 2
+            local got=0 out
+            out=$(bash scripts/check-access-gate.sh "$@" 2>&1) || got=$?
+            printf '%s\n' "${out//::error::/  (expected) }"
+            [ "$got" = "$want" ] || { echo "::error::probe exited [$got], expected [$want] for: $*"; exit 1; }
+            grep -q -- "$pattern" <<< "$out" || { echo "::error::probe output lacks [$pattern] for: $*"; exit 1; }
+          }
+
+          # Gated: the redirect lands on exactly the team domain, on the root
+          # and on an asset path, including a mixed-case host with :443.
+          expect 0 'PASS  302' "$TEAM" "$B/gated/" "$B/gated/data/latest.json"
+          expect 0 'PASS  302' "$TEAM" "$B/mixed-case"
+          expect 0 'PASS  302' "QuantEcon-Harness.CloudflareAccess.com" "$B/gated/"
+
+          # Not gated, each for its own reason.
+          expect 1 'wrong Access organisation' "$TEAM" "$B/wrong-org/"
+          expect 1 'THE SITE IS PUBLIC'        "$TEAM" "$B/public/"
+          expect 1 'not behind Access'         "$TEAM" "$B/same-host/"
+          expect 1 '<no Location>'             "$TEAM" "$B/no-location"
+          expect 1 'answered 404'              "$TEAM" "$B/missing"
+          expect 1 'answered 500'              "$TEAM" "$B/broken"
+          expect 1 'ambiguous Location'        "$TEAM" "$B/userinfo"
+          expect 1 'could not be reached'      "$TEAM" "http://127.0.0.1:9/"
+          # One public path fails the whole check, even when the root is gated:
+          # the case the asset probe exists for.
+          expect 1 'THE SITE IS PUBLIC'        "$TEAM" "$B/gated/" "$B/public/data/latest.json"
+
+          expect 2 'usage:' "$TEAM"
+          # An empty team must not match the empty host of a Location-less 302.
+          expect 2 'must be <team>' "" "$B/no-location"
+          echo "✅ check-access-gate.sh passes only a redirect to the exact team domain"
+
+  dc-refuses-ungated:
+    name: 'deploy-cloudflare: refuses before installing anything when the Worker is not gated'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Create a site to (not) deploy
+        run: |
+          mkdir -p harness-site/data
+          echo '<h1>private</h1>' > harness-site/index.html
+          echo '{}' > harness-site/data/latest.json
+
+      # A real request to workers.dev for a Worker that does not exist: the
+      # answer is a 404 or an error, never a redirect to the team domain. If
+      # workers.dev is unreachable the probe fails too, so this cannot go
+      # green by accident. The token is fake: if the action got as far as
+      # wrangler, the directory assertion below would catch it.
+      - name: Deploy to a Worker that does not exist (expected to refuse)
+        id: deploy
+        continue-on-error: true
+        uses: ./deploy-cloudflare
+        with:
+          cloudflare-api-token: 'harness-fake-token'
+          cloudflare-account-id: '00000000000000000000000000000000'
+          worker-name: 'harness-no-such-worker'
+          account-subdomain: 'quantecon-harness-nonexistent'
+          team-domain: 'quantecon-harness'
+          build-dir: 'harness-site'
+
+      - name: Assert the refusal came before wrangler
+        env:
+          OUTCOME: ${{ steps.deploy.outcome }}
+          DEPLOY_URL: ${{ steps.deploy.outputs.deploy-url }}
+        run: |
+          [ "$OUTCOME" = "failure" ] || { echo "::error::outcome: expected [failure] for an ungated Worker, got [$OUTCOME]"; exit 1; }
+          [ -z "$DEPLOY_URL" ] || { echo "::error::deploy-url: expected empty (nothing deployed), got [$DEPLOY_URL]"; exit 1; }
+          # The prevention claim: wrangler was never even installed, so nothing
+          # can have been uploaded.
+          [ ! -e "$RUNNER_TEMP/deploy-cloudflare" ] || { echo "::error::$RUNNER_TEMP/deploy-cloudflare exists — the action reached the wrangler install despite the failed gate check"; exit 1; }
+          echo "✅ an ungated Worker is refused before anything is installed or uploaded"
+
+      # Positive control, so the refusal above is attributable to the gate
+      # check: the same inputs with the gate off pass validation, set up Node
+      # and install the pinned wrangler, and only then fail (the token is fake).
+      - name: Same inputs with the gate off (expected to reach wrangler, then fail)
+        id: control
+        continue-on-error: true
+        uses: ./deploy-cloudflare
+        with:
+          cloudflare-api-token: 'harness-fake-token'
+          cloudflare-account-id: '00000000000000000000000000000000'
+          worker-name: 'harness-no-such-worker'
+          account-subdomain: 'quantecon-harness-nonexistent'
+          team-domain: 'quantecon-harness'
+          build-dir: 'harness-site'
+          require-access: 'false'
+
+      - name: Assert only the gate check stood between these inputs and wrangler
+        env:
+          OUTCOME: ${{ steps.control.outcome }}
+          DEPLOY_URL: ${{ steps.control.outputs.deploy-url }}
+        run: |
+          [ "$OUTCOME" = "failure" ] || { echo "::error::outcome: expected [failure] with a fake token, got [$OUTCOME]"; exit 1; }
+          [ -z "$DEPLOY_URL" ] || { echo "::error::deploy-url: expected empty with a fake token, got [$DEPLOY_URL]"; exit 1; }
+          [ -x "$RUNNER_TEMP/deploy-cloudflare/node_modules/.bin/wrangler" ] || { echo "::error::wrangler was not installed — the same inputs did not get past validation and the Node/npm steps with the gate off"; exit 1; }
+          [ -f "$RUNNER_TEMP/deploy-cloudflare/harness-no-such-worker.wrangler.jsonc" ] || { echo "::error::the generated config is missing — the action stopped before writing it"; exit 1; }
+          echo "✅ with the gate off the same inputs reach wrangler, so the refusal above came from the gate check"
+
+  dc-inputs:
+    name: 'deploy-cloudflare: invalid inputs fail before anything runs'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Create a site
+        run: |
+          mkdir -p harness-site
+          echo '<h1>private</h1>' > harness-site/index.html
+
+      # Every case but `require` also sets require-access: 'false', so a
+      # validation rule that went missing would reach the wrangler install (the
+      # gate check would otherwise fail the case for a different reason) and
+      # the directory assertion at the end would catch it.
+
+      # Secrets arrive empty, not absent, on fork and Dependabot runs.
+      - name: Empty token
+        id: token
+        continue-on-error: true
+        uses: ./deploy-cloudflare
+        with:
+          cloudflare-api-token: ''
+          cloudflare-account-id: '00000000000000000000000000000000'
+          worker-name: 'harness-worker'
+          account-subdomain: 'quantecon-harness'
+          team-domain: 'quantecon-harness'
+          build-dir: 'harness-site'
+          require-access: 'false'
+
+      # The URL is constructed from the name, so it must be a hostname label.
+      - name: Worker name that is not a hostname label
+        id: worker
+        continue-on-error: true
+        uses: ./deploy-cloudflare
+        with:
+          cloudflare-api-token: 'harness-fake-token'
+          cloudflare-account-id: '00000000000000000000000000000000'
+          worker-name: 'Harness_Worker'
+          account-subdomain: 'quantecon-harness'
+          team-domain: 'quantecon-harness'
+          build-dir: 'harness-site'
+          require-access: 'false'
+
+      # #163's own example. Cloudflare requires a leading letter and wrangler
+      # does not check before uploading.
+      - name: Alias starting with a digit
+        id: alias-digit
+        continue-on-error: true
+        uses: ./deploy-cloudflare
+        with:
+          cloudflare-api-token: 'harness-fake-token'
+          cloudflare-account-id: '00000000000000000000000000000000'
+          worker-name: 'harness-worker'
+          account-subdomain: 'quantecon-harness'
+          team-domain: 'quantecon-harness'
+          build-dir: 'harness-site'
+          require-access: 'false'
+          alias: '2026-08'
+
+      - name: Alias too long for one hostname label
+        id: alias-long
+        continue-on-error: true
+        uses: ./deploy-cloudflare
+        with:
+          cloudflare-api-token: 'harness-fake-token'
+          cloudflare-account-id: '00000000000000000000000000000000'
+          worker-name: 'harness-worker'
+          account-subdomain: 'quantecon-harness'
+          team-domain: 'quantecon-harness'
+          build-dir: 'harness-site'
+          require-access: 'false'
+          alias: 'report-2026-08-with-a-description-long-enough-to-overflow'
+
+      - name: Team domain that is not an Access login domain
+        id: team
+        continue-on-error: true
+        uses: ./deploy-cloudflare
+        with:
+          cloudflare-api-token: 'harness-fake-token'
+          cloudflare-account-id: '00000000000000000000000000000000'
+          worker-name: 'harness-worker'
+          account-subdomain: 'quantecon-harness'
+          team-domain: 'quantecon.example.com'
+          build-dir: 'harness-site'
+          require-access: 'false'
+
+      # A typo must never read as "off". The one case left with the gate on:
+      # an unrecognised value must not reach it, or skip it.
+      - name: require-access that is neither true nor false
+        id: require
+        continue-on-error: true
+        uses: ./deploy-cloudflare
+        with:
+          cloudflare-api-token: 'harness-fake-token'
+          cloudflare-account-id: '00000000000000000000000000000000'
+          worker-name: 'harness-worker'
+          account-subdomain: 'quantecon-harness'
+          team-domain: 'quantecon-harness'
+          build-dir: 'harness-site'
+          require-access: 'yes'
+
+      - name: Missing build directory
+        id: build-dir
+        continue-on-error: true
+        uses: ./deploy-cloudflare
+        with:
+          cloudflare-api-token: 'harness-fake-token'
+          cloudflare-account-id: '00000000000000000000000000000000'
+          worker-name: 'harness-worker'
+          account-subdomain: 'quantecon-harness'
+          team-domain: 'quantecon-harness'
+          build-dir: 'harness-no-such-dir'
+          require-access: 'false'
+
+      - name: Assert every invalid input failed and nothing was installed
+        env:
+          RESULTS: |
+            token ${{ steps.token.outcome }} ${{ steps.token.outputs.deploy-url }}
+            worker ${{ steps.worker.outcome }} ${{ steps.worker.outputs.deploy-url }}
+            alias-digit ${{ steps.alias-digit.outcome }} ${{ steps.alias-digit.outputs.deploy-url }}
+            alias-long ${{ steps.alias-long.outcome }} ${{ steps.alias-long.outputs.deploy-url }}
+            team ${{ steps.team.outcome }} ${{ steps.team.outputs.deploy-url }}
+            require ${{ steps.require.outcome }} ${{ steps.require.outputs.deploy-url }}
+            build-dir ${{ steps.build-dir.outcome }} ${{ steps.build-dir.outputs.deploy-url }}
+        run: |
+          set -euo pipefail
+          bad=0 n=0
+          while read -r case outcome url; do
+            [ -n "$case" ] || continue
+            n=$((n + 1))
+            if [ "$outcome" != "failure" ] || [ -n "${url:-}" ]; then
+              echo "::error::[$case]: expected outcome=failure and no deploy-url, got outcome=[$outcome] deploy-url=[${url:-}]"
+              bad=1
+            else
+              echo "✓ $case rejected"
+            fi
+          done <<< "$RESULTS"
+          [ "$n" -eq 7 ] || { echo "::error::expected 7 cases, read $n"; exit 1; }
+          [ ! -e "$RUNNER_TEMP/deploy-cloudflare" ] || { echo "::error::$RUNNER_TEMP/deploy-cloudflare exists — an invalid input got as far as the wrangler install"; bad=1; }
+          [ "$bad" -eq 0 ]
+          echo "✅ every invalid input fails in validation, before any network call or install"
+
+  dc-wrangler-config:
+    name: 'deploy-cloudflare: the pinned wrangler accepts the generated config'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    steps:
+      - uses: actions/checkout@v7
+
+      # The action installs Node itself only below 22; the runner's default
+      # may be older, so set it here the way the action would.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      # Same lockfile, same config writer, same flags as the action, with
+      # --dry-run so no account is needed. This is the check a Dependabot bump
+      # of wrangler in deploy-cloudflare/package-lock.json runs against.
+      - name: Dry-run a deploy and an alias upload
+        env:
+          CI: 'true'
+          WRANGLER_SEND_METRICS: 'false'
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/wrangler-check"
+          mkdir -p "$dir" "$RUNNER_TEMP/site/data"
+          cp deploy-cloudflare/package.json deploy-cloudflare/package-lock.json "$dir/"
+          npm ci --prefix "$dir" --no-audit --no-fund
+          echo '<h1>ok</h1>' > "$RUNNER_TEMP/site/index.html"
+          echo '{}' > "$RUNNER_TEMP/site/data/latest.json"
+
+          node deploy-cloudflare/write-config.js "$dir/harness.wrangler.jsonc" harness-worker "$RUNNER_TEMP/site"
+          cat "$dir/harness.wrangler.jsonc"
+
+          wrangler="$dir/node_modules/.bin/wrangler"
+          "$wrangler" deploy --config "$dir/harness.wrangler.jsonc" --message "harness" --dry-run 2>&1 | tee "$RUNNER_TEMP/deploy.log"
+          grep -q 'files from the assets directory' "$RUNNER_TEMP/deploy.log" \
+            || { echo "::error::wrangler deploy --dry-run did not read the assets directory from the generated config"; exit 1; }
+          "$wrangler" versions upload --config "$dir/harness.wrangler.jsonc" --preview-alias report-2026-08 --message "harness" --dry-run 2>&1 | tee "$RUNNER_TEMP/upload.log"
+          # wrangler only warns on a config key it no longer knows, and a
+          # dropped key (preview_urls, say) would silently change behaviour.
+          if grep -q 'Unexpected fields' "$RUNNER_TEMP/deploy.log" "$RUNNER_TEMP/upload.log"; then
+            echo "::error::the pinned wrangler does not recognise a key in the generated config (see 'Unexpected fields' above)"; exit 1
+          fi
+          echo "✅ wrangler $("$wrangler" --version | tail -1) accepts the generated config for deploy and versions upload"
+
+  # ==========================================================================
+  # preview-* — the pinned CLIs (install only; a deploy needs provider secrets)
+  # ==========================================================================
+
+  preview-cli-install:
+    # #105: preview-cloudflare and preview-netlify install their CLI with
+    # `npm ci` from a lockfile beside action.yml, and Dependabot bumps those
+    # lockfiles. The actions themselves cannot run here — a deploy needs the
+    # provider's token, and they skip Dependabot's PRs outright — so without
+    # this job a CLI bump would merge with no CI signal at all.
+    #
+    # Scope, stated honestly: this proves each lockfile installs on a clean
+    # runner and that the CLI it installs starts and reports the pinned
+    # version. It does not run the actions' install step itself, and it cannot
+    # tell whether the new CLI still deploys; that is for the next real PR.
+    name: 'preview-*: pinned CLIs install from their lockfiles and run'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    steps:
+      - uses: actions/checkout@v7
+
+      # The Node the READMEs tell hosted-runner callers to set up, and the major
+      # the QuantEcon containers ship.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: npm ci from each lockfile, then run the CLI
+        run: |
+          set -euo pipefail
+          echo "node $(node --version), npm $(npm --version)"
+          # action dir, npm package, bin name
+          for spec in preview-cloudflare:wrangler:wrangler preview-netlify:netlify-cli:netlify; do
+            IFS=: read -r dir pkg bin <<< "$spec"
+            want=$(node -p "require('./$dir/package.json').dependencies['$pkg']")
+            echo "::group::$dir: npm ci ($pkg $want)"
+            D="$(mktemp -d)"
+            cp "$dir/package.json" "$dir/package-lock.json" "$D/"
+            npm ci --prefix "$D" --no-audit --no-fund
+            echo "::endgroup::"
+            got=$("$D/node_modules/.bin/$bin" --version) \
+              || { echo "::error::$dir: $bin installed from the lockfile but does not run"; exit 1; }
+            echo "$bin --version: $got"
+            grep -qF "$want" <<< "$got" \
+              || { echo "::error::$dir: $bin reports [$got], expected the pinned $want"; exit 1; }
+          done
+          echo "✅ both pinned CLIs install from their lockfiles and run"
+
+  # ==========================================================================
   # Single anchor for branch protection
   # ==========================================================================
 
@@ -868,11 +1513,18 @@ jobs:
       - env-seed
       - env-hit-build
       - build-fail-guard
+      - env-container-update
       - bjc-smoke
       - bjc-fail-guard
       - bjc-abort-guard
+      - bjc-builders-parse
       - bjc-restore-build
       - bjc-restore-exec
+      - dc-gate-probe
+      - dc-refuses-ungated
+      - dc-inputs
+      - dc-wrangler-config
+      - preview-cli-install
     steps:
       # This is the job intended to be the single required status check, so it
       # has to be correct in BOTH shapes the gate can produce, and must never be

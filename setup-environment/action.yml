@@ -69,17 +69,55 @@ runs:
     - name: Update environment (container mode)
       if: steps.detect-container.outputs.container-mode == 'true' && inputs.environment-update != ''
       shell: bash
+      env:
+        ENV_UPDATE: ${{ inputs.environment-update }}
+        ENV_NAME: ${{ inputs.environment-name }}
       run: |
         echo "::group::Environment Update (Container Mode)"
-        echo "📦 Action: Installing delta packages from ${{ inputs.environment-update }}"
-        if [ -f "${{ inputs.environment-update }}" ]; then
-          echo "Running: conda env update -f ${{ inputs.environment-update }}"
-          conda env update -f ${{ inputs.environment-update }}
-          echo "✅ Environment updated successfully"
-        else
-          echo "::error::Environment update file not found: ${{ inputs.environment-update }}"
+        echo "📦 Action: Installing delta packages from $ENV_UPDATE"
+        if [ ! -f "$ENV_UPDATE" ]; then
+          echo "::error::Environment update file not found: $ENV_UPDATE"
           exit 1
         fi
+
+        # Update the environment the build will actually run in: the one whose
+        # python is on PATH. Without -n/-p, conda took the target from the
+        # file's own name:, so a delta saying `name: lecture-python` went to
+        # envs/lecture-python, which is not on PATH, and the build then failed
+        # with ModuleNotFoundError. -n "$ENV_NAME" is no better: a container-mode
+        # host whose stack lives in base (docs/dev/GPU-AMI-SETUP.md) would get a fresh
+        # envs/quantecon, because conda env update creates a missing prefix
+        # without a word. So target the prefix, and require it to be a conda env.
+        if ! TARGET="$(python -c 'import sys; print(sys.prefix)')" || [ ! -d "$TARGET/conda-meta" ]; then
+          echo "::error::Cannot apply $ENV_UPDATE: the python on PATH is not in a conda environment (no conda-meta under its sys.prefix), so there is no environment to update"
+          echo "  python:            $(command -v python || echo 'not found')"
+          echo "  sys.prefix:        ${TARGET:-unknown}"
+          echo "  conda:             $(command -v conda || echo 'not found')"
+          echo "  CONDA_DEFAULT_ENV: ${CONDA_DEFAULT_ENV:-unset}"
+          exit 1
+        fi
+        if [ "$TARGET" -ef "$(conda info --base 2>/dev/null || true)" ]; then
+          ACTIVE=base
+        else
+          ACTIVE="$(basename "$TARGET")"
+        fi
+
+        # Neither name selects the target any more, so say when one disagrees.
+        FILE_NAME="$(sed -n -e 's/\r$//' -e '/^name:/{s/^name:[[:space:]]*//;s/^#.*//;s/[[:space:]]#.*//;s/[[:space:]]*$//;p;q;}' "$ENV_UPDATE")"
+        FILE_NAME="${FILE_NAME#[\"\']}"
+        FILE_NAME="${FILE_NAME%[\"\']}"
+        if [ -n "$FILE_NAME" ] && [ "$FILE_NAME" != "$ACTIVE" ]; then
+          echo "::warning::$ENV_UPDATE says name: $FILE_NAME, but the environment on PATH is $ACTIVE ($TARGET). Updating $ACTIVE; the file's name: is ignored."
+        fi
+        if [ "$ENV_NAME" != "$ACTIVE" ]; then
+          echo "::warning::environment-name is '$ENV_NAME', but the environment on PATH is $ACTIVE ($TARGET). Updating $ACTIVE; environment-name does not select the target in container mode."
+        fi
+
+        # No --prune: the delta lists only the extras, so pruning would strip the
+        # image's environment down to them.
+        echo "Running: conda env update -p $TARGET -f $ENV_UPDATE"
+        conda env update -p "$TARGET" -f "$ENV_UPDATE"
+        echo "✅ Environment $ACTIVE ($TARGET) updated successfully"
         echo "::endgroup::"
     
     - name: Skip environment update (container mode)
@@ -107,7 +145,7 @@ runs:
 
     - name: Setup Miniconda (non-container mode)
       if: steps.detect-container.outputs.container-mode == 'false'
-      uses: conda-incubator/setup-miniconda@8ee1f361103df19b6f8c8655fd3967a8ecb162d5 # v4.0.1
+      uses: conda-incubator/setup-miniconda@be893c923ea9cf1cf7cd510fbdde27c7e18cbdcb # v4.1.0
       with:
         # No environment-file here: the env is restored from cache (hit) or
         # created by the "Create/update environment" step below (miss), so a
@@ -147,17 +185,28 @@ runs:
     - name: Install LaTeX packages (non-container mode)
       if: steps.detect-container.outputs.container-mode == 'false' && inputs.install-latex == 'true'
       shell: bash
+      env:
+        LATEX_REQUIREMENTS_FILE: ${{ inputs.latex-requirements-file }}
       run: |
-        if [ -f "${{ inputs.latex-requirements-file }}" ]; then
-          echo "Reading packages from ${{ inputs.latex-requirements-file }}"
-          PACKAGES=$(grep -v '^#' "${{ inputs.latex-requirements-file }}" | grep -v '^[[:space:]]*$' | tr '\n' ' ')
-          echo "Installing LaTeX packages: $PACKAGES"
-          sudo apt-get update
-          sudo apt-get install -y $PACKAGES
-        else
-          echo "::error::install-latex is true but no LaTeX requirements file was found at ${{ inputs.latex-requirements-file }}"
+        if [ ! -f "$LATEX_REQUIREMENTS_FILE" ]; then
+          echo "::error::install-latex is true but no LaTeX requirements file was found at $LATEX_REQUIREMENTS_FILE"
           exit 1
         fi
+        echo "Reading packages from $LATEX_REQUIREMENTS_FILE"
+        # apt package names separated by any whitespace, several to a line if
+        # need be; '#' starts a comment anywhere on a line; CRLF is tolerated.
+        # Into an array, so each name reaches apt as its own quoted argument.
+        mapfile -t pkgs < <(sed -e 's/#.*//' -e 's/\r$//' "$LATEX_REQUIREMENTS_FILE" | tr -s '[:space:]' '\n' | grep -v '^$' || true)
+        # An error, not a skip: install-latex with nothing to install is a
+        # misconfiguration, and skipping would only move the failure to a
+        # harder-to-read missing-TeX error in the pdflatex build.
+        if [ "${#pkgs[@]}" -eq 0 ]; then
+          echo "::error::install-latex is true but $LATEX_REQUIREMENTS_FILE contains no package names (only comments or blank lines)"
+          exit 1
+        fi
+        echo "Installing LaTeX packages: ${pkgs[*]}"
+        sudo apt-get update
+        sudo apt-get install -y "${pkgs[@]}"
 
     # ============================================================
     # SUMMARY: Display environment info
@@ -167,9 +216,15 @@ runs:
       # Use plain bash to avoid login shell PATH reset in containers
       # (Ubuntu's /etc/profile can drop /opt/conda from PATH)
       shell: bash
+      env:
+        CONTAINER_MODE: ${{ steps.detect-container.outputs.container-mode }}
+        CONDA_CACHE_HIT: ${{ steps.conda-cache.outputs.cache-hit }}
+        ENV_UPDATE: ${{ inputs.environment-update }}
+        ENV_NAME: ${{ inputs.environment-name }}
+        INSTALL_LATEX: ${{ inputs.install-latex }}
       run: |
         echo "::group::Environment Setup Summary"
-        if [ "${{ steps.detect-container.outputs.container-mode }}" == "true" ]; then
+        if [ "$CONTAINER_MODE" == "true" ]; then
           # Detect actual container image from marker file
           if [ -f /etc/quantecon-container ]; then
             CONTAINER_IMAGE=$(grep '^image=' /etc/quantecon-container | head -n 1 | cut -d'=' -f2-)
@@ -183,19 +238,19 @@ runs:
           echo "   LaTeX: Pre-installed ✅"
           echo "   Python: Pre-installed ✅"
           echo "   Base packages: Pre-installed ✅"
-          if [ -n "${{ inputs.environment-update }}" ]; then
-            echo "   Environment update: Applied from ${{ inputs.environment-update }}"
+          if [ -n "$ENV_UPDATE" ]; then
+            echo "   Environment update: Applied from $ENV_UPDATE"
           else
             echo "   Environment update: Skipped (using pre-installed packages)"
           fi
         else
           echo "📦 Mode: Standard runner"
-          if [ "${{ steps.conda-cache.outputs.cache-hit }}" == "true" ]; then
+          if [ "$CONDA_CACHE_HIT" == "true" ]; then
             echo "   Conda: Restored from cache ✅ (saved ~5-6 minutes)"
           else
             echo "   Conda: Installed fresh"
           fi
-          if [ "${{ inputs.install-latex }}" == "true" ]; then
+          if [ "$INSTALL_LATEX" == "true" ]; then
             echo "   LaTeX: Installed"
           else
             echo "   LaTeX: Skipped"
@@ -204,7 +259,15 @@ runs:
         echo "::endgroup::"
         
         echo "::group::Python packages"
-        pip list 2>/dev/null || conda list
+        if [ "$CONTAINER_MODE" == "true" ]; then
+          pip list 2>/dev/null || conda list
+        else
+          # Plain bash has not run setup-miniconda's login-shell activation, so a
+          # bare pip here is the runner's default Python, not the env just set
+          # up. Ask the env's own interpreter (the same $CONDA/envs/<name> the
+          # cache step saves). Informational only, so it never fails the step.
+          "$CONDA/envs/$ENV_NAME/bin/python" -m pip list || conda list -n "$ENV_NAME" || true
+        fi
         echo "::endgroup::"
         
         echo "::group::LaTeX version"

@@ -4,18 +4,18 @@ This document records validation test results for the QuantEcon containers acros
 
 ## Automated Testing
 
-Containers are tested by [`test-containers-lectures.yml`](../.github/workflows/test-containers-lectures.yml), which runs after the **Build QuantEcon Containers** workflow completes. Each job builds one lecture repo on one container through the full builder pipeline (HTML → pdflatex → jupyter) **sequentially**, reusing the executed notebooks across builders. Concurrency groups serialize jobs for the same repo to avoid network contention from concurrent dataset downloads; different repos run in parallel.
+Containers are tested by [`test-containers-lectures.yml`](../../.github/workflows/test-containers-lectures.yml), which runs after the **Build QuantEcon Containers** workflow completes. Each job builds one lecture repo on one container through the full builder pipeline (HTML → pdflatex → jupyter) **sequentially**, reusing the executed notebooks across builders. Concurrency groups serialize jobs for the same repo to avoid network contention from concurrent dataset downloads; different repos run in parallel.
 
 **Matrix:** 2 containers (`quantecon`, `quantecon-build`) × the QuantEcon lecture repos — `lecture-python-intro`, `lecture-python.myst`, `lecture-python-advanced.myst`, `lecture-python-programming` (`lecture-jax` is temporarily disabled pending [lecture-jax#284](https://github.com/QuantEcon/lecture-jax/issues/284)).
 
-A companion workflow, [`test-container.yml`](../.github/workflows/test-container.yml), smoke-tests the freshly built images (XeLaTeX compile + a minimal Jupyter Book HTML/PDF build).
+A companion workflow, [`test-container.yml`](../../.github/workflows/test-container.yml), smoke-tests the freshly built images (XeLaTeX compile + a minimal Jupyter Book HTML/PDF build).
 
 ## Containers
 
 | Container | Image | Size | Description |
 |-----------|-------|------|-------------|
-| **quantecon** (full) | `ghcr.io/quantecon/quantecon:latest` | ~8GB | Full Anaconda + TexLive |
-| **quantecon-build** (lean) | `ghcr.io/quantecon/quantecon-build:latest` | ~3GB | Miniconda + minimal TexLive |
+| **quantecon** (full) | `ghcr.io/quantecon/quantecon:latest` | 3.33 GB compressed, 8.60 GB on disk | Full Anaconda + TexLive |
+| **quantecon-build** (lean) | `ghcr.io/quantecon/quantecon-build:latest` | 2.93 GB compressed, 7.32 GB on disk | Miniconda + explicit package list (no Anaconda metapackage) + the same TexLive minus `texlive-luatex` |
 
 ## Lecture Repositories
 
@@ -30,7 +30,7 @@ A companion workflow, [`test-container.yml`](../.github/workflows/test-container
 
 ## 6 February 2026
 
-**Test workflow:** [`test-containers-lectures.yml`](../.github/workflows/test-containers-lectures.yml)
+**Test workflow:** [`test-containers-lectures.yml`](../../.github/workflows/test-containers-lectures.yml)
 
 **Matrix:** 2 containers × 4 repos × 3 builders = 24 jobs
 

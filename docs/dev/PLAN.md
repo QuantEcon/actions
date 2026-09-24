@@ -2,7 +2,7 @@
 
 Working plan for `QuantEcon/actions`: current state, prioritized backlog, dependency policy, and rollout status.
 
-**Last updated:** 2026-08-11 — release gating added as P0 (#135, #136) and the consumers table corrected: five lecture repos are still on exact pins, which this document previously said did not exist. Before that, 2026-08-07 — after the **v0.11.0** and **v0.11.1** releases and the move of `lecture-dp` and `lecture-python.myst` to `@v0`, which is the first to carry both alerting fixes (#122, #127) to consumers: `build-jupyter-cache` reaches its siblings through the pinned `@v0` ref, so neither fix existed for any consumer until `v0` moved to this release. The backlog below is still the July 2026 review; individual items carry their own closure notes.
+**Last updated:** 2026-09-23 — the #106/#109 docs sweep: the consumers table is current again (all eight exact pins, across six repos, are on `v0.11.1`), the issues opened since the July review have refreshed dispositions (#135 added), and item 10's size-figure half is done. Before that, 2026-08-11 — release gating added as P0 (#135, #136) and the consumers table corrected: five lecture repos are still on exact pins, which this document previously said did not exist. Before that, 2026-08-07 — after the **v0.11.0** and **v0.11.1** releases and the move of `lecture-dp` and `lecture-python.myst` to `@v0`, which is the first to carry both alerting fixes (#122, #127) to consumers: `build-jupyter-cache` reaches its siblings through the pinned `@v0` ref, so neither fix existed for any consumer until `v0` moved to this release. The backlog below is still the July 2026 review; individual items carry their own closure notes.
 
 ---
 
@@ -22,13 +22,14 @@ The core infrastructure is complete, hardened, and in production:
 | `lecture-dp` | Full chain: `restore-jupyter-cache`, `build-lectures`, `build-jupyter-cache`, `publish-gh-pages` | `@v0` ([lecture-dp#52](https://github.com/QuantEcon/lecture-dp/pull/52)) |
 | `lecture-python.myst` | `preview-netlify` (ci.yml), `publish-gh-pages` | `@v0` ([lecture-python.myst#1029](https://github.com/QuantEcon/lecture-python.myst/pull/1029)) |
 | `test-actions-lecture-intro` | Full chain + `preview-netlify` (sandbox and post-release canary — #100 stage 2, role documented in its README) | `@v0` |
-| `lecture-jax` | `preview-netlify`, `publish-gh-pages` | **`@v0.8.0`** (2 call sites) |
-| `lecture-python-intro` | `publish-gh-pages` | **`@v0.8.0`** |
-| `lecture-python-advanced.myst` | `publish-gh-pages` | **`@v0.8.0`** |
-| `lecture-python-programming` | `publish-gh-pages` | **`@v0.9.0`** |
-| `continuous_time_mcs` | `publish-gh-pages` | **`@v0.9.0`** |
+| `lecture-jax` | `preview-netlify`, `publish-gh-pages` | **`@v0.11.1`** (2 call sites) |
+| `lecture-python-intro` | `publish-gh-pages` | **`@v0.11.1`** |
+| `lecture-python-advanced.myst` | `publish-gh-pages` | **`@v0.11.1`** |
+| `lecture-python-programming` | `publish-gh-pages` | **`@v0.11.1`** |
+| `lecture-python-programming.fr` | `preview-netlify` (ci.yml), `publish-gh-pages` (with `create-release-assets`) | **`@v0.11.1`** (2 call sites) |
+| `continuous_time_mcs` | `publish-gh-pages` | **`@v0.11.1`** |
 
-**Corrected 2026-08-11.** This section previously listed only the first three rows and stated "every consumer now tracks the floating `@v0` — 11 call sites, no exact pins left". That was wrong: **six exactly-pinned call sites exist across five lecture repos**, two to three releases behind current. The audit is QuantEcon/workspace-lectures#31. The omission matters because the argument below was reasoned partly from the incomplete table — `publish-gh-pages` is in fact at **7/7** adoption across the publishing lecture repos, and it is also the action every remaining pin sits on.
+**Corrected 2026-08-11.** This section previously listed only the first three rows and stated "every consumer now tracks the floating `@v0` — 11 call sites, no exact pins left". That was wrong: **six exactly-pinned call sites exist across five lecture repos**, then two to three releases behind current. The audit is QuantEcon/workspace-lectures#31. Dependabot has since bumped all six to `@v0.11.1` (2026-08-12 to 2026-08-24), so none is behind today; they remain exact pins and will lag the next release until its bump is merged. The omission matters because the argument below was reasoned partly from the incomplete table — `publish-gh-pages` is in fact at **7/7** adoption across the publishing lecture repos, and it is also the action every remaining pin sits on. **Added 2026-09-23:** `lecture-python-programming.fr`, which that audit did not cover, pins the same two actions exactly; Dependabot moved both call sites from `@v0.8.0` to `@v0.11.1` on 2026-09-23 (QuantEcon/lecture-python-programming.fr#76), so the exact pins now number eight call sites across six repos.
 
 The case against exact pins still stands on its own evidence. Pins are what stranded `lecture-dp` three releases behind, which is why its weekly cache build ran for ~2 months with alerting that had never worked (#83). Pinning plus Dependabot was tried and is not sufficient: it surfaces the bump but currency still depends on someone merging it, and `lecture-python.myst#1000` sat open for 13 days before being closed as superseded.
 
@@ -77,7 +78,7 @@ One correction to how that closure was written up: "cannot silently no-op" was t
 | 7 | **Delete the dead `asset-url` output** in `publish-gh-pages` — it is wired to an output `action-gh-release` doesn't expose, is always empty, and has no consumers. Remove the README row too. | — |
 | 8 | **`preview-netlify`: move the auth token into `env:`.** `--auth="…"` puts the secret on the process command line; the Cloudflare action already does this correctly. | — |
 | 9 | ~~**CI coverage for standard-mode conda caching.**~~ Done — `test-actions.yml` (the #100 stage-1 harness) runs the two-run miss→hit chain on every PR touching `setup-environment`, plus a build on the restored env. | #29, #33, #100 |
-| 10 | **Docs surplus trim.** ~4,900 doc lines for ~1,600 lines of action code, with four overlapping indexes. Delete `docs/README.md`; shrink `QUICK-REFERENCE.md` to a one-screen link table; keep per-repo notes in one place (MIGRATION-GUIDE); drop the copilot-instructions "GitHub CLI Tool Constraints" section (boilerplate imported from another environment); strip the stale schedule/perf blocks from ARCHITECTURE.md; relocate `GPU-AMI-SETUP.md` to the infra/meta repo or trim it to the essentials (it documents AMI infrastructure — no workflow in this repo runs on GPU). Propagate corrected container-size figures everywhere. | #40 |
+| 10 | **Docs surplus trim.** ~4,900 doc lines for ~1,600 lines of action code, with four overlapping indexes. Delete `docs/README.md`; shrink `QUICK-REFERENCE.md` to a one-screen link table; keep per-repo notes in one place (MIGRATION-GUIDE); drop the copilot-instructions "GitHub CLI Tool Constraints" section (boilerplate imported from another environment); strip the stale schedule/perf blocks from ARCHITECTURE.md; relocate `GPU-AMI-SETUP.md` to the infra/meta repo or trim it to the essentials (it documents AMI infrastructure — no workflow in this repo runs on GPU). Propagate corrected container-size figures everywhere — done in the #106 docs sweep, with both measured figures labelled; the trim itself stays open as its own editorial PR (decision 1 on #110). | #40 |
 | 11 | **Document composite action vs reusable workflow.** Add the short decision rule to CONTRIBUTING.md or ARCHITECTURE.md so new CI lands at the right altitude. | #29 |
 | 12 | **Environment manifest v1.** The publish-time manifest is a stub (name/tag/commit/size). Define a versioned schema, capture the effective environment (resolved `conda list`/`pip freeze`, container digest, build metadata), and `repository_dispatch` to `status-lectures`. | #30, meta#321 |
 
@@ -116,25 +117,26 @@ The lean image's science stack (`numpy`, `scipy`, `pandas`, …) is **pinned as 
 | #27 HTML recovery tool | Still valid — producer half exists (release assets + checksums); consumer unbuilt. Likely belongs in `workflow-backups`, not here | Decide home, then build |
 | #2 isolated lecture execution | Exploratory — most tractable first step is an execution check of the *built* notebooks, which nothing in the repo executes today | Keep open, low priority |
 
-Issues opened after the July review, dispositioned in the August 2026 triage:
+Issues opened after the July review, dispositioned in the August 2026 triage and refreshed 2026-09-23:
 
 | Issue | Status | Disposition |
 |---|---|---|
-| #105 preview error surfacing, CLI pinning, fork guidance | Live — one half-item shipped in v0.11.1 (#131); the swallowed-error, unpinned-CLI and `pull_request_target` problems are unchanged | Top of the queue; closes backlog item 8 |
-| #107 correctness batch across the actions | Seven of ten items live; three shipped in v0.11.0 | Closes backlog items 7, 15 |
-| #106 docs sweep to the 2026.06 baseline | Live — v0.11.0 changed the container-size metric, so figures need re-measuring, not copying | Land with #109 and #99 as one docs PR |
-| #109 reconcile READMEs and templates with the code | Live | Land with #106 and #99; see backlog items 10, 11 |
-| #99 QUICK-REFERENCE Pages-404 permissions | Live, narrow | Close as duplicate of #109 when that PR lands |
+| #105 preview error surfacing, CLI pinning, fork guidance | One half-item shipped in v0.11.1 (#131). The `pull_request_target` README warning merged in #170; the deploy-error surfacing and CLI pinning (a `package-lock.json` per preview action, decision 2 on #110) are in draft PR #174, awaiting a real deploy on each provider | Closes backlog item 8; release staged (decision 4 on #110) |
+| #107 correctness batch across the actions | Seven of ten items live; three shipped in v0.11.0. Fix open as #173, carrying #109's three code items | Closes backlog items 7, 15; release staged (decision 4 on #110) |
+| #106 docs sweep to the 2026.06 baseline | Addressed by the #106/#109 docs PR: baseline, both measured image sizes from the size job fixed in #172 (`main` run 35930060129, after #162), the TeX Live wording, this table and CONTRIBUTING's `PLAN.md` row | Closes when that PR lands |
+| #109 reconcile READMEs and templates with the code | Docs half addressed by the same PR, except the failure-only artifact wording in `build-jupyter-cache/README.md`, which #107's PR owns; the code items ride with #107 | Closes when both land; see backlog items 10, 11 |
+| #99 QUICK-REFERENCE Pages-404 permissions | Fixed in the same PR, with the two stale `build-jupyter-cache` key lines | Close as duplicate of #109 when that PR lands |
 | #100 publish/preview/cache logic untested | Re-scoped — stage 1 shipped in v0.10.0 and the canary is live; stages 2–3 and the coverage gaps remain | Release gating split out to #135/#136/#138 |
-| #92 optimize preview builds (tracking) | Phase 1 partly shipped | Three decisions outstanding; phases not yet filed as sub-issues |
-| #108 unify container smoke tests | Majority shipped in v0.11.0 (#125) | Two residual hygiene items |
-| #102 raw-GitHub 429 flake | Body superseded — the fix is CI-side retry, not the lecture-side change | Good first issue |
+| #92 optimize preview builds (tracking) | Sub-issue parent since 2026-08-13: every open phase item is filed (#146–#158). Decision 2 settled (Cloudflare Workers static assets, #145) | Decision 1 (#146) gates the largest Phase 1 win (#148); decision 3 rides the #152/#155 pilots |
+| #108 unify container smoke tests | Majority shipped in v0.11.0 (#125); the residuals (fixture theme and fonts, dead `test-container.sh`, `run-local-tests.sh` flags) are in #171 | Closes with #171, whose merge rebuilds both `:latest` images |
+| #102 raw-GitHub 429 flake | Body superseded — the fix is CI-side retry, not the lecture-side change. #144 is open (retry, plus `lecture-python-programming` back in the matrix) | Rebase and review #144; validate by a maintainer dispatch after merge, since the workflow has no PR trigger |
 | #97 `-n` nitpick default + extra-args passthrough | Live | Needs an org HTML-strictness decision first |
 | #96 sync-notebooks action | Live, but unacknowledged tension with the v0.6.0 gh-pages-notebooks architecture | Sequencing decision required |
 | #98 `_build/.doctrees` clear | Live — the mechanism is intra-job doctree reuse across builders, not cache staleness | Needs a falsifiable repro |
-| #110 July 2026 audit tracking | Native sub-issue parent over #103–#109 | Tracker only |
-| #115 external actions worth studying | Reading list, no completion condition | Fold into `docs/FUTURE-DEVELOPMENT.md` or keep parked |
+| #110 July 2026 audit tracking | Native sub-issue parent over #103–#109; revalidated 2026-09-23, recording four decisions (docs trim deferred, CLI pinning mechanism, both image sizes published, staged releases) | Tracker only |
+| #115 external actions worth studying | Reading list, no completion condition | Keep parked |
 | #129 reproducibility of published lectures | Accurate and deliberately parked | Discussion; relates to #30 |
+| #135 release gating via a `v0-next` staging tag | Unbuilt; parent #138, fixture #136. Until it lands, releases carrying #105 or #107 are staged by hand (procedure in CONTRIBUTING.md) | Backlog items 0b–0d |
 
 ---
 
@@ -148,12 +150,12 @@ Issues opened after the July review, dispositioned in the August 2026 triage:
 
 Incremental migration, previews first (see [meta#327](https://github.com/QuantEcon/meta/issues/327)), CPU-only full chains next, GPU last:
 
-**`publish-gh-pages` is separately at 7/7** across the publishing lecture repos and is not tracked by this table — the table is about the *full chain*. Five of those seven are on exact pins; see Consumers in production above.
+**`publish-gh-pages` is separately at 8/8** across the publishing lecture repos and is not tracked by this table — the table is about the *full chain*. Six of those eight are on exact pins; see Consumers in production above.
 
 | # | Repository | Runner | Status |
 |---|---|---|---|
 | 1 | `lecture-python.myst` (previews) | GPU | ✅ live, now on `preview-netlify@v0` (was `@v0.8.0`) |
-| 2 | Remaining python repos (previews) | Container | ⏳ `lecture-jax` done (`@v0.8.0`); four still on `nwtgck/actions-netlify` — meta#327, QuantEcon/workspace-lectures#2 |
+| 2 | Remaining python repos (previews) | Container | ⏳ `lecture-jax` done (`@v0.11.1`); four still on `nwtgck/actions-netlify` — meta#327, QuantEcon/workspace-lectures#2 |
 | 3 | `lecture-python-intro` (full chain) | Container | ⏳ Planned — blocked on #97 and #98 |
 | 4 | `lecture-python-programming` (full chain) | Container | ⏳ Planned — blocked on #97 and #98 |
 | 5 | `lecture-python-advanced.myst` (full chain) | Container | ⏳ Planned |

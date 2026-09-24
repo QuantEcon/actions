@@ -7,18 +7,18 @@
 This repository provides **reusable GitHub Actions** for building QuantEcon lecture websites.
 
 **Current phase:** v0.x development - Infrastructure complete, ready for Phase 1 migration testing  
-**For details:** See [PLAN.md](../PLAN.md) for migration roadmap and priorities
+**For details:** See [docs/dev/PLAN.md](../docs/dev/PLAN.md) for migration roadmap and priorities
 
 ## Where to Find Information
 
 | Topic | Document |
 |-------|----------|
-| **Migration roadmap & current priorities** | [PLAN.md](../PLAN.md) |
-| **Architecture & design decisions** | [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) |
+| **Migration roadmap & current priorities** | [docs/dev/PLAN.md](../docs/dev/PLAN.md) |
+| **Architecture & design decisions** | [docs/dev/ARCHITECTURE.md](../docs/dev/ARCHITECTURE.md) |
 | **How to migrate lecture repos** | [docs/MIGRATION-GUIDE.md](../docs/MIGRATION-GUIDE.md) |
 | **Container usage** | [docs/CONTAINER-GUIDE.md](../docs/CONTAINER-GUIDE.md) |
-| **GPU AMI setup** | [docs/GPU-AMI-SETUP.md](../docs/GPU-AMI-SETUP.md) |
-| **Testing validation** | [TESTING.md](../TESTING.md) |
+| **GPU AMI setup** | [docs/dev/GPU-AMI-SETUP.md](../docs/dev/GPU-AMI-SETUP.md) |
+| **Testing validation** | [docs/dev/TESTING.md](../docs/dev/TESTING.md) |
 | **Quick reference** | [docs/QUICK-REFERENCE.md](../docs/QUICK-REFERENCE.md) |
 | **Release process** | [CONTRIBUTING.md](../CONTRIBUTING.md) |
 | **Version history** | [CHANGELOG.md](../CHANGELOG.md) |
@@ -30,14 +30,15 @@ This repository provides **reusable GitHub Actions** for building QuantEcon lect
 ```
 quantecon/actions/
 ├── containers/
-│   ├── quantecon/          # Full container (~8GB): Anaconda + TexLive
-│   └── quantecon-build/     # Lean container (~3GB): Miniconda + minimal TexLive
+│   ├── quantecon/          # Full container (3.33 GB compressed / 8.60 GB on disk): Anaconda + TexLive
+│   └── quantecon-build/     # Lean container (2.93 GB compressed / 7.32 GB on disk): Miniconda + explicit package list, same TexLive minus texlive-luatex
 ├── setup-environment/       # Environment setup action
 ├── build-lectures/          # Jupyter Book build action
 ├── build-jupyter-cache/     # Cache generation action (weekly)
 ├── restore-jupyter-cache/   # Cache restore action (PRs)
 ├── preview-netlify/         # Netlify PR preview action
 ├── preview-cloudflare/      # Cloudflare Pages PR preview action
+├── deploy-cloudflare/       # Members-only Worker deploy behind Cloudflare Access
 ├── publish-gh-pages/        # GitHub Pages publishing action
 ├── templates/               # Workflow templates for lecture repos
 └── docs/                    # Comprehensive documentation
@@ -62,7 +63,7 @@ When changing actions, update:
 - Action's `README.md` (inputs/outputs)
 - `docs/QUICK-REFERENCE.md` (if inputs added)
 - `CHANGELOG.md` (user-facing changes)
-- `PLAN.md` (if affects migration status)
+- `docs/dev/PLAN.md` (if affects migration status)
 
 ## ⚠️ CRITICAL: GitHub CLI Tool Constraints
 
@@ -130,7 +131,7 @@ gh run view RUN_ID --log > /tmp/gh-logs.txt && cat /tmp/gh-logs.txt
 
 - **Created:** November 2025
 - **Updated:** June 16, 2026
-- **Current Phase:** Infrastructure complete, ready for production migration (latest release: v0.8.0)
-- **Containers:** ghcr.io/quantecon/quantecon:latest (full, ~8GB), ghcr.io/quantecon/quantecon-build:latest (lean, ~3GB)
-- **Actions:** 7 composite actions complete and tested
+- **Current Phase:** Infrastructure complete, ready for production migration (latest release: v0.12.0)
+- **Containers:** ghcr.io/quantecon/quantecon:latest (full, 3.33 GB compressed / 8.60 GB on disk), ghcr.io/quantecon/quantecon-build:latest (lean, 2.93 GB compressed / 7.32 GB on disk)
+- **Actions:** 8 composite actions (`deploy-cloudflare`'s real deploy is not exercised in CI; see docs/dev/TESTING.md)
 - **Next:** Begin Phase 1 migration with lecture-dp repo

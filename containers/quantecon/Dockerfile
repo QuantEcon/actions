@@ -95,10 +95,45 @@ RUN conda tos accept && \
 ENV PATH=/opt/conda/envs/quantecon/bin:$PATH
 ENV CONDA_DEFAULT_ENV=quantecon
 
+# Node.js 24 LTS, for the Node tools the actions install into this image at run
+# time: preview-netlify's netlify-cli (needs node >=22.13) and preview-cloudflare's
+# wrangler (refuses to start below node 22). Installed from nodejs.org, pinned by
+# version and SHA256 like Miniconda above, and deliberately NOT from conda: every
+# jupyterlab build below 4.6 on the defaults channel, including the one the
+# Anaconda 2026.06 baseline pins, constrains nodejs to 20.x, so a conda nodejs
+# cannot reach 24 without moving the Jupyter stack. Outside conda it cannot touch
+# the solve, and placed after the conda layer a Node bump does not re-run it.
+# Bump NODE_VERSION and NODE_SHA256 together, from
+# https://nodejs.org/dist/v<version>/SHASUMS256.txt; Dependabot does not track them.
+ENV NODE_VERSION=24.21.0
+ENV NODE_SHA256=6e1db87ef58b8819e5d5402eff1536491b18edd8eb7bee5ef7897876e88dc5ff
+RUN curl -fsSL https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.gz -o /tmp/node.tar.gz && \
+    echo "${NODE_SHA256}  /tmp/node.tar.gz" | sha256sum -c - && \
+    mkdir -p /opt/node && \
+    tar -xzf /tmp/node.tar.gz -C /opt/node --strip-components=1 --no-same-owner && \
+    rm /tmp/node.tar.gz
+# Ahead of the conda env, so a lecture environment that adds a conda nodejs
+# cannot shadow the pinned Node.
+ENV PATH=/opt/node/bin:$PATH
+
 # Create marker file for container detection by setup-environment action
 RUN echo "quantecon-container" > /etc/quantecon-container && \
     echo "image=ghcr.io/quantecon/quantecon" >> /etc/quantecon-container && \
     echo "build_date=$(date -Iseconds)" >> /etc/quantecon-container
+
+# Trust every git work tree. In a GitHub Actions container job the runner
+# creates the workspace as its own user (uid 1001) and bind-mounts it here,
+# while steps run as root (this image declares no USER), so git refuses the
+# checkout ("detected dubious ownership", exit 128) in every step after
+# actions/checkout. quantecon-book-theme then silently drops each page's
+# "Last changed" header, and scripts/detect-changed-lectures.sh silently finds
+# no changed lectures. git's ownership check guards shared multi-user machines
+# against repositories planted by another user; this image runs one job's own
+# checkout, single-tenant and discarded afterwards, so there is nothing for it
+# to guard. System scope, so the entry holds whatever HOME a step sets.
+# Revisit this if the image is ever run on a shared, long-lived host with
+# other users' volumes mounted: there the check has something to guard.
+RUN git config --system --add safe.directory '*'
 
 # Set working directory
 WORKDIR /workspace
@@ -106,6 +141,8 @@ WORKDIR /workspace
 # Verify installation
 RUN python --version && \
     conda --version && \
+    test "$(node -p process.versions.node)" = "${NODE_VERSION}" && \
+    npm --version && \
     jupyter --version && \
     jupyter-book --version && \
     pdflatex --version

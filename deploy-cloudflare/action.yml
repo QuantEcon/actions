@@ -1,0 +1,409 @@
+name: 'Deploy Cloudflare'
+description: 'Publishes a built site to an existing Cloudflare Worker behind Cloudflare Access, and fails unless the site is proven gated before and after the deploy'
+author: 'QuantEcon'
+
+inputs:
+  cloudflare-api-token:
+    description: >-
+      Cloudflare API token (use secrets.CLOUDFLARE_API_TOKEN). Account-owned,
+      with Editor on the named Worker only: it can deploy that Worker but
+      cannot create one, so a mistyped worker-name fails instead of creating a
+      new, ungated Worker.
+    required: true
+  cloudflare-account-id:
+    description: 'Cloudflare account ID (use secrets.CLOUDFLARE_ACCOUNT_ID)'
+    required: true
+  worker-name:
+    description: >-
+      The Worker to deploy to, one per site. It must already exist and already
+      be behind Access; see the README setup checklist.
+    required: true
+  account-subdomain:
+    description: >-
+      The account's workers.dev subdomain, e.g. `quantecon` for
+      `*.quantecon.workers.dev`. The URLs are constructed from it, never parsed
+      from wrangler output.
+    required: true
+  team-domain:
+    description: >-
+      The Access team's login domain, `<team>.cloudflareaccess.com` (a bare
+      `<team>` is accepted). The gate check requires the redirect to land on
+      exactly this host.
+    required: true
+  build-dir:
+    description: 'Directory containing the built site'
+    required: true
+  alias:
+    description: >-
+      Also upload the same build as a named preview alias, e.g. `report-2026-08`,
+      for a permanent URL alongside the moving production one. Lowercase
+      letters, digits and dashes, starting with a letter; `<alias>-<worker-name>`
+      must fit in 63 characters. Empty for none.
+    required: false
+    default: ''
+  require-access:
+    description: >-
+      Prove the site is gated: before uploading, after deploying (production
+      and the new version's preview URL) and on the alias after its upload, an
+      unauthenticated request must be redirected to team-domain. `false` skips
+      every one of these checks and should never be used for private content.
+    required: false
+    default: 'true'
+
+outputs:
+  deploy-url:
+    description: 'Production URL, https://{worker}.{subdomain}.workers.dev. Set once the deploy succeeds.'
+    value: ${{ steps.deploy.outputs.deploy-url }}
+  alias-url:
+    description: 'Preview alias URL, https://{alias}-{worker}.{subdomain}.workers.dev. Empty when no alias is given.'
+    value: ${{ steps.alias.outputs.alias-url }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Validate inputs
+      id: inputs
+      shell: bash
+      env:
+        API_TOKEN: ${{ inputs.cloudflare-api-token }}
+        ACCOUNT_ID: ${{ inputs.cloudflare-account-id }}
+        WORKER_NAME: ${{ inputs.worker-name }}
+        ACCOUNT_SUBDOMAIN: ${{ inputs.account-subdomain }}
+        TEAM_DOMAIN: ${{ inputs.team-domain }}
+        BUILD_DIR: ${{ inputs.build-dir }}
+        ALIAS: ${{ inputs.alias }}
+        REQUIRE_ACCESS: ${{ inputs.require-access }}
+      run: |
+        set -euo pipefail
+        fail() { echo "::error::$1"; exit 1; }
+        label='^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'
+
+        # Secrets are empty, not absent, on fork and Dependabot runs.
+        [ -n "$API_TOKEN" ] || fail "cloudflare-api-token is empty. Secrets are not passed to workflows triggered from forks or by Dependabot."
+        [ -n "$ACCOUNT_ID" ] || fail "cloudflare-account-id is empty."
+
+        [[ "$WORKER_NAME" =~ $label ]] \
+          || fail "worker-name [$WORKER_NAME] is not a valid workers.dev hostname label (lowercase letters, digits and dashes, at most 63 characters)."
+
+        subdomain=$(printf '%s' "$ACCOUNT_SUBDOMAIN" | tr '[:upper:]' '[:lower:]')
+        subdomain=${subdomain#https://}; subdomain=${subdomain%/}; subdomain=${subdomain%.workers.dev}
+        [[ "$subdomain" =~ $label ]] \
+          || fail "account-subdomain [$ACCOUNT_SUBDOMAIN] is not a workers.dev subdomain; pass the part before .workers.dev."
+
+        team=$(printf '%s' "$TEAM_DOMAIN" | tr '[:upper:]' '[:lower:]')
+        team=${team#https://}; team=${team%/}
+        [[ "$team" == *.* ]] || team="$team.cloudflareaccess.com"
+        [[ "$team" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?\.cloudflareaccess\.com$ ]] \
+          || fail "team-domain [$TEAM_DOMAIN] is not an Access login domain (<team>.cloudflareaccess.com)."
+
+        if [ -n "$ALIAS" ]; then
+          # Cloudflare's rule; wrangler does not check it before uploading.
+          [[ "$ALIAS" =~ ^[a-z]([a-z0-9-]*[a-z0-9])?$ ]] \
+            || fail "alias [$ALIAS] must be lowercase letters, digits and dashes, start with a letter and not end with a dash (e.g. report-2026-08, not 2026-08)."
+          [ $(( ${#ALIAS} + 1 + ${#WORKER_NAME} )) -le 63 ] \
+            || fail "alias [$ALIAS] is too long: [$ALIAS-$WORKER_NAME] must fit in one 63-character hostname label."
+        fi
+
+        case "$REQUIRE_ACCESS" in
+          true|false) ;;
+          *) fail "require-access must be 'true' or 'false', got [$REQUIRE_ACCESS]." ;;
+        esac
+
+        # A newline would inject keys into GITHUB_OUTPUT below.
+        [[ "$BUILD_DIR" != *$'\n'* && "$BUILD_DIR" != *$'\r'* ]] || fail "build-dir must not contain line breaks."
+        [ -d "$BUILD_DIR" ] || fail "build-dir [$BUILD_DIR] is not a directory."
+        BUILD_DIR=$(cd "$BUILD_DIR" && pwd -P)
+        [ -n "$(find "$BUILD_DIR" -type f -print -quit)" ] || fail "build-dir [$BUILD_DIR] contains no files."
+        [ -f "$BUILD_DIR/index.html" ] || echo "::warning::build-dir has no index.html, so the site root will answer 404 once past the Access login."
+
+        # One real non-HTML file to probe besides the root, so a gate that
+        # covers only the document root cannot pass (the pilot's
+        # data/latest.json check). Deterministic, URL-safe paths only, so no
+        # encoding is needed. Dotfiles and the _headers/_redirects/_worker.js
+        # names are skipped to keep the choice predictable: wrangler does not
+        # serve the control files, and a gated site redirects every path
+        # anyway. `awk` reads to the end rather than exiting early, which under
+        # pipefail would fail on sort's SIGPIPE.
+        probe_path=$(cd "$BUILD_DIR" && find . -type f ! -path '*/.*' ! -iname '*.html' ! -iname '*.htm' \
+            ! -name '_headers' ! -name '_redirects' ! -name '_worker.js' -print \
+          | LC_ALL=C sort \
+          | awk '!found && /^\.\/[A-Za-z0-9._~\/-]+$/ { print substr($0, 2); found = 1 }' || true)
+
+        deploy_url="https://${WORKER_NAME}.${subdomain}.workers.dev"
+        # Every version and alias is served at <prefix>-<worker>.<subdomain>.workers.dev.
+        preview_suffix="-${WORKER_NAME}.${subdomain}.workers.dev"
+        alias_url=""
+        [ -z "$ALIAS" ] || alias_url="https://${ALIAS}-${WORKER_NAME}.${subdomain}.workers.dev"
+
+        {
+          echo "team-domain=$team"
+          echo "build-dir=$BUILD_DIR"
+          echo "probe-path=$probe_path"
+          echo "deploy-url=$deploy_url"
+          echo "preview-suffix=$preview_suffix"
+          echo "alias-url=$alias_url"
+        } >> "$GITHUB_OUTPUT"
+
+        echo "Worker:      $WORKER_NAME"
+        echo "Production:  $deploy_url"
+        [ -z "$alias_url" ] || echo "Alias:       $alias_url"
+        echo "Access team: $team"
+        echo "Probe paths: / ${probe_path:-(no non-HTML file in build-dir)}"
+
+    # Prevention, not detection. Before anything is uploaded, the Worker must
+    # already answer an anonymous request with a redirect to this team's login.
+    # That refuses a Worker that does not exist (a mistyped name, which a
+    # broader token than the README's would otherwise create, ungated), one
+    # that is public, and one gated by the wrong Access organisation.
+    - name: Check the Access gate before deploying
+      id: gate-before
+      if: inputs.require-access == 'true'
+      shell: bash
+      env:
+        TEAM: ${{ steps.inputs.outputs.team-domain }}
+        URL: ${{ steps.inputs.outputs.deploy-url }}
+        PROBE_PATH: ${{ steps.inputs.outputs.probe-path }}
+      run: |
+        set -uo pipefail
+        urls=("$URL/")
+        [ -z "$PROBE_PATH" ] || urls+=("$URL$PROBE_PATH")
+        if ! bash "$GITHUB_ACTION_PATH/../scripts/check-access-gate.sh" "$TEAM" "${urls[@]}"; then
+          echo "::error::Refusing to deploy: $URL is not behind Access for $TEAM. Nothing was uploaded. An admin must create the Worker and turn Access on (All traffic) before its first deploy; see the deploy-cloudflare README setup checklist."
+          exit 1
+        fi
+
+    - name: Warn that the gate is not checked
+      if: inputs.require-access != 'true'
+      shell: bash
+      run: echo "::warning::require-access is false, so this deploy does not check that the site is behind Access. Never use this for private content."
+
+    - name: Check for Node.js 22 or later
+      id: node
+      shell: bash
+      run: |
+        major=0
+        if command -v node >/dev/null 2>&1; then
+          v=$(node --version); major=${v#v}; major=${major%%.*}
+          echo "Found node $v"
+        fi
+        # wrangler refuses to run below 22. The QuantEcon images carry 24.
+        if [ "$major" -ge 22 ] 2>/dev/null; then
+          echo "ok=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "ok=false" >> "$GITHUB_OUTPUT"
+          echo "Node.js 22+ not found; installing 24"
+        fi
+
+    - name: Set up Node.js
+      if: steps.node.outputs.ok != 'true'
+      uses: actions/setup-node@v7
+      with:
+        node-version: '24'
+        package-manager-cache: false
+
+    # Exact version from the committed lockfile, integrity-checked across the
+    # whole dependency tree; Dependabot proposes bumps (#105). Installed outside
+    # the workspace so nothing lands in the consumer's checkout.
+    - name: Install wrangler
+      id: wrangler
+      shell: bash
+      run: |
+        set -euo pipefail
+        dir="$RUNNER_TEMP/deploy-cloudflare"
+        mkdir -p "$dir"
+        cp "$GITHUB_ACTION_PATH/package.json" "$GITHUB_ACTION_PATH/package-lock.json" "$dir/"
+        npm ci --prefix "$dir" --no-audit --no-fund
+        "$dir/node_modules/.bin/wrangler" --version
+        echo "bin=$dir/node_modules/.bin/wrangler" >> "$GITHUB_OUTPUT"
+        echo "dir=$dir" >> "$GITHUB_OUTPUT"
+
+    # Generated per run, not committed per repo; see write-config.js.
+    - name: Write the Worker config
+      id: config
+      shell: bash
+      env:
+        CONFIG: ${{ steps.wrangler.outputs.dir }}/${{ inputs.worker-name }}.wrangler.jsonc
+        WORKER_NAME: ${{ inputs.worker-name }}
+        BUILD_DIR: ${{ steps.inputs.outputs.build-dir }}
+      run: |
+        set -euo pipefail
+        node "$GITHUB_ACTION_PATH/write-config.js" "$CONFIG" "$WORKER_NAME" "$BUILD_DIR"
+        cat "$CONFIG"
+        echo "path=$CONFIG" >> "$GITHUB_OUTPUT"
+
+    # wrangler's output is teed, never captured into a variable, so its errors
+    # reach the log as they happen. #105 is what capturing under pipefail does:
+    # the step aborts at the assignment and the output is never printed.
+    - name: Deploy to production
+      id: deploy
+      shell: bash
+      env:
+        CLOUDFLARE_API_TOKEN: ${{ inputs.cloudflare-api-token }}
+        CLOUDFLARE_ACCOUNT_ID: ${{ inputs.cloudflare-account-id }}
+        WRANGLER_SEND_METRICS: 'false'
+        CI: 'true'
+        WRANGLER: ${{ steps.wrangler.outputs.bin }}
+        CONFIG: ${{ steps.config.outputs.path }}
+        LOG: ${{ steps.wrangler.outputs.dir }}/${{ inputs.worker-name }}.deploy.log
+        DEPLOY_URL: ${{ steps.inputs.outputs.deploy-url }}
+        PREVIEW_SUFFIX: ${{ steps.inputs.outputs.preview-suffix }}
+      run: |
+        set -uo pipefail
+        message="${GITHUB_REPOSITORY}@${GITHUB_SHA:0:7} run ${GITHUB_RUN_ID}"; message=${message:0:100}
+        # The runner starts this script with `bash -e`, which would end it at a
+        # failing pipeline, before the status and version id are read.
+        set +e
+        "$WRANGLER" deploy --config "$CONFIG" --message "$message" 2>&1 | tee "$LOG"
+        status=${PIPESTATUS[0]}
+        set -e
+
+        # preview_urls: true gives every version its own preview URL,
+        # https://<first 8 of the version id>-<worker>.<subdomain>.workers.dev,
+        # which the check below must cover too. Read from the log, unlike the
+        # URLs this action hands out, because it is only ever probed: if the
+        # line is missing the check fails closed rather than skipping it.
+        version=$(sed -n 's/.*Current Version ID: \([0-9a-f]\{8\}\)[0-9a-f-]*.*/\1/p' "$LOG" | tail -n 1)
+        [ -z "$version" ] || echo "version-preview-url=https://${version}${PREVIEW_SUFFIX}" >> "$GITHUB_OUTPUT"
+
+        if [ "$status" -ne 0 ]; then
+          echo "::error::wrangler deploy failed (exit $status); see its output above. It can fail after the new version is already live, so the gate is checked anyway. A permissions error usually means the token lacks Editor on this Worker."
+          exit 1
+        fi
+        echo "deploy-url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
+        echo "✅ Deployed $DEPLOY_URL"
+
+    # A regression guard for production (the pilot showed Access survives a
+    # redeploy, and the check before deploying already proved it), and the only
+    # check of the new version's own preview URL, which a gate on the production
+    # hostname alone would leave public. It also runs when wrangler failed,
+    # because wrangler can exit non-zero after the new version is already live.
+    - name: Check the Access gate after deploying
+      id: gate-after
+      if: ${{ !cancelled() && inputs.require-access == 'true' && steps.gate-before.outcome == 'success' && (steps.deploy.outcome == 'success' || steps.deploy.outcome == 'failure') }}
+      shell: bash
+      env:
+        TEAM: ${{ steps.inputs.outputs.team-domain }}
+        URL: ${{ steps.inputs.outputs.deploy-url }}
+        PROBE_PATH: ${{ steps.inputs.outputs.probe-path }}
+        DEPLOY: ${{ steps.deploy.outcome }}
+        VERSION_URL: ${{ steps.deploy.outputs.version-preview-url }}
+      run: |
+        set -uo pipefail
+        failed=0
+        urls=("$URL/")
+        [ -z "$PROBE_PATH" ] || urls+=("$URL$PROBE_PATH")
+        if [ -n "$VERSION_URL" ]; then
+          urls+=("$VERSION_URL/")
+          [ -z "$PROBE_PATH" ] || urls+=("$VERSION_URL$PROBE_PATH")
+        else
+          # wrangler prints the id only after every post-upload step succeeds,
+          # so a deploy that failed after going live usually lacks it too.
+          echo "::error::wrangler's output named no 'Current Version ID', so the new version's preview URL could not be checked. Treat it as public until verified by hand with scripts/check-access-gate.sh."
+          failed=1
+        fi
+        if ! bash "$GITHUB_ACTION_PATH/../scripts/check-access-gate.sh" "$TEAM" "${urls[@]}"; then
+          echo "::error::A hostname serving this Worker is NOT behind Access for $TEAM (see above). Treat the site as public until this is fixed: turn Access on for the Worker with All traffic, which also covers its preview URLs, or disable its workers.dev route."
+          failed=1
+        fi
+        exit "$failed"
+
+    - name: Upload preview alias
+      id: alias
+      if: inputs.alias != ''
+      shell: bash
+      env:
+        CLOUDFLARE_API_TOKEN: ${{ inputs.cloudflare-api-token }}
+        CLOUDFLARE_ACCOUNT_ID: ${{ inputs.cloudflare-account-id }}
+        WRANGLER_SEND_METRICS: 'false'
+        CI: 'true'
+        WRANGLER: ${{ steps.wrangler.outputs.bin }}
+        CONFIG: ${{ steps.config.outputs.path }}
+        ALIAS: ${{ inputs.alias }}
+        ALIAS_URL: ${{ steps.inputs.outputs.alias-url }}
+      run: |
+        set -uo pipefail
+        message="${GITHUB_REPOSITORY}@${GITHUB_SHA:0:7} run ${GITHUB_RUN_ID}"; message=${message:0:100}
+        if ! "$WRANGLER" versions upload --config "$CONFIG" --preview-alias "$ALIAS" --message "$message"; then
+          echo "::error::wrangler versions upload failed for alias [$ALIAS]; see its output above. Production is already deployed."
+          exit 1
+        fi
+        echo "alias-url=$ALIAS_URL" >> "$GITHUB_OUTPUT"
+        echo "✅ Uploaded $ALIAS_URL"
+
+    # Preview URLs can be gated separately from production, so a gate that
+    # covers the Worker but not its previews would expose the alias.
+    - name: Check the Access gate on the alias
+      id: gate-alias
+      if: inputs.alias != '' && inputs.require-access == 'true'
+      shell: bash
+      env:
+        TEAM: ${{ steps.inputs.outputs.team-domain }}
+        URL: ${{ steps.inputs.outputs.alias-url }}
+        PROBE_PATH: ${{ steps.inputs.outputs.probe-path }}
+      run: |
+        set -uo pipefail
+        urls=("$URL/")
+        [ -z "$PROBE_PATH" ] || urls+=("$URL$PROBE_PATH")
+        if ! bash "$GITHUB_ACTION_PATH/../scripts/check-access-gate.sh" "$TEAM" "${urls[@]}"; then
+          echo "::error::The alias is uploaded but $URL is NOT behind Access for $TEAM. Treat it as public until this is fixed: set the Worker's Access to cover previews (All traffic)."
+          exit 1
+        fi
+
+    # On push, schedule and workflow_dispatch there is no PR to comment on, so
+    # the job summary is where the result is read. It runs on failure too:
+    # "refused, nothing uploaded" and "deployed, gate failed" need saying.
+    - name: Write job summary
+      if: always()
+      shell: bash
+      env:
+        WORKER_NAME: ${{ inputs.worker-name }}
+        TEAM: ${{ steps.inputs.outputs.team-domain }}
+        DEPLOY_URL: ${{ steps.inputs.outputs.deploy-url }}
+        ALIAS_URL: ${{ steps.inputs.outputs.alias-url }}
+        REQUIRE_ACCESS: ${{ inputs.require-access }}
+        INPUTS: ${{ steps.inputs.outcome }}
+        GATE_BEFORE: ${{ steps.gate-before.outcome }}
+        DEPLOY: ${{ steps.deploy.outcome }}
+        VERSION_URL: ${{ steps.deploy.outputs.version-preview-url }}
+        GATE_AFTER: ${{ steps.gate-after.outcome }}
+        ALIAS: ${{ steps.alias.outcome }}
+        GATE_ALIAS: ${{ steps.gate-alias.outcome }}
+      run: |
+        gate() {
+          case "$1" in
+            success) echo "✅ redirects to \`$TEAM\`" ;;
+            failure) echo "🚨 **not proven gated**, treat as public" ;;
+            *)       [ "$REQUIRE_ACCESS" = "true" ] && echo "not checked" || echo "⚠️ not checked (\`require-access: false\`)" ;;
+          esac
+        }
+        {
+          echo "### ☁️ deploy-cloudflare: \`$WORKER_NAME\`"
+          echo
+          if [ "$INPUTS" != "success" ]; then
+            echo "❌ Inputs rejected, nothing was deployed. See the step log."
+          elif [ "$GATE_BEFORE" = "failure" ]; then
+            echo "⛔ **Refused.** $DEPLOY_URL is not behind Access for \`$TEAM\`, so nothing was uploaded."
+          elif [ "$DEPLOY" = "failure" ]; then
+            echo "❌ **wrangler deploy failed.** The new build may already be live; see the step log."
+            echo
+            echo "Production gate after the failure: $(gate "$GATE_AFTER")"
+          elif [ "$DEPLOY" != "success" ]; then
+            echo "❌ The deploy did not run. See the step log."
+          else
+            echo "| | URL | Access gate |"
+            echo "|---|---|---|"
+            echo "| Production | $DEPLOY_URL | $(gate "$GATE_AFTER") |"
+            [ -z "$VERSION_URL" ] || echo "| This version | $VERSION_URL | $(gate "$GATE_AFTER") |"
+            if [ "$ALIAS" = "success" ]; then
+              echo "| Alias | $ALIAS_URL | $(gate "$GATE_ALIAS") |"
+            elif [ "$ALIAS" = "failure" ]; then
+              echo "| Alias | ❌ upload failed | |"
+            elif [ -n "$ALIAS_URL" ]; then
+              echo "| Alias | not uploaded, an earlier step failed | |"
+            fi
+          fi
+        } >> "$GITHUB_STEP_SUMMARY"
+
+branding:
+  icon: 'lock'
+  color: 'orange'

@@ -12,6 +12,7 @@ A cheat sheet for using QuantEcon composite actions in your workflows.
 | `restore-jupyter-cache` | Cache restore for PRs (read-only by default; optional `save-cache`) | ~14 min (avoids full rebuild) |
 | `preview-netlify` | PR preview deployment (Netlify) | ~1 min |
 | `preview-cloudflare` | PR preview deployment (Cloudflare) | ~1 min |
+| `deploy-cloudflare` | Members-only site on a Cloudflare Worker behind Access, gate-checked | ~1 min |
 | `publish-gh-pages` | GitHub Pages deployment | ~30 sec |
 
 ## 🚀 Quick Start
@@ -19,8 +20,8 @@ A cheat sheet for using QuantEcon composite actions in your workflows.
 ### Container CI Workflow (Recommended - Fastest)
 
 Two container options:
-- `ghcr.io/quantecon/quantecon:latest` (~8GB) - Full Anaconda, max compatibility
-- `ghcr.io/quantecon/quantecon-build:latest` (~3GB) - Lean, faster CI pulls
+- `ghcr.io/quantecon/quantecon:latest` (3.33 GB compressed pull, 8.60 GB on disk) - Full Anaconda, max compatibility
+- `ghcr.io/quantecon/quantecon-build:latest` (2.93 GB compressed pull, 7.32 GB on disk) - Lean: no Anaconda metapackage, a modestly smaller pull
 
 ```yaml
 name: CI
@@ -33,9 +34,10 @@ jobs:
       image: ghcr.io/quantecon/quantecon-build:latest  # Lean container for CI
     permissions:
       contents: read
+      pull-requests: write  # preview-netlify's PR comment
       packages: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: quantecon/actions/setup-environment@v0
@@ -63,8 +65,11 @@ on: [pull_request]
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write  # preview-netlify's PR comment
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: quantecon/actions/setup-environment@v0
@@ -103,7 +108,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deploy.outputs.page-url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: quantecon/actions/setup-environment@v0
         with:
           install-latex: 'true'
@@ -113,8 +118,9 @@ jobs:
         id: deploy
         with:
           build-dir: ${{ steps.build.outputs.build-path }}
-          cname: 'python.quantecon.org'
 ```
+
+Set a custom domain in **Settings → Pages**: this deploy ignores a CNAME file, so the `cname` input has no effect.
 
 ## 🔧 Common Customizations
 
@@ -153,16 +159,9 @@ Add `restore-jupyter-cache` before `build-lectures` to restore cached execution 
 
 **Note:** Requires a `cache.yml` workflow to generate the cache. See [MIGRATION-GUIDE.md](MIGRATION-GUIDE.md#step-5-update-cacheyml).
 
-### Preview with Custom URL
+### Preview URL
 
-```yaml
-- uses: quantecon/actions/preview-netlify@v0
-  with:
-    netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-    netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
-    build-dir: '_build/html'
-    alias: 'pr-${{ github.event.pull_request.number }}'
-```
+`preview-netlify` has no alias input: it always deploys to the `pr-{number}` alias, so a PR keeps one preview URL across pushes. Read it from the `deploy-url` output.
 
 ### Force Cache Rebuild
 
@@ -177,7 +176,7 @@ Add `restore-jupyter-cache` before `build-lectures` to restore cached execution 
 | Action | Cache Key | Invalidates On |
 |--------|-----------|----------------|
 | `setup-environment` (container) | No caching | N/A |
-| `setup-environment` (standard) | `conda-{OS}-{hash(env.yml)}-{version}` | env.yml changes, manual bump |
+| `setup-environment` (standard) | `conda-{OS}-{env-name}-py{python-version}-{hash(env.yml)}-{cache-version}`, path `$CONDA/envs/{env-name}` | env.yml, env name or Python version changes, manual bump |
 | `build-jupyter-cache` | `build-{hash(env.yml)}-{hash(env-update.yml)}-{run-id}` | env file changes, each run |
 | `restore-jupyter-cache` | `build-{hash(env.yml)}-{hash(env-update.yml)}-` (prefix) | env file changes |
 
@@ -231,11 +230,24 @@ build-dir: '_build/html'         # Required
 lectures-dir: 'lectures'         # For change detection (default)
 ```
 
+### deploy-cloudflare
+
+```yaml
+cloudflare-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}  # Required - Editor on this Worker only
+cloudflare-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}  # Required
+worker-name: 'members-dashboard'  # Required - must already exist and be behind Access
+account-subdomain: 'my-subdomain' # Required - *.my-subdomain.workers.dev
+team-domain: 'my-team.cloudflareaccess.com'  # Required - the gate must redirect here
+build-dir: '_site'               # Required
+alias: ''                        # Optional permanent preview alias, e.g. report-2026-08
+require-access: 'true'           # Gate check before and after deploying (default)
+```
+
 ### publish-gh-pages
 
 ```yaml
 build-dir: '_build/html'         # Required
-cname: ''                        # Custom domain (optional)
+cname: ''                        # No effect on this deploy: set a custom domain in Settings → Pages
 ```
 
 **Note:** Uses native GitHub Pages deployment. Requires workflow permissions:
@@ -267,6 +279,17 @@ permissions:
 # - ${{ steps.netlify.outputs.changed-files }}
 ```
 
+### deploy-cloudflare
+
+```yaml
+- id: private
+  uses: quantecon/actions/deploy-cloudflare@v0
+
+# Access:
+# - ${{ steps.private.outputs.deploy-url }}
+# - ${{ steps.private.outputs.alias-url }}
+```
+
 ### publish-gh-pages
 
 ```yaml
@@ -282,9 +305,8 @@ permissions:
 
 Look for in logs:
 ```
-Conda cache hit: true
-LaTeX cache hit: true
-Jupyter cache hit: false
+Conda: Restored from cache ✅ (saved ~5-6 minutes)   # setup-environment, standard mode
+✅ Cache restored successfully                        # restore-jupyter-cache
 ```
 
 ### Common Issues
@@ -311,18 +333,19 @@ gh secret list
 
 **Pages 404?**
 ```yaml
-# Ensure permissions set
+# The native Pages deploy needs these; a permissions block drops every scope it omits
 permissions:
-  contents: write
+  contents: read      # contents: write only if you set create-release-assets: 'true'
+  pages: write
+  id-token: write
 ```
 
 ## 📚 Full Documentation
 
 - **README.md** - Repository overview
-- **ARCHITECTURE.md** - Architecture overview
+- **dev/ARCHITECTURE.md** - Architecture overview
 - **CONTAINER-GUIDE.md** - Container usage guide
 - **MIGRATION-GUIDE.md** - Migration steps
-- **FUTURE-DEVELOPMENT.md** - Future plans
 - **{action}/README.md** - Detailed action docs
 
 ## 🎓 Repository-Specific Notes

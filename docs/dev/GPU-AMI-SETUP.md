@@ -298,7 +298,7 @@ jobs:
   build:
     runs-on: "runs-on=${{ github.run_id }}/family=g4dn.2xlarge/image=quantecon_ubuntu2404/disk=large"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       - uses: quantecon/actions/setup-environment@v0
         with:
@@ -449,7 +449,7 @@ export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
 - Slower to iterate vs pulling a container
 - Per-cloud-provider setup
 
-**Future:** If GitHub launches official GPU runners, we may sunset the custom AMI approach. See [FUTURE-DEVELOPMENT.md](FUTURE-DEVELOPMENT.md).
+**Future:** If GitHub launches official GPU runners, we may sunset the custom AMI approach.
 
 ### JAX Bundled CUDA vs System CUDA
 

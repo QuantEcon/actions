@@ -118,6 +118,19 @@ jobs:
           upload-failure-reports: true
           failure-artifact-name: reports-html-retry-${{ matrix.container }}-${{ matrix.repo.repo }}
 
+      # Keep the header assertion after the retry so a successful retry's
+      # pages are also checked.
+      # The lecture repos use quantecon-book-theme, which renders a page's
+      # "Last changed" header only when git can read the checkout during the
+      # build, and omits it silently otherwise, so a green build is no
+      # evidence the header rendered. Count the pages that carry it.
+      - name: Assert pages carry the "Last changed" header
+        run: |
+          n=$(grep -l -- 'class="qe-page__header-changed"' lecture-repo/_build/html/*.html 2>/dev/null | wc -l || true)
+          [ "$n" -gt 0 ] \
+            || { echo "::error::no page in lecture-repo/_build/html has the 'Last changed' header: git could not read the checkout during the build"; exit 1; }
+          echo "✅ $n pages carry the 'Last changed' header"
+
       # Stage 2: pdflatex (reuses cached notebooks from HTML build)
       - name: Build PDF (No Execution)
         uses: ./actions-repo/build-lectures

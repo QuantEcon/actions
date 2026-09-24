@@ -23,13 +23,15 @@ Deploys QuantEcon lecture builds to Cloudflare Pages for PR previews with smart 
 
 That's it! Changed lecture detection works automatically for files in the `lectures/` directory.
 
-> **Note:** For changed lecture detection to work, your workflow must check out the repository with full git history using `actions/checkout@v4` with `fetch-depth: 0`. Without this, only the preview URL will be shown (no direct links to changed pages).
+> **Note:** For changed lecture detection to work, your workflow must check out the repository with full git history using `actions/checkout@v7` with `fetch-depth: 0`. Without this, only the preview URL will be shown (no direct links to changed pages).
 
 ## Requirements
 
 - **Node.js/npm:** Required for `wrangler` CLI installation
-  - The QuantEcon container (`ghcr.io/quantecon/quantecon:latest`) includes Node.js
-  - For other runners, use `actions/setup-node@v4` before this action
+  - The pinned `wrangler` needs Node.js 22 or later
+  - The QuantEcon containers (`ghcr.io/quantecon/quantecon`, `ghcr.io/quantecon/quantecon-build`) include Node.js 24 LTS
+  - For other runners, use `actions/setup-node@v7` with `node-version: '24'` before this action
+- **`wrangler` version:** pinned exactly in [`package.json`](package.json) and installed per job with `npm ci` from [`package-lock.json`](package-lock.json), so the runner needs access to `registry.npmjs.org`. Dependabot bumps the pin
 - **Git history:** Use `fetch-depth: 0` in checkout for change detection
 - **Cloudflare secrets:** `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`
 - **Cloudflare Pages project:** Must be created beforehand
@@ -85,8 +87,11 @@ on:
 jobs:
   preview:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write      # Required for the PR preview comment
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -179,9 +184,15 @@ Use `preview-cloudflare` for private repositories, `preview-netlify` for public 
 
 This action automatically skips deployment for:
 - **Dependabot PRs** - Can't access secrets
-- **Fork PRs** - Can't access secrets (use `pull_request_target` if needed)
+- **Fork PRs** - Can't access secrets
 
 A notification is logged when deployment is skipped.
+
+> **Warning:** previews of pull requests from forks are not supported. Do not run this action
+> from `pull_request_target` to get around that. A workflow triggered that way builds and runs
+> the fork's notebooks with `CLOUDFLARE_API_TOKEN` and a write-scoped `GITHUB_TOKEN` in reach, which is
+> the "pwn request" pattern. It would not produce a preview either: the action deploys only
+> on `pull_request` events, so under `pull_request_target` its deploy step is skipped.
 
 ## Troubleshooting
 

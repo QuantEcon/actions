@@ -34,7 +34,9 @@ The container fixture at `containers/quantecon/tests/minimal-jupyter-book/` also
 | `setup-environment` | Standard-mode conda cache, two-run miss→hit chain (the #33/#78 path, previously never confirmed by CI) |
 | `build-lectures` | Real HTML build of the fixture on the cache-restored conda env, executed-cell output asserted; plus the negative direction — a page whose code cell raises must fail the step, so a regression that swallows the build status cannot pass silently |
 | `build-jupyter-cache` | Smoke build + outputs, then a full round-trip into `restore-jupyter-cache` for both cache types. ⚠️ Its internal `setup-environment`/`build-lectures` calls run `@v0`, not the PR — GitHub forbids expressions in `uses:`, so that chain is untestable pre-release by construction (see #100) |
-| `publish-gh-pages`, `preview-netlify`, `preview-cloudflare` | ❌ Not covered — need real deploy targets and secrets; owned by the post-release canary repo (stage 2+ of #100) |
+| `deploy-cloudflare` | Everything short of a real deploy: the Access gate probe against a local stand-in for every response shape (exact team domain passes; wrong org, public `2xx`, same-host redirect, missing `Location`, a `Location` hiding its host behind userinfo, `404`, `5xx`, unreachable, an empty team domain, and a public asset behind a gated root all fail); the action refusing an ungated Worker **before wrangler is even installed**, asserted on the filesystem, with a positive control proving the same inputs reach wrangler once the gate is off; every invalid input failing in validation, with the gate off so a dropped rule cannot hide behind it; and the pinned wrangler accepting the generated config (`--dry-run` deploy and alias upload, with no `Unexpected fields` warning), which is what a Dependabot bump of the lockfile runs against. ❌ A real deploy needs a gated Worker and a token, so the first consumer deploy is its only proof |
+| `preview-netlify`, `preview-cloudflare` | CLI install only: `npm ci` from each action's lockfile on Node 24, then the CLI must start and report the pinned version, so a Dependabot CLI bump gets some signal (#105). The actions themselves, deploys included, are ❌ not covered — they need real deploy targets and secrets; owned by the post-release canary repo (stage 2+ of #100) |
+| `publish-gh-pages` | ❌ Not covered — needs real deploy targets and secrets; owned by the post-release canary repo (stage 2+ of #100) |
 
 ---
 
@@ -42,7 +44,7 @@ The container fixture at `containers/quantecon/tests/minimal-jupyter-book/` also
 
 ### `tests/local/` (git-ignored)
 
-Scratch space for local clones of real lecture repos, used to test workflows on your own machine against something larger than the committed fixture. Ignored via `tests/local/` in `.gitignore`, so it exists only in your working tree — never committed, and read by no workflow. See [tests/README.md](tests/README.md) for the wider layout.
+Scratch space for local clones of real lecture repos, used to test workflows on your own machine against something larger than the committed fixture. Ignored via `tests/local/` in `.gitignore`, so it exists only in your working tree — never committed, and read by no workflow. See [tests/README.md](../../tests/README.md) for the wider layout.
 
 > **Not to be confused with [`QuantEcon/test-actions-lecture-intro`](https://github.com/QuantEcon/test-actions-lecture-intro)**, the canary repo that runs the actions in real CI (#100 stage 2). This is a throwaway directory; that is a live repo.
 >
@@ -133,7 +135,7 @@ jobs:
     container:
       image: ghcr.io/quantecon/quantecon:latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       # Install lecture-specific packages
       - name: Install dependencies
@@ -182,7 +184,7 @@ Before production rollout:
 **Goal:** Verify container pulls quickly from GHCR
 
 **Check workflow logs:**
-- First pull: ~1-2 min (download ~2 GB)
+- First pull: ~1-2 min (downloads 3.33 GB compressed for the full image, 2.93 GB for the lean one)
 - Subsequent pulls: ~10-20 sec (runner cache)
 
 ### Test 2: Environment Validation
@@ -364,6 +366,6 @@ ls -la ~/.conda/pkgs || echo "No conda cache"
 
 ## See Also
 
-- [docs/CONTAINER-GUIDE.md](./docs/CONTAINER-GUIDE.md) - Container usage
-- [docs/MIGRATION-GUIDE.md](./docs/MIGRATION-GUIDE.md) - Migration steps
-- [containers/quantecon/README.md](./containers/quantecon/README.md) - Container details
+- [docs/CONTAINER-GUIDE.md](../CONTAINER-GUIDE.md) - Container usage
+- [docs/MIGRATION-GUIDE.md](../MIGRATION-GUIDE.md) - Migration steps
+- [containers/quantecon/README.md](../../containers/quantecon/README.md) - Container details

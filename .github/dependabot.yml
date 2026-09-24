@@ -13,8 +13,9 @@ updates:
   # ── Conda environments (container images) ──────────────────────────────────
   # The conda ecosystem (GA Dec 2025) tracks the `pip:` block (jupyter-book,
   # quantecon-book-theme, the sphinx-* extensions, kaleido) via PyPI, and also
-  # proposes version-range bumps for conda deps such as `nodejs` — which is why
-  # it's capped in the ignore list below. The core scientific stack (numpy, scipy,
+  # proposes version-range bumps for conda-only deps. Node is not a conda dep: it
+  # is pinned by version and SHA256 in each Dockerfile, which no ecosystem here
+  # tracks, so bump it by hand. The core scientific stack (numpy, scipy,
   # pandas, … and the `anaconda` metapackage) is held at the 2026.06 baseline via
   # `ignore` below — a date-pin like `=2026.06` does NOT stop Dependabot proposing
   # the next release, so each is listed explicitly.
@@ -65,9 +66,10 @@ updates:
       # jupyter-book 2.x is a major rewrite — stay on 1.x until we opt in.
       - dependency-name: "jupyter-book"
         update-types: ["version-update:semver-major"]
-      # Cap node at the current LTS (24); don't propose the non-LTS 25+ lines.
-      - dependency-name: "nodejs"
-        versions: [">=25"]
+      # icu is held in the lean image at the version the old conda nodejs pinned,
+      # so dropping nodejs did not re-solve the native stack; bump it with the
+      # next Anaconda baseline, not on its own.
+      - dependency-name: "icu"
 
   # ── Third-party GitHub Actions ─────────────────────────────────────────────
   # "/" covers .github/workflows/; for github-actions, composite actions in
@@ -83,6 +85,7 @@ updates:
       - "/restore-jupyter-cache"
       - "/preview-netlify"
       - "/preview-cloudflare"
+      - "/deploy-cloudflare"
       - "/publish-gh-pages"
     schedule:
       interval: "weekly"
@@ -106,6 +109,40 @@ updates:
     ignore:
       # Don't propose bumps to our own internal sibling references (floating @v0).
       - dependency-name: "quantecon/actions*"
+
+  # ── npm (the CLIs the deploy actions install) ─────────────────────────────
+  # deploy-cloudflare, preview-cloudflare and preview-netlify install wrangler
+  # or netlify-cli with `npm ci` from the package.json + package-lock.json
+  # beside each action.yml, pinned to an exact version because the CLI is
+  # handed the deploy token (#105, #163). The groups bump all three in one PR
+  # (a second one for majors). Such a PR cannot run a deploy, so the CI signal
+  # is the harness: dc-wrangler-config dry-runs deploy-cloudflare's generated
+  # config through the bumped wrangler, and preview-cli-install runs `npm ci`
+  # from each preview lockfile and checks `--version`.
+  - package-ecosystem: "npm"
+    directories:
+      - "/deploy-cloudflare"
+      - "/preview-cloudflare"
+      - "/preview-netlify"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "maintenance"
+    commit-message:
+      prefix: "deps"
+    groups:
+      npm:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      npm-major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
 
   # ── Container base image ───────────────────────────────────────────────────
   # Tracks the `FROM ubuntu:24.04` base in each Dockerfile (not the Miniconda

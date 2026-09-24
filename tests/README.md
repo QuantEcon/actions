@@ -2,7 +2,7 @@
 
 Home for this repo's test infrastructure. Today it holds the local scratch area; it exists as a named place so future test tooling has somewhere obvious to land instead of accumulating at the repo root.
 
-See [TESTING.md](../TESTING.md) for the strategy and how to run things.
+See [TESTING.md](../docs/dev/TESTING.md) for the strategy and how to run things.
 
 ## What lives where
 

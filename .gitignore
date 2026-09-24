@@ -42,3 +42,6 @@ ENV/
 # Logs
 *.log
 npm-debug.log*
+
+# wrangler writes its local cache into the working directory
+.wrangler/

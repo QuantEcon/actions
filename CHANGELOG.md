@@ -7,6 +7,279 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **`build-containers.yml`**: an edit to a README under `containers/` no longer rebuilds and
+  pushes both `:latest` images, or re-runs the container test workflows that follow the build.
+  The Dockerfiles copy only `environment.yml`, so a README cannot change an image. Other Markdown
+  under `containers/` still triggers a build: the smoke-test fixture's pages are Markdown. (#178)
+
+### Documentation
+- Developer docs move to `docs/dev/`, the first step of the user manual (#178): `ARCHITECTURE.md`,
+  `GPU-AMI-SETUP.md`, `PLAN.md`, `TESTING.md`, and `containers/VALIDATION.md` as
+  `CONTAINER-VALIDATION.md`, with a `docs/dev/README.md` index. `docs/README.md`,
+  `docs/FUTURE-DEVELOPMENT.md` and `PROJECT-OPTIMIZE-PREVIEWS.md` are removed; the preview plan
+  is tracked in #92 and its sub-issues. The harness gate's ignore list follows the moves.
+
+## [0.12.0] - 2026-09-24
+
+### Added
+- **`deploy-cloudflare`**: a new action that publishes a built site to an existing Cloudflare
+  Worker behind Cloudflare Access, for members-only sites that GitHub Pages cannot serve on the
+  Team plan (Pages access control needs Enterprise Cloud). It runs on `push`, `schedule` and
+  `workflow_dispatch`; `preview-cloudflare` stays PR-only. The part worth building is the gate
+  check. An unauthenticated request must be answered with a redirect to **exactly** the team's
+  `<team>.cloudflareaccess.com` login domain. A `2xx` fails as "the site is public", a redirect to
+  another Access organisation fails, and so does anything else, including an unreachable host.
+  The check runs **before** uploading, so a Worker that does not exist, is public, or is gated by
+  the wrong organisation is refused with nothing uploaded. It runs again after the deploy, on
+  production and on the new version's own preview URL (the config enables preview URLs, and a
+  gate on the production hostname alone would leave that one public). It also runs when wrangler
+  fails, because wrangler can fail after the version is live. An optional preview alias
+  (`alias: report-2026-08`) is checked after its upload. Each check probes the site root and one
+  real non-HTML file from the build, so a gate on the entry point alone cannot pass. The output
+  URLs are constructed from inputs, never parsed from wrangler's output; only the version
+  preview URL, which is probed but never output, comes from wrangler's version ID. The action does not
+  create Workers or provision Access: an admin creates and gates each Worker once, and the deploy
+  token is account-owned with Editor on that one Worker, so it cannot create an ungated Worker
+  either. It takes the lessons of #105 for itself. wrangler is pinned exactly and installed with
+  `npm ci` from a committed lockfile (Dependabot now tracks npm for this directory), and it runs
+  uncaptured, so its errors reach the log. The action sets up Node 24 only when the runner has
+  less than 22. The probe, `scripts/check-access-gate.sh`, is the one verified in the
+  QuantEcon/status-projects#35 pilot. (#163)
+- **CI**: four `deploy-cloudflare` harness jobs, none needing a Cloudflare account.
+  `dc-gate-probe` runs the probe against a local stand-in (`.github/fixtures/access-gate/`) for
+  every response shape. `dc-refuses-ungated` asserts that a Worker which does not exist is refused
+  before wrangler is even installed, with a positive control showing the same inputs reach
+  wrangler once the gate is off. `dc-inputs` asserts that every invalid input fails in
+  validation, including #163's own example alias `2026-08`, which Cloudflare rejects because
+  aliases must start with a letter. `dc-wrangler-config` dry-runs the generated config through the
+  pinned wrangler, which is what a Dependabot bump of the lockfile is tested against. A real deploy
+  is not covered; the first consumer deploy is its proof. (#163)
+- **`build-jupyter-cache`**: `latex-requirements-file` input, passed through to
+  `setup-environment`. A `pdflatex` builder forces `install-latex` on, and in standard
+  (non-container) mode `setup-environment` then hard-fails when its requirements file is
+  missing, but the path could not be set from here. The default is
+  `latex-requirements.txt`, `setup-environment`'s own, and deliberately not `''`: the
+  runner passes an explicit empty value through instead of applying the callee's default,
+  which would have failed every standard-mode pdflatex build. Ignored in container mode,
+  where the images ship LaTeX. (#109)
+- **CI**: `bjc-builders-parse` harness job for the `builders` fix below. It turns the
+  runner into a container-mode host with the same `/etc/quantecon-container` marker a GPU
+  AMI carries, so the internal `setup-environment@v0` is a no-op and every build the
+  parser enables fails in seconds on a missing source dir; the per-builder statuses then
+  record exactly which builders were parsed. Two controls (`'jupyter,pdflatex,html'`, and
+  a two-line block value with a trailing comma) must attempt exactly their builders;
+  `'html,pdf'` and `'nojupyter'` must abort with no builder run. The old substring parser
+  would have built html and jupyter respectively, and the controls prove setup really was
+  a no-op, so an empty status cannot be a setup failure in disguise. `bjc-abort-guard`'s
+  `'nonsense'` could not catch either shape: it names no valid builder at all. (#107)
+- **CI**: `env-container-update` harness job, the first coverage anywhere of
+  `setup-environment`'s `environment-update` path, and the harness's first container job.
+  In `ghcr.io/quantecon/quantecon-build:latest` it applies a delta
+  file that says `name: wrong-name` and asserts that the pip package it lists (checked
+  absent beforehand) is importable by the `python` on `PATH`, that no `envs/wrong-name`
+  appeared, and that the image's own packages survived. (#107)
+- **CI**: the relevance gate now checks that every third-party `uses:` pin in
+  `templates/*.yml` matches the ref `.github/workflows/` pins for the same action, with
+  one `::error::` per mismatch. The templates are what consumer repositories are scaffolded
+  from, and nothing kept them current: Dependabot's github-actions ecosystem scans
+  `.github/workflows/` and named `action.yml` files only, so a `/templates` entry in
+  `dependabot.yml` would be a no-op. It runs in the gate, which always runs, because a
+  templates-only PR matches the ignore list and a gated job would skip exactly the PRs
+  that can introduce drift. Consequence: a Dependabot major bump of such an action (today
+  only `actions/checkout`) now goes red until the templates move in the same PR. (#109)
+- **CI**: `preview-cli-install` harness job — `npm ci` from each preview action's lockfile on
+  Node 24, after which the CLI must start and report the pinned version. The preview actions
+  themselves cannot run in the harness (a deploy needs the provider's token, and they skip
+  Dependabot's PRs outright), so without this job the Dependabot CLI bumps added below would
+  merge with no CI signal at all. It does not exercise a deploy: a new CLI still needs a real PR
+  against each provider. The gate's self-test now also treats the two lockfiles as must-run
+  paths. (#105)
+
+### Changed
+- **`preview-cloudflare`, `preview-netlify`**: the CLI is no longer installed globally. Each
+  job runs `npm ci` into a fresh directory under `RUNNER_TEMP` — not `$GITHUB_ACTION_PATH`, which in a
+  container job is the `_actions` directory mounted from the host — and the deploy step calls
+  the binary by the absolute path the install step now outputs as `bin`. The
+  CLI's own executables (`wrangler`, `wrangler2`, `cf-wrangler`; `netlify`, `ntl`) are linked
+  into a `bin` directory added to `GITHUB_PATH`, so they stay on `PATH` for later steps in the
+  caller's job, as the global install left them, without the dependency bins in
+  `node_modules/.bin` shadowing the caller's tools. (#105)
+- **Container images**: Node.js moves from 20 (end-of-life 2026-04-30) to 24 LTS. The
+  lean image carried 20.17.0 and the full image 20.20.2. It no longer comes from conda,
+  which cannot supply 24 here: every `jupyterlab` below 4.6 on the defaults channel,
+  including the 4.5.7 that `anaconda=2026.06` pins, constrains `nodejs` to 20.x. Both
+  images now install Node from nodejs.org, pinned by version and SHA256 like Miniconda,
+  after the conda layer. Dropping the conda `nodejs` leaves the full image's solve
+  unchanged; the lean image holds `icu=73.1`, the version the old `nodejs` pinned, so its
+  native stack does not re-solve. `netlify-cli` (27.x, which needs node >=22.13) and
+  `wrangler` (which refuses to run below node 22), which `preview-netlify` and
+  `preview-cloudflare` install per job, are now inside their supported range.
+- **Templates**: `actions/checkout` moves from `@v4` to `@v7` in `ci.yml`, `cache.yml` and
+  `publish.yml`, matching this repo's own workflows and the consumer repositories in
+  `PLAN.md`'s table. `@v4` runs on node20, so every repository scaffolded from the templates brought
+  Node 20 back; `@v7` runs on node24. The `fetch-depth: 0` on the `cache.yml` and
+  `publish.yml` checkouts is kept. Templates reach a repository only when it is scaffolded,
+  so existing consumers and the `v0` tag are unaffected.
+- **`publish-gh-pages`**: `cname` still writes the `CNAME` file (it also lands in the
+  release archive) but now warns that it has no effect on the deploy. The GitHub Actions
+  Pages path this action uses (`configure-pages` → `upload-pages-artifact` →
+  `deploy-pages`) ignores `CNAME` files; the custom domain is set only in Settings → Pages,
+  which the input description and README now say. The value reaches the shell through
+  `env:` rather than `${{ }}` interpolation. (#109)
+- **Container tests**: the smoke fixture now builds with `quantecon_book_theme`, the theme both
+  images ship and every lecture site uses, instead of `sphinx_book_theme`, and no longer sets
+  `latex_elements.fontpkg: ""`. That override sent the PDF build down the TeX-defaults path,
+  so it never loaded the FreeFont `.otf` names that Sphinx's default xelatex `fontpkg` asks for
+  and both Dockerfiles symlink into place; a regression there could not fail the test. The
+  unused `containers/quantecon/tests/test-container.sh` (full image only, `set -e` only, in
+  no workflow) is deleted and the image README points at `smoke-test.sh` and the Test
+  Container workflow instead. `run-local-tests.sh` now passes `-W --keep-going` like the CI
+  script, so a warning that fails CI also fails locally. (#108)
+
+### Removed
+- **`publish-gh-pages`**: the `asset-url` output. It was bound to
+  `steps.upload-release.outputs.asset-url`, which `softprops/action-gh-release` never sets
+  (it exposes `url`, `id`, `upload_url` and `assets`), so it was always empty while the
+  README advertised it. Not repointed at `fromJSON(…assets)[0].browser_download_url`:
+  unguarded, that errors whenever the release step is skipped, which is the default. A
+  caller still reading it gets the same empty string as before. (#107)
+
+### Fixed
+- **Container images, `build-lectures`**: every page built in a container job lost its
+  "Last changed" header and changelog, with nothing in the log. The runner owns the
+  bind-mounted workspace (uid 1001) while container steps run as root, so git refuses the
+  work tree ("detected dubious ownership", exit 128) after `actions/checkout`, whose own
+  `safe.directory` entry lives only in a temporary HOME. quantecon-book-theme drops the
+  header when git fails, and `detect-changed-lectures.sh` hides the same failure behind
+  `|| true`, so in a container job it can report no changed lectures. Both images now set `safe.directory '*'` at system scope. `build-lectures`
+  trusts the source work tree when git cannot read it, and warns when it still cannot, or
+  when the checkout is shallow (which dates every page to the checkout commit). The
+  `publish.yml` and `cache.yml` templates now check out with `fetch-depth: 0`.
+- **`setup-environment`**: in container mode the delta update could land in the wrong
+  environment. `conda env update -f` took its target from the file's own `name:`, so a
+  delta saying `name: lecture-python` went to a new `envs/lecture-python`, not on `PATH`:
+  the step printed "✅ Environment updated successfully" and the build then failed with
+  `ModuleNotFoundError`. It now updates the environment that is actually active, the
+  prefix of the `python` on `PATH` (`conda env update -p`), and fails with diagnostics if
+  that is not a conda env. Not `-n <environment-name>` as #107 proposed: on a
+  container-mode host whose stack lives in `base` (the GPU AMI of `docs/GPU-AMI-SETUP.md`)
+  that would silently create a fresh `envs/quantecon`, because `conda env update` creates
+  a missing prefix without a word. A `::warning::` names any disagreement between the
+  file's `name:` or `environment-name` and the active env (a host whose stack is in `base`
+  silences the second with `environment-name: base`). Still no `--prune`, which would
+  strip the image's env down to the delta. The file path is quoted now and reaches the
+  shell through `env:`. (#107)
+- **`setup-environment`**: the LaTeX requirements file is parsed properly. `grep -v '^#'`
+  stripped only whole-line comments, so `texlive-xetex   # for unicode math` reached apt
+  verbatim, and a file of nothing but comments failed the `PACKAGES=$(…)` pipeline under
+  `pipefail`, killing the step with no output. `#` now starts a comment anywhere on a
+  line, CRLF and several packages per line work, and each name reaches `apt-get` as its
+  own quoted argument. A file with no package names is an explicit `::error::`, not the
+  warn-and-skip #107 proposed, deliberately: `install-latex: true` with nothing to install
+  is a misconfiguration, and skipping would only defer the failure to a harder-to-diagnose
+  missing-TeX error in the pdflatex build. (#107)
+- **`setup-environment`**: the environment summary listed the wrong Python in standard
+  mode. The step runs plain `bash` (deliberately, for containers), which has not run
+  `setup-miniconda`'s login-shell activation, so `pip list` showed the runner's default
+  Python right under "Conda: Restored from cache ✅". Standard mode now lists
+  `$CONDA/envs/<environment-name>` explicitly (`python -m pip list`, falling back to
+  `conda list -n`) without the `2>/dev/null` that hid errors, and never fails the step.
+  Container mode is unchanged. (#107)
+- **`build-lectures`**: the failure banner named an artifact that did not exist and the
+  wrong reports directory. It hardcoded `execution-reports-<builder>` although the upload
+  honours `failure-artifact-name`, which `test-containers-lectures.yml` always sets, so
+  every failing container-validation run printed a wrong download line; and it sent
+  pdflatex users to `_build/pdflatex/reports/`, where Sphinx's outdir is `_build/latex`.
+  The banner now takes the artifact name from the upload step's own expression and the
+  reports path from the upload step's path list. (#107)
+- **`build-jupyter-cache`**: `builders` was validated and parsed by substring, so
+  `'html,pdf'` passed and built html alone with no warning, `'nojupyter'` switched the
+  jupyter build on, and `install-latex`, derived from the same test, followed. The input
+  is now split on commas and any whitespace (newlines included, so a YAML block value
+  works), empty tokens are skipped, and each token must be exactly `jupyter`, `pdflatex`
+  or `html`; every unknown one gets its own `::error::` naming the valid set, before
+  setup starts. `'html, pdflatex'`, `'html pdflatex'` and `'html,'` still work, and
+  matching stays case-sensitive (`'HTML'` was already rejected). Validation and parsing
+  are one step now, and the input reaches the shell through `env:`. (#107)
+- **`build-jupyter-cache` README**: the `upload-artifact` row and the build-flow diagram
+  still put the `_build` artifact on the success path; since v0.8.0 it uploads only when a
+  build fails (the step's gate is `upload-artifact == 'true' && all-passed != 'true'`).
+  (#109)
+- **`scripts/detect-changed-lectures.sh`**: a renamed lecture never got a preview deep
+  link. `git diff --name-status` reported it as `R<score>` with two paths, which the
+  added/modified filter dropped, so neither preview action linked it. `--no-renames`
+  decomposes a rename into `D` + `A`, and the `A` half is kept like any added lecture.
+  (#107)
+- **`preview-cloudflare`**: a failed deploy printed no diagnostic at all. Under
+  `bash -eo pipefail`, `DEPLOY_OUTPUT=$(wrangler pages deploy … 2>&1)` aborted the step on
+  wrangler's non-zero exit with wrangler's stderr captured into the variable, so the log ended
+  at `🔍 Deploying preview…` and the output dump and error branch after it were unreachable
+  (`DEPLOY_EXIT_CODE=$?` could only ever read 0). wrangler's output now streams into the
+  `Deployment Output` group through `tee`, the exit code is read from `PIPESTATUS` with `set -e`
+  suspended around the call, and a failure ends with an `::error::` annotation and wrangler's
+  own exit code. Neither preview action had any `::error::` annotation before. (#105)
+- **`preview-netlify`**: the same abort-before-dump shape threw away the captured `--json`
+  error payload of a failed deploy; netlify's readable error on stderr did reach the log.
+  stdout now goes through `tee` to a file, with the same `PIPESTATUS` capture and `::error::`.
+  It is stdout only: merging stderr would corrupt the JSON whenever a successful deploy prints
+  an npm or Node notice. Separately, the "Raw output was:" guard could not fire in the case it
+  was written for. `python3 -c "…json.load…"` exits non-zero on non-JSON stdout, and `set -e`
+  aborted the step at the assignment with a bare traceback, so the guard only ever fired on
+  valid JSON lacking `deploy_url`/`url`. The parse is now `|| true`, and the guard prints the
+  raw output and fails with an `::error::`. (#105)
+- **CI**: the image-size job in `test-container.yml` has never reported a size, so the
+  v0.11.0 entry saying image size "is now reported from the manifest" (#108) did not hold.
+  `docker/build-push-action` attaches a provenance attestation by default, which makes each
+  `:latest` an OCI image index (the amd64 image plus an attestation manifest) with no
+  top-level `layers`. jq failed with "Cannot iterate over null" on every run, and without
+  `pipefail` the step took `tee`'s exit status and stayed green. The job now reads the
+  `linux/amd64` manifest out of the index and reports two labelled figures: **compressed**,
+  the sum of its layer sizes (what a cold pull downloads), and **on disk**, the unpacked
+  layers after a `docker pull` as `docker image inspect` reports them on the overlay2 graph
+  driver. It runs under `pipefail`, requires each figure to be a positive integer, and fails
+  under the containerd image store, where that inspect field is the compressed content size
+  instead. (#106, #108)
+
+### Documentation
+- Swept the docs against the shipped code (#106, #109, #99): the Anaconda 2026.06 baseline (the
+  full image's metapackage, the lean image's pin set); image sizes measured on 2026-09-23 and
+  labelled by metric (full 3.33 GB compressed / 8.60 GB on disk, lean 2.93 / 7.32 GB), replacing
+  "~8GB / ~3GB" and "~60% smaller"; the lean image's TeX Live is the full image's minus
+  `texlive-luatex`, not "minimal". Examples that call a preview action grant
+  `pull-requests: write`, and `actions/checkout` examples move to `@v7`.
+  Nonexistent inputs (`preview-netlify`'s `alias`, `build-lectures`' `build-html` and
+  `cache-workflow`), an invented LaTeX-cache log line, a Pages-404 fix that dropped `pages` and
+  `id-token`, and stale cache keys are corrected; custom domains point at Settings → Pages, since
+  the Actions Pages deploy ignores a CNAME file. New `templates/latex-requirements.txt` for
+  standard-runner PDF builds; CONTRIBUTING.md documents staged releases and the `v0` rollback.
+
+### Security
+- **`preview-netlify`, `preview-cloudflare` READMEs**: the Security section suggested
+  `pull_request_target` for fork PRs. Following it builds and runs a fork's notebooks with the
+  deploy token and a write-scoped `GITHUB_TOKEN` in reach, the "pwn request" pattern, and it
+  would not have produced a preview anyway: both actions deploy only when
+  `github.event_name == 'pull_request'`, so under `pull_request_target` the fork check never
+  fires and the deploy step is skipped. Both READMEs now say fork previews are unsupported and
+  warn against `pull_request_target`. (#105)
+- **`preview-cloudflare`, `preview-netlify`**: `wrangler@latest` and `netlify-cli@latest` were
+  installed on every run and then handed the deploy credentials — two unpinned npm packages
+  with large dependency trees, in a repo that SHA-pins every third-party Action against tag
+  hijacking. Each CLI is now pinned to an exact version (wrangler 4.136.3, netlify-cli 27.8.1)
+  by a `package.json` and `package-lock.json` beside its `action.yml`, and `npm ci` installs
+  exactly that lockfile, integrity hashes included. The Dependabot `npm` entry that
+  `deploy-cloudflare` introduced now covers both preview directories as well, grouped like the
+  other ecosystems: minor/patch bumps of the three CLI pins in one PR, majors in another. (#105)
+- **`preview-netlify`**: the auth token is off the command line and out of the generated step
+  script. `--auth="${{ inputs.netlify-auth-token }}"` wrote the token into the script file the
+  runner puts on disk and into the argv of the netlify process. The step now passes it as
+  `NETLIFY_AUTH_TOKEN` and the site as `NETLIFY_SITE_ID`, both read natively by netlify-cli
+  (checked against 27.8.1's source), and drops `--auth` and `--site`. The PR number, head SHA
+  and `build-dir`, also interpolated into the script before, move into `env:` in the same
+  edit, as v0.11.1 did for `preview-cloudflare`. The deploy also passes `--no-build`: the site
+  is prebuilt, and netlify-cli 27 would otherwise run any configured build command first, in a
+  process that inherits the token. Closes `PLAN.md` backlog item 8. (#105)
+
 ## [0.11.1] - 2026-08-07
 
 ### Fixed
@@ -578,4 +851,4 @@ See [docs/MIGRATION-GUIDE.md](docs/MIGRATION-GUIDE.md) for step-by-step instruct
 
 ## Testing
 
-See [TESTING.md](TESTING.md) for comprehensive testing strategy and validation procedures.
+See [TESTING.md](docs/dev/TESTING.md) for comprehensive testing strategy and validation procedures.

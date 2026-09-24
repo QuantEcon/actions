@@ -9,10 +9,10 @@ Our next-generation CI/CD system combines three complementary elements:
 **Pre-built Docker images solve the LaTeX bottleneck:**
 
 - **Images:** `ghcr.io/quantecon/quantecon:latest` (full) and `ghcr.io/quantecon/quantecon-build:latest` (lean) — CPU only
-- **Contents:** Ubuntu 24.04 LTS + TexLive (latest) + Miniconda + Anaconda 2025.12 base + Jupyter Book tools
+- **Contents:** Ubuntu 24.04 LTS + TexLive (latest) + Miniconda + Anaconda 2026.06 base (lean: an explicit package list pinned to that baseline) + Jupyter Book tools
 - **Build:** Weekly automated builds via GitHub Actions (Monday 2am UTC)
 - **Registry:** GitHub Container Registry (GHCR) - free for public repos
-- **Size:** full ~8.3 GB / lean ~7.1 GB on disk (~3 GB compressed pull, fetched each run on GitHub-hosted runners)
+- **Size:** full 8.60 GB / lean 7.32 GB on disk (3.33 / 2.93 GB compressed pull, fetched each run on GitHub-hosted runners)
 
 **Performance impact:**
 - ❌ Current: LaTeX setup takes 2-3 minutes every build
@@ -32,6 +32,7 @@ restore-jupyter-cache/→ Restore execution cache (PR workflows)
 build-lectures/       → Build Jupyter Book (multi-format, asset assembly)
 preview-netlify/      → Deploy to Netlify for PR previews
 preview-cloudflare/   → Deploy to Cloudflare Pages for PR previews
+deploy-cloudflare/    → Deploy a members-only site to a Cloudflare Worker behind Access
 publish-gh-pages/     → Deploy to GitHub Pages
 ```
 
@@ -50,9 +51,9 @@ publish-gh-pages/     → Deploy to GitHub Pages
 **Layer 1: Environment Cache (Container Image)**
 - What: Python + LaTeX + all dependencies
 - Where: GitHub Container Registry
-- Size: ~7.1 GB (lean) / ~8.3 GB (full) on disk; ~3 GB compressed pull
+- Size: 7.32 GB (lean) / 8.60 GB (full) on disk; 2.93 / 3.33 GB compressed pull
 - Lifespan: Weekly rebuilds
-- Pull time: ~1-2 min on GitHub-hosted runners (~3 GB compressed, fetched each run); near-instant on self-hosted runners with the image pre-cached
+- Pull time: ~1-2 min on GitHub-hosted runners (2.9–3.3 GB compressed, fetched each run); near-instant on self-hosted runners with the image pre-cached
 
 **Layer 2: Build Cache (GitHub Actions Cache)**
 - What: `_build/` directory from Jupyter Book
@@ -65,9 +66,9 @@ publish-gh-pages/     → Deploy to GitHub Pages
 - `build-jupyter-cache` - Weekly cache generation on main branch
   - Builds all formats, verifies success, saves cache
   - Creates issues on failure (duplicate prevention)
-  - Uses unique keys: `build-{env-hash}-{run-id}`
-- `restore-jupyter-cache` - Read-only restore for PRs
-  - Never saves (prevents cache corruption)
+  - Uses unique keys: `build-{env-hash}-{update-hash}-{run-id}`
+- `restore-jupyter-cache` - Cache restore for PRs
+  - Read-only by default; optional `save-cache` saves a PR-scoped cache at job end, which cannot affect `main` or other PRs
   - Prefix matching finds latest cache
   - Optional `fail-on-miss` for strict requirements
 
@@ -87,8 +88,11 @@ publish-gh-pages/     → Deploy to GitHub Pages
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write  # preview-netlify's PR comment
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       # 7-8 minutes: Setup environment + LaTeX
       - uses: quantecon/actions/setup-environment@v0
@@ -118,8 +122,12 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     container: ghcr.io/quantecon/quantecon:latest  # ~1-2 min pull
+    permissions:
+      contents: read
+      packages: read
+      pull-requests: write  # preview-netlify's PR comment
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       # Install lecture-specific packages (1-2 min)
       - name: Install lecture dependencies
@@ -183,7 +191,7 @@ jobs:
 - All lectures use same Python scientific stack (Anaconda base provides common packages)
 - Lecture-specific packages (quantecon, cvxpy, etc.) installed from each lecture's environment.yml
 - LaTeX requirements identical across all lectures
-- Disk space is cheap (~7-8 GB acceptable)
+- Disk space is cheap (7.3–8.6 GB on disk acceptable)
 - Massive reduction in complexity
 - Easy to update (one PR to container, lectures install their own dependencies)
 
@@ -318,12 +326,10 @@ quantecon/actions/
 │   └── build-containers.yml       # Weekly automated builds
 │
 └── docs/
-    ├── ARCHITECTURE.md           # This file (architecture overview)
     ├── CONTAINER-GUIDE.md         # Container build and usage guide
-    ├── FUTURE-DEVELOPMENT.md      # Future enhancement plans
     ├── MIGRATION-GUIDE.md         # How to migrate lecture repos
     ├── QUICK-REFERENCE.md         # Quick reference for all actions
-    └── README.md                  # Documentation index
+    └── dev/                       # Developer docs: this file, testing, plan, GPU AMI
 ```
 
 ### Lecture Repos (Simplified)
@@ -473,10 +479,9 @@ lecture-python-intro/
 
 ## Related Documentation
 
-- [CONTAINER-GUIDE.md](CONTAINER-GUIDE.md) - Container build and usage guide
-- [MIGRATION-GUIDE.md](MIGRATION-GUIDE.md) - How to migrate lecture repos
-- [QUICK-REFERENCE.md](QUICK-REFERENCE.md) - Quick reference for all actions
-- [FUTURE-DEVELOPMENT.md](FUTURE-DEVELOPMENT.md) - Future enhancement plans
+- [CONTAINER-GUIDE.md](../CONTAINER-GUIDE.md) - Container build and usage guide
+- [MIGRATION-GUIDE.md](../MIGRATION-GUIDE.md) - How to migrate lecture repos
+- [QUICK-REFERENCE.md](../QUICK-REFERENCE.md) - Quick reference for all actions
 
 ---
 
