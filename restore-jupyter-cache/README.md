@@ -142,7 +142,10 @@ Restores only `.jupyter_cache` directory containing cached notebook execution ou
 
 ## Cache Status Report
 
-The action outputs detailed cache status for debugging:
+The action prints a cache status report for debugging. This is a read-only restore of a build
+cache that found an earlier save. Saved keys end in the saving run's id, so a read-only restore
+never matches its key exactly: `Cache Hit` reads `false` and `Matched Key` shows what was restored.
+The lines from `Path:` down sit in a collapsible "Cache Contents" group.
 
 ```
 ╔════════════════════════════════════════════════════════════════╗
@@ -150,28 +153,31 @@ The action outputs detailed cache status for debugging:
 ╚════════════════════════════════════════════════════════════════╝
 
   Cache Type:     build
-  Requested Key:  build-abc123
-  Cache Hit:      true
-  Matched Key:    build-abc123
+  Requested Key:  build-<env-hash>-<update-hash>-
+  Cache Hit:      false (exact key match)
+  Matched Key:    build-<env-hash>-<update-hash>-35963034770
+  Save Cache:     false
 
 ════════════════════════════════════════════════════════════════════
   ✅ Cache restored successfully
 ════════════════════════════════════════════════════════════════════
 
 Path: _build
+
 Total Size: 156M
+
 Files: 1247
 Directories: 89
 
-── Age Information ──
-Newest file: index.html
-  Modified: 2026-02-04 15:30:00
-Oldest file: _config.yml
-  Modified: 2026-02-01 09:00:00
+── Directory Sizes ──
+120M	_build/html
+7.0M	_build/jupyter
+30M	_build/latex
 
 ── Build Directories ──
   html/: 120M (1100 files)
   latex/: 30M (45 files)
+  jupyter/: 7.0M (95 files)
   .jupyter_cache/: 6M
 ```
 

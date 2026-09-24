@@ -2,6 +2,8 @@
 # Check available LaTeX package versions on GitHub Actions runner
 # Run this on ubuntu-latest to get current versions for latex-requirements.txt
 
+set -euo pipefail
+
 echo "=== LaTeX Package Versions on $(lsb_release -d | cut -f2) ==="
 echo ""
 
@@ -27,7 +29,9 @@ echo "Available versions:"
 echo "-------------------"
 
 for pkg in "${packages[@]}"; do
-  version=$(apt-cache policy "$pkg" 2>/dev/null | grep Candidate | awk '{print $2}')
+  # grep exits 1 for a package apt does not know; under pipefail that would
+  # abort the script at the assignment instead of reaching NOT FOUND.
+  version=$(apt-cache policy "$pkg" 2>/dev/null | grep Candidate | awk '{print $2}' || true)
   if [ -n "$version" ]; then
     printf "%-30s %s\n" "$pkg" "$version"
   else
