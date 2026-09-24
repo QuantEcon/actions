@@ -67,7 +67,7 @@ A monthly report that also keeps a permanent URL per month:
           alias: ${{ steps.month.outputs.alias }}   # report-2026-08
 ```
 
-> **New action.** `deploy-cloudflare` ships in the first release after v0.11.1. Until then, `@v0` does not contain it; reference `@main` for testing only.
+> **New in v0.12.0.** Pin `@v0.12.0` or later; `@v0` carries it once that release has moved the floating tag.
 
 ## Requirements
 

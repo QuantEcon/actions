@@ -96,7 +96,8 @@ Known limits:
 - `build-jupyter-cache` calls `setup-environment@v0` and `build-lectures@v0`, so the dispatch
   runs the candidate against the previous release's siblings. A fix to either sibling reaches
   that chain untested until `v0` moves.
-- `preview-cloudflare` has no consumer and no project to deploy to, so nothing exercises it.
+- `preview-cloudflare` is not yet in the canary's `ci.yml`. Its Pages project exists (`qe-preview-canary`, with the org
+  secrets scoped to the canary, see #110), so adding that step is the follow-up once v0.12.0 has moved `v0`.
 - Steps 2-3 never run `publish-gh-pages` (the canary's `publish.yml` fires only on a `publish*`
   tag) or `setup-environment` at the candidate ref.
 - Repositories pinned to an exact tag get a Dependabot bump PR as soon as the tag exists;

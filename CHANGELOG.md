@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-09-24
+
 ### Added
 - **`deploy-cloudflare`**: a new action that publishes a built site to an existing Cloudflare
   Worker behind Cloudflare Access, for members-only sites that GitHub Pages cannot serve on the
