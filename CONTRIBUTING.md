@@ -54,9 +54,10 @@ should pin an exact `v0.x.y` tag. After the 1.0.0 release, we'll add floating ma
    git push origin v0.x.y
    ```
 
-3. **Move the floating `v0` tag to this release** so `@v0` consumers pick it up.
-   The `^{}` peels the annotated tag so `v0` points at the release **commit** directly
-   (a lightweight tag), not at the `v0.x.y` tag object:
+3. **Move the floating `v0` tag to this release** so `@v0` consumers pick it up. If the release
+   changes action behaviour, hold this step until the canary passes: see
+   [Staged Releases](#staged-releases). The `^{}` peels the annotated tag so `v0` points at the
+   release **commit** directly (a lightweight tag), not at the `v0.x.y` tag object:
    ```bash
    git tag -f v0 "v0.x.y^{}"
    git push origin v0 --force
@@ -73,6 +74,42 @@ should pin an exact `v0.x.y` tag. After the 1.0.0 release, we'll add floating ma
    `.github/workflows/test-actions.yml` for `@v0` and remove any that this release resolves.
    Currently outstanding: none. Add an entry here whenever you introduce one — a workaround with
    no entry is one a future releaser will not find.
+
+### Staged Releases
+
+A release that changes what an action does, not just its docs, is staged: hold step 3 until the
+candidate has passed on the canary, `QuantEcon/test-actions-lecture-intro`. Merging to `main`
+reaches no consumer, but moving `v0` reaches every `@v0` consumer on its next run, and the canary
+pins `@v0` too, so on its own it only meets a release after it ships. Automating this gate is #135.
+
+1. Do steps 1, 2 and 4: the `vX.Y.Z` tag and its Release exist, and `v0` has not moved.
+2. In the canary, open a PR from a branch of the canary repository itself (the preview actions
+   skip fork PRs) with every `quantecon/actions/...@v0` in its `ci.yml` changed to `@vX.Y.Z`.
+   That runs `restore-jupyter-cache`, `build-lectures` and a real `preview-netlify` deploy with
+   `pull_request` semantics.
+3. From a canary branch whose `cache.yml` points at `build-jupyter-cache@vX.Y.Z`, dispatch
+   `cache.yml`. That runs `build-jupyter-cache`'s own steps.
+4. Move `v0` (step 3 above) only when both are green.
+
+Known limits:
+
+- `build-jupyter-cache` calls `setup-environment@v0` and `build-lectures@v0`, so the dispatch
+  runs the candidate against the previous release's siblings. A fix to either sibling reaches
+  that chain untested until `v0` moves.
+- `preview-cloudflare` has no consumer and no project to deploy to, so nothing exercises it.
+- Steps 2-3 never run `publish-gh-pages` (the canary's `publish.yml` fires only on a `publish*`
+  tag) or `setup-environment` at the candidate ref.
+- Repositories pinned to an exact tag get a Dependabot bump PR as soon as the tag exists;
+  merging it stays a human decision.
+- Container images do not stage: a merge touching `containers/**` rebuilds and pushes `:latest`
+  immediately.
+
+**Rollback:** point `v0` back at the previous release and force-push it.
+
+```bash
+git tag -f v0 "v0.x.w^{}"   # v0.x.w = the previous release
+git push origin v0 --force
+```
 
 ## CI
 
@@ -132,6 +169,7 @@ Update these docs when adding features:
 | `docs/QUICK-REFERENCE.md` | New inputs added |
 | `docs/MIGRATION-GUIDE.md` | Workflow patterns change |
 | `docs/FUTURE-DEVELOPMENT.md` | Features completed/planned |
+| `PLAN.md` | A backlog item or tracked issue opens, closes or changes scope; a consumer changes the ref it pins |
 
 ## Questions?
 

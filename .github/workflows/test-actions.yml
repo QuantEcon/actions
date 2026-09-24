@@ -188,6 +188,68 @@ jobs:
             echo "every changed path is on the ignore list — the harness does not apply"
           fi
 
+      # #109: templates/ is copied into consumer repos, so its third-party pins
+      # must not fall behind this repo's own workflows, and nothing else keeps
+      # them current. Dependabot's github-actions ecosystem scans
+      # .github/workflows/ and named action.yml files only; a `/templates` entry
+      # in dependabot.yml is a no-op. This lives in the gate, not in a gated
+      # job, because a templates-only PR matches IGNORED: a gated job would be
+      # skipped on exactly the PRs that can introduce drift, and
+      # harness-summary requires every gated job to skip then. Consequence: a
+      # Dependabot bump of such an action (actions/checkout) goes red here until
+      # the templates move in the same PR.
+      - name: Check templates/ pin the same third-party actions as .github/workflows/
+        run: |
+          set -euo pipefail
+
+          # owner/repo (lowercased: GitHub treats it case-insensitively) and ref
+          # of a remote `uses:`, with any sub-path dropped, so actions/cache/save@v6
+          # counts as actions/cache@v6. Commented-out lines never match.
+          re='^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]*([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)[^@[:space:]]*@([^[:space:]#]+)'
+          # A local action or a docker image: no pin to compare.
+          local_re='uses:[[:space:]]*(\./|docker://)'
+
+          # One "file:line<TAB>owner/repo<TAB>ref" per uses: in the given files.
+          # A remote uses: that the regex cannot read is emitted with repo '?',
+          # so the template check below fails closed on it instead of skipping.
+          pins() {
+            local hit file rest line text
+            while IFS= read -r hit; do
+              file=${hit%%:*}; rest=${hit#*:}; line=${rest%%:*}; text=${rest#*:}
+              text=${text//[\"\']/}
+              if [[ $text =~ $re ]]; then
+                printf '%s:%s\t%s\t%s\n' "$file" "$line" "${BASH_REMATCH[2],,}" "${BASH_REMATCH[3]}"
+              elif [[ ! $text =~ $local_re ]]; then
+                printf '%s:%s\t?\t%s\n' "$file" "$line" "${text#"${text%%[![:space:]]*}"}"
+              fi
+            done < <(grep -HnE '^[[:space:]]*(-[[:space:]]+)?uses:' "$@" || true)
+          }
+
+          WORKFLOW_PINS=$(pins .github/workflows/*.yml)
+          drift=0
+          checked=0
+          while IFS=$'\t' read -r loc repo ref; do
+            [ "$repo" != "quantecon/actions" ] || continue
+            checked=$((checked + 1))
+            if [ "$repo" = "?" ]; then
+              echo "::error file=${loc%%:*},line=${loc##*:}::cannot read the action reference in [$ref] at $loc, so its pin cannot be checked against .github/workflows/"
+              drift=1
+            elif awk -F'\t' -v r="$repo" -v v="$ref" '$2 == r && $3 == v { found = 1 } END { exit !found }' <<< "$WORKFLOW_PINS"; then
+              echo "  ok: $repo@$ref ($loc)"
+            else
+              have=$(awk -F'\t' -v r="$repo" '$2 == r { print $3 }' <<< "$WORKFLOW_PINS" | sort -u | paste -sd' ' -)
+              if [ -n "$have" ]; then
+                echo "::error file=${loc%%:*},line=${loc##*:}::$loc pins $repo@$ref, but .github/workflows/ pins it at [$have]. Dependabot bumps the workflows and cannot see templates/, so move the template to the same ref, in the same PR as the bump."
+              else
+                echo "::error file=${loc%%:*},line=${loc##*:}::$loc pins $repo@$ref, which .github/workflows/ never uses, so nothing keeps it current (Dependabot cannot see templates/). Pin it in a workflow too, or drop it from the template."
+              fi
+              drift=1
+            fi
+          done < <(pins templates/*.yml)
+
+          [ "$drift" -eq 0 ] || exit 1
+          echo "✅ templates/ third-party pins match .github/workflows/ ($checked checked)"
+
   # ==========================================================================
   # restore-jupyter-cache — unit jobs (synthetic fixtures, no conda, seconds)
   # ==========================================================================
@@ -594,6 +656,77 @@ jobs:
           echo "✅ a failing build fails the step, and the red is the staged CellExecutionError ($REPORT)"
 
   # ==========================================================================
+  # setup-environment — container mode, in the real lean image
+  # ==========================================================================
+
+  env-container-update:
+    # #107: container mode ran `conda env update -f <file>` with no target, so
+    # conda took it from the file's own name: and a delta saying anything but
+    # the image's env went to a new envs/<name> that is not on PATH, while the
+    # step printed success and the build failed later on an import. The delta
+    # here deliberately says `name: wrong-name`; it must land in the env whose
+    # python is on PATH, create nothing else, and leave the image's own
+    # packages in place (no --prune).
+    #
+    # The package is a pip one, pinned, tiny and pure-Python, so the only conda
+    # work is a no-op solve for pip itself. It is checked absent from the image
+    # before the action runs, so a pass cannot come from the image alone.
+    name: 'setup-environment: container-mode delta lands in the env on PATH'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    permissions:
+      contents: read
+      packages: read          # pull the container image
+    container:
+      image: ghcr.io/quantecon/quantecon-build:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user root
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Write a delta file whose name is not the active environment
+        run: |
+          if python -c 'import cowsay' 2>/dev/null; then
+            echo "::error::cowsay is already importable in the image, so this job cannot tell whether the delta was applied. Pick a package the image does not ship."
+            exit 1
+          fi
+          mkdir -p harness
+          printf '%s\n' \
+            'name: wrong-name' \
+            'dependencies:' \
+            '  - pip' \
+            '  - pip:' \
+            '    - cowsay==6.1' > harness/environment-update.yml
+          cat harness/environment-update.yml
+
+      # Expect a ::warning:: that the file's name: disagrees with the active
+      # env — that is the action reporting the mismatch it now ignores.
+      - name: Setup environment (container mode, with the delta)
+        id: setup
+        uses: ./setup-environment
+        with:
+          environment-update: 'harness/environment-update.yml'
+
+      - name: Assert the delta landed in the environment on PATH
+        env:
+          CONTAINER_MODE: ${{ steps.setup.outputs.container-mode }}
+        run: |
+          [ "$CONTAINER_MODE" = "true" ] || { echo "::error::container-mode: expected [true] inside the quantecon-build image, got [$CONTAINER_MODE]"; exit 1; }
+          PREFIX=$(python -c 'import sys; print(sys.prefix)')
+          python -c 'import cowsay' \
+            || { echo "::error::cowsay is not importable by the python on PATH ($PREFIX): the delta went to some other environment"; exit 1; }
+          BASE=$(conda info --base)
+          [ ! -e "$BASE/envs/wrong-name" ] \
+            || { echo "::error::$BASE/envs/wrong-name exists: the update followed the delta file's name: key (the #107 defect)"; exit 1; }
+          python -c 'import jupyter_book, numpy' \
+            || { echo "::error::the image's own packages are gone from $PREFIX after the update: was it run with --prune?"; exit 1; }
+          echo "✅ the delta landed in $PREFIX, the environment on PATH, and the image's packages survived"
+
+  # ==========================================================================
   # build-jupyter-cache — smoke + round-trip into restore-jupyter-cache.
   # Its internal setup-environment/build-lectures calls run @v0 (see header).
   # ==========================================================================
@@ -727,8 +860,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Aborts in `Validate builders input` — this repo's own code, no conda,
-      # seconds. The composite never reaches setup-environment.
+      # Aborts in `Validate and parse builders input` — this repo's own code, no
+      # conda, seconds. The composite never reaches setup-environment.
       - name: Abort before setup (invalid builders input)
         id: pre
         continue-on-error: true
@@ -790,6 +923,127 @@ jobs:
           [ "$CACHE_SAVED" = "false" ] || { echo "::error::cache-saved: expected [false], got [$CACHE_SAVED]"; exit 1; }
           [ -z "$HTML_STATUS" ] || { echo "::error::html-status: expected empty (the build never started), got [$HTML_STATUS]"; exit 1; }
           echo "✅ a setup-environment failure resolves to build-success=false"
+
+  bjc-builders-parse:
+    # #107: `builders` used to be matched by substring, so 'html,pdf' passed
+    # validation and built html alone without a word, and 'nojupyter' switched
+    # the jupyter build ON. bjc-abort-guard's 'nonsense' cannot catch either:
+    # it contains no valid name at all, so the old code rejected it too.
+    #
+    # Asserting "aborted before setup" needs a run in which setup would NOT
+    # have failed, or the old code's setup-phase abort (no environment.yml
+    # here) would pass the same assertions. So the runner is made a
+    # container-mode host, the same marker file docs/GPU-AMI-SETUP.md puts on a
+    # GPU AMI: the internal setup-environment@v0 then skips conda entirely, and
+    # every build the parser enables fails in seconds on the missing
+    # source-dir. The per-builder statuses therefore record exactly which
+    # builders were parsed: 'failure' = requested and attempted, 'skipped' =
+    # left out, empty = the parse aborted before anything ran. The two control
+    # cases come first; they prove the setup above is really a no-op, so the
+    # empty statuses of the rejected inputs cannot be a setup failure instead.
+    name: 'build-jupyter-cache: builders is parsed by exact token'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Mark the runner as a container-mode host
+        run: |
+          printf 'quantecon-container\nimage=harness-container-mode-host\n' | sudo tee /etc/quantecon-container
+
+      - name: 'Control: three comma-separated builders'
+        id: all
+        continue-on-error: true
+        uses: ./build-jupyter-cache
+        with:
+          builders: 'jupyter,pdflatex,html'
+          source-dir: 'harness/no-such-lectures'
+          create-issue-on-failure: 'false'
+          upload-artifact: 'false'
+          upload-failure-reports: 'false'
+
+      - name: Assert all three builders were attempted
+        env:
+          JUPYTER_STATUS: ${{ steps.all.outputs.jupyter-status }}
+          PDFLATEX_STATUS: ${{ steps.all.outputs.pdflatex-status }}
+          HTML_STATUS: ${{ steps.all.outputs.html-status }}
+        run: |
+          [ "$JUPYTER_STATUS/$PDFLATEX_STATUS/$HTML_STATUS" = "failure/failure/failure" ] \
+            || { echo "::error::expected every builder attempted (failure/failure/failure against a missing source-dir), got jupyter/pdflatex/html = [$JUPYTER_STATUS/$PDFLATEX_STATUS/$HTML_STATUS]. All empty means the builds never started: the container-mode host marker no longer makes setup a no-op, and the rejection cases below prove nothing until it does."; exit 1; }
+          echo "✅ 'jupyter,pdflatex,html' enabled all three builders"
+
+      # A YAML block value: newline, trailing comma and indentation all separate.
+      - name: 'Control: a block value with a trailing comma'
+        id: block
+        continue-on-error: true
+        uses: ./build-jupyter-cache
+        with:
+          builders: |
+            html,
+            pdflatex
+          source-dir: 'harness/no-such-lectures'
+          create-issue-on-failure: 'false'
+          upload-artifact: 'false'
+          upload-failure-reports: 'false'
+
+      - name: Assert exactly html and pdflatex were attempted
+        env:
+          JUPYTER_STATUS: ${{ steps.block.outputs.jupyter-status }}
+          PDFLATEX_STATUS: ${{ steps.block.outputs.pdflatex-status }}
+          HTML_STATUS: ${{ steps.block.outputs.html-status }}
+        run: |
+          [ "$JUPYTER_STATUS/$PDFLATEX_STATUS/$HTML_STATUS" = "skipped/failure/failure" ] \
+            || { echo "::error::expected jupyter/pdflatex/html = [skipped/failure/failure] for a two-line block value, got [$JUPYTER_STATUS/$PDFLATEX_STATUS/$HTML_STATUS]"; exit 1; }
+          echo "✅ a multi-line builders value parsed to html + pdflatex"
+
+      # Expect "Unknown builder" ::error:: annotations from these two in this
+      # job's log — they are the parser working correctly.
+      - name: Reject a partly unknown list ('html,pdf')
+        id: partial
+        continue-on-error: true
+        uses: ./build-jupyter-cache
+        with:
+          builders: 'html,pdf'
+          source-dir: 'harness/no-such-lectures'
+          create-issue-on-failure: 'false'
+          upload-artifact: 'false'
+          upload-failure-reports: 'false'
+
+      - name: Reject a name that merely contains a builder ('nojupyter')
+        id: substring
+        continue-on-error: true
+        uses: ./build-jupyter-cache
+        with:
+          builders: 'nojupyter'
+          source-dir: 'harness/no-such-lectures'
+          create-issue-on-failure: 'false'
+          upload-artifact: 'false'
+          upload-failure-reports: 'false'
+
+      # Same assertions as bjc-abort-guard's pre-setup abort, applied to both.
+      - name: Assert both aborted before setup, with no builder run
+        env:
+          PARTIAL_OUTCOME: ${{ steps.partial.outcome }}
+          PARTIAL_SUCCESS: ${{ steps.partial.outputs.build-success }}
+          PARTIAL_STATUSES: ${{ steps.partial.outputs.jupyter-status }}/${{ steps.partial.outputs.pdflatex-status }}/${{ steps.partial.outputs.html-status }}
+          SUBSTRING_OUTCOME: ${{ steps.substring.outcome }}
+          SUBSTRING_SUCCESS: ${{ steps.substring.outputs.build-success }}
+          SUBSTRING_STATUSES: ${{ steps.substring.outputs.jupyter-status }}/${{ steps.substring.outputs.pdflatex-status }}/${{ steps.substring.outputs.html-status }}
+        run: |
+          fail=0
+          check() {  # label outcome build-success statuses
+            if [ "$2" != "failure" ] || [ "$3" != "false" ] || [ "$4" != "//" ]; then
+              echo "::error::builders '$1': expected outcome=failure, build-success=false and no builder run (jupyter/pdflatex/html empty), got outcome=[$2] build-success=[$3] statuses=[$4]. A non-empty status means the parser accepted the input and built something."
+              fail=1
+            else
+              echo "✅ builders '$1' was rejected before setup"
+            fi
+          }
+          check 'html,pdf' "$PARTIAL_OUTCOME" "$PARTIAL_SUCCESS" "$PARTIAL_STATUSES"
+          check 'nojupyter' "$SUBSTRING_OUTCOME" "$SUBSTRING_SUCCESS" "$SUBSTRING_STATUSES"
+          exit "$fail"
 
   bjc-restore-build:
     name: 'round-trip: restore-jupyter-cache reads build-jupyter-cache (build)'
@@ -1207,9 +1461,11 @@ jobs:
       - env-seed
       - env-hit-build
       - build-fail-guard
+      - env-container-update
       - bjc-smoke
       - bjc-fail-guard
       - bjc-abort-guard
+      - bjc-builders-parse
       - bjc-restore-build
       - bjc-restore-exec
       - dc-gate-probe

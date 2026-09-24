@@ -4,7 +4,7 @@ author: 'QuantEcon'
 
 inputs:
   builders:
-    description: 'Comma-separated list of builders to run: jupyter, pdflatex, html'
+    description: 'Comma-separated list of builders to run: jupyter, pdflatex, html (whitespace also separates; an unknown name fails the run)'
     required: false
     default: 'html'
   environment:
@@ -19,6 +19,16 @@ inputs:
     description: 'Source directory containing lectures'
     required: false
     default: 'lectures'
+  # The default repeats setup-environment's own, and must not be '': the runner
+  # passes an explicit '' through to the callee instead of applying its
+  # default, which would fail every standard-mode pdflatex build.
+  latex-requirements-file:
+    description: >-
+      Path to the latex-requirements.txt listing the apt packages to install,
+      passed through to setup-environment. Used only in standard (non-container)
+      mode when pdflatex is among the builders; the container images ship LaTeX.
+    required: false
+    default: 'latex-requirements.txt'
   upload-artifact:
     description: 'Upload the _build directory as an artifact when a build fails (for debugging; on success the cache already holds it). Set false to suppress even that.'
     required: false
@@ -96,49 +106,61 @@ runs:
         echo "key=$KEY" >> $GITHUB_OUTPUT
         echo "Cache key: $KEY"
 
-    - name: Validate builders input
-      id: validate-builders
-      shell: bash
-      run: |
-        BUILDERS="${{ inputs.builders }}"
-        
-        # Check at least one valid builder is specified
-        if [[ ! "$BUILDERS" == *"jupyter"* ]] && [[ ! "$BUILDERS" == *"pdflatex"* ]] && [[ ! "$BUILDERS" == *"html"* ]]; then
-          echo "::error::No valid builders specified. Must include at least one of: jupyter, pdflatex, html"
-          echo "::error::Received: '$BUILDERS'"
-          exit 1
-        fi
-        echo "✅ Valid builders input: $BUILDERS"
-
-    - name: Parse builders input
+    # One step validates and parses, token by token. Matching the whole string
+    # by substring let 'html,pdf' through as html alone, with no warning, and
+    # 'nojupyter' switch the jupyter build ON; install-latex below derives from
+    # the same result, so it inherited every such misreading.
+    - name: Validate and parse builders input
       id: parse-builders
       shell: bash
+      env:
+        BUILDERS: ${{ inputs.builders }}
       run: |
-        BUILDERS="${{ inputs.builders }}"
-        
-        # Check which builders are requested
-        if [[ "$BUILDERS" == *"jupyter"* ]]; then
-          echo "run-jupyter=true" >> $GITHUB_OUTPUT
-        else
-          echo "run-jupyter=false" >> $GITHUB_OUTPUT
+        # Tokens are separated by commas and/or any whitespace, newlines
+        # included, so 'html, pdflatex', 'html pdflatex' and a YAML block value
+        # all work; empty tokens ('html,') are skipped. Not IFS=, read -ra: that
+        # reads only the first line of a block value.
+        mapfile -t tokens < <(printf '%s\n' "$BUILDERS" | tr -s ',[:space:]' '\n' | grep -v '^$' || true)
+
+        run_jupyter=false
+        run_pdflatex=false
+        run_html=false
+        unknown=0
+        for token in "${tokens[@]}"; do
+          case "$token" in
+            jupyter)  run_jupyter=true ;;
+            pdflatex) run_pdflatex=true ;;
+            html)     run_html=true ;;
+            *)
+              echo "::error::Unknown builder '$token' in the builders input. Valid builders: jupyter, pdflatex, html"
+              unknown=1
+              ;;
+          esac
+        done
+        # Shown on one line: a newline would cut the ::error:: annotation short.
+        RECEIVED="$(printf '%s' "$BUILDERS" | tr '\r\n' '  ')"
+        if [ "$unknown" -ne 0 ]; then
+          echo "::error::Received: '$RECEIVED'"
+          exit 1
         fi
-        
-        if [[ "$BUILDERS" == *"pdflatex"* ]]; then
-          echo "run-pdflatex=true" >> $GITHUB_OUTPUT
-        else
-          echo "run-pdflatex=false" >> $GITHUB_OUTPUT
+        # Every token is valid by now, so none at all is the only way to have
+        # no builder ('', or nothing but commas and whitespace).
+        if [ "${#tokens[@]}" -eq 0 ]; then
+          echo "::error::No valid builders specified. Must include at least one of: jupyter, pdflatex, html"
+          echo "::error::Received: '$RECEIVED'"
+          exit 1
         fi
-        
-        if [[ "$BUILDERS" == *"html"* ]]; then
-          echo "run-html=true" >> $GITHUB_OUTPUT
-        else
-          echo "run-html=false" >> $GITHUB_OUTPUT
-        fi
-        
-        echo "Builders requested: $BUILDERS"
-        echo "  jupyter: $(if [[ "$BUILDERS" == *"jupyter"* ]]; then echo yes; else echo no; fi)"
-        echo "  pdflatex: $(if [[ "$BUILDERS" == *"pdflatex"* ]]; then echo yes; else echo no; fi)"
-        echo "  html: $(if [[ "$BUILDERS" == *"html"* ]]; then echo yes; else echo no; fi)"
+
+        {
+          echo "run-jupyter=$run_jupyter"
+          echo "run-pdflatex=$run_pdflatex"
+          echo "run-html=$run_html"
+        } >> "$GITHUB_OUTPUT"
+
+        echo "✅ Builders requested: ${tokens[*]}"
+        echo "  jupyter: $run_jupyter"
+        echo "  pdflatex: $run_pdflatex"
+        echo "  html: $run_html"
 
     # ============================================================
     # ENVIRONMENT SETUP
@@ -151,6 +173,7 @@ runs:
         environment: ${{ inputs.environment }}
         environment-update: ${{ inputs.environment-update }}
         install-latex: ${{ steps.parse-builders.outputs.run-pdflatex }}
+        latex-requirements-file: ${{ inputs.latex-requirements-file }}
 
     # ============================================================
     # BUILD ALL REQUESTED FORMATS

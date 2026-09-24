@@ -14,8 +14,8 @@ A companion workflow, [`test-container.yml`](../.github/workflows/test-container
 
 | Container | Image | Size | Description |
 |-----------|-------|------|-------------|
-| **quantecon** (full) | `ghcr.io/quantecon/quantecon:latest` | ~8GB | Full Anaconda + TexLive |
-| **quantecon-build** (lean) | `ghcr.io/quantecon/quantecon-build:latest` | ~3GB | Miniconda + minimal TexLive |
+| **quantecon** (full) | `ghcr.io/quantecon/quantecon:latest` | 3.33 GB compressed, 8.60 GB on disk | Full Anaconda + TexLive |
+| **quantecon-build** (lean) | `ghcr.io/quantecon/quantecon-build:latest` | 2.93 GB compressed, 7.32 GB on disk | Miniconda + explicit package list (no Anaconda metapackage) + the same TexLive minus `texlive-luatex` |
 
 ## Lecture Repositories
 

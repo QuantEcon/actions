@@ -298,7 +298,7 @@ jobs:
   build:
     runs-on: "runs-on=${{ github.run_id }}/family=g4dn.2xlarge/image=quantecon_ubuntu2404/disk=large"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       - uses: quantecon/actions/setup-environment@v0
         with:
