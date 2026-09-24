@@ -7,18 +7,18 @@
 This repository provides **reusable GitHub Actions** for building QuantEcon lecture websites.
 
 **Current phase:** v0.x development - Infrastructure complete, ready for Phase 1 migration testing  
-**For details:** See [PLAN.md](../PLAN.md) for migration roadmap and priorities
+**For details:** See [docs/dev/PLAN.md](../docs/dev/PLAN.md) for migration roadmap and priorities
 
 ## Where to Find Information
 
 | Topic | Document |
 |-------|----------|
-| **Migration roadmap & current priorities** | [PLAN.md](../PLAN.md) |
-| **Architecture & design decisions** | [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) |
+| **Migration roadmap & current priorities** | [docs/dev/PLAN.md](../docs/dev/PLAN.md) |
+| **Architecture & design decisions** | [docs/dev/ARCHITECTURE.md](../docs/dev/ARCHITECTURE.md) |
 | **How to migrate lecture repos** | [docs/MIGRATION-GUIDE.md](../docs/MIGRATION-GUIDE.md) |
 | **Container usage** | [docs/CONTAINER-GUIDE.md](../docs/CONTAINER-GUIDE.md) |
-| **GPU AMI setup** | [docs/GPU-AMI-SETUP.md](../docs/GPU-AMI-SETUP.md) |
-| **Testing validation** | [TESTING.md](../TESTING.md) |
+| **GPU AMI setup** | [docs/dev/GPU-AMI-SETUP.md](../docs/dev/GPU-AMI-SETUP.md) |
+| **Testing validation** | [docs/dev/TESTING.md](../docs/dev/TESTING.md) |
 | **Quick reference** | [docs/QUICK-REFERENCE.md](../docs/QUICK-REFERENCE.md) |
 | **Release process** | [CONTRIBUTING.md](../CONTRIBUTING.md) |
 | **Version history** | [CHANGELOG.md](../CHANGELOG.md) |
@@ -63,7 +63,7 @@ When changing actions, update:
 - Action's `README.md` (inputs/outputs)
 - `docs/QUICK-REFERENCE.md` (if inputs added)
 - `CHANGELOG.md` (user-facing changes)
-- `PLAN.md` (if affects migration status)
+- `docs/dev/PLAN.md` (if affects migration status)
 
 ## ⚠️ CRITICAL: GitHub CLI Tool Constraints
 
@@ -133,5 +133,5 @@ gh run view RUN_ID --log > /tmp/gh-logs.txt && cat /tmp/gh-logs.txt
 - **Updated:** June 16, 2026
 - **Current Phase:** Infrastructure complete, ready for production migration (latest release: v0.12.0)
 - **Containers:** ghcr.io/quantecon/quantecon:latest (full, 3.33 GB compressed / 8.60 GB on disk), ghcr.io/quantecon/quantecon-build:latest (lean, 2.93 GB compressed / 7.32 GB on disk)
-- **Actions:** 8 composite actions (`deploy-cloudflare`'s real deploy is not exercised in CI; see TESTING.md)
+- **Actions:** 8 composite actions (`deploy-cloudflare`'s real deploy is not exercised in CI; see docs/dev/TESTING.md)
 - **Next:** Begin Phase 1 migration with lecture-dp repo

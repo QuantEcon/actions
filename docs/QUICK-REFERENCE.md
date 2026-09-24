@@ -343,10 +343,9 @@ permissions:
 ## 📚 Full Documentation
 
 - **README.md** - Repository overview
-- **ARCHITECTURE.md** - Architecture overview
+- **dev/ARCHITECTURE.md** - Architecture overview
 - **CONTAINER-GUIDE.md** - Container usage guide
 - **MIGRATION-GUIDE.md** - Migration steps
-- **FUTURE-DEVELOPMENT.md** - Future plans
 - **{action}/README.md** - Detailed action docs
 
 ## 🎓 Repository-Specific Notes

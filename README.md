@@ -8,7 +8,7 @@ This repository provides a set of composite actions that standardize and optimiz
 
 **Status:** Stable; current release `v0.12.0` (see the [CHANGELOG](./CHANGELOG.md)).
 
-📋 **See:** [docs/CONTAINER-GUIDE.md](./docs/CONTAINER-GUIDE.md) for quick start, [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for design overview.
+📋 **See:** [docs/CONTAINER-GUIDE.md](./docs/CONTAINER-GUIDE.md) for quick start, [docs/dev/ARCHITECTURE.md](./docs/dev/ARCHITECTURE.md) for design overview.
 
 ## Available Actions
 
@@ -189,14 +189,9 @@ We're in the `0.x` development phase (pre-1.0.0). Reference the actions with:
 ## Documentation
 
 - **[docs/CONTAINER-GUIDE.md](./docs/CONTAINER-GUIDE.md)** - Quick start with containers
-- **[docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)** - System design and rationale
 - **[docs/MIGRATION-GUIDE.md](./docs/MIGRATION-GUIDE.md)** - Migrating lecture repositories
 - **[docs/QUICK-REFERENCE.md](./docs/QUICK-REFERENCE.md)** - Action reference
-- **[docs/GPU-AMI-SETUP.md](./docs/GPU-AMI-SETUP.md)** - Building RunsOn GPU AMI
-- **[docs/FUTURE-DEVELOPMENT.md](./docs/FUTURE-DEVELOPMENT.md)** - GPU support and roadmap
-- **[TESTING.md](./TESTING.md)** - Testing strategy
-- **[PLAN.md](./PLAN.md)** - Current work plan, backlog, and rollout status
-- **[PROJECT-OPTIMIZE-PREVIEWS.md](./PROJECT-OPTIMIZE-PREVIEWS.md)** - Fast preview builds: research, design, and phased roadmap (tracking: [#92](https://github.com/QuantEcon/actions/issues/92))
+- **[docs/dev/](./docs/dev/README.md)** - Developer docs: design, testing, container validation, the GPU AMI, and the work plan
 
 ## Getting Started
 
@@ -204,7 +199,7 @@ See [docs/MIGRATION-GUIDE.md](./docs/MIGRATION-GUIDE.md) for step-by-step instru
 
 ## Testing
 
-See [TESTING.md](./TESTING.md) for our testing strategy and validation procedures.
+See [docs/dev/TESTING.md](./docs/dev/TESTING.md) for our testing strategy and validation procedures.
 
 ## Contributing
 

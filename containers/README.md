@@ -80,4 +80,4 @@ Both containers include a marker file at `/etc/quantecon-container` that allows 
 
 GPU builds use RunsOn with a custom Ubuntu AMI (not a container). The AMI includes NVIDIA drivers while ML libraries (JAX, PyTorch) bundle their own CUDA toolkit.
 
-**See:** [GPU-AMI-SETUP.md](../docs/GPU-AMI-SETUP.md) for AMI build instructions and driver requirements.
+**See:** [GPU-AMI-SETUP.md](../docs/dev/GPU-AMI-SETUP.md) for AMI build instructions and driver requirements.

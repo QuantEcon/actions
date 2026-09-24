@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **`build-containers.yml`**: an edit to a README under `containers/` no longer rebuilds and
+  pushes both `:latest` images, or re-runs the container test workflows that follow the build.
+  The Dockerfiles copy only `environment.yml`, so a README cannot change an image. Other Markdown
+  under `containers/` still triggers a build: the smoke-test fixture's pages are Markdown. (#178)
+
+### Documentation
+- Developer docs move to `docs/dev/`, the first step of the user manual (#178): `ARCHITECTURE.md`,
+  `GPU-AMI-SETUP.md`, `PLAN.md`, `TESTING.md`, and `containers/VALIDATION.md` as
+  `CONTAINER-VALIDATION.md`, with a `docs/dev/README.md` index. `docs/README.md`,
+  `docs/FUTURE-DEVELOPMENT.md` and `PROJECT-OPTIMIZE-PREVIEWS.md` are removed; the preview plan
+  is tracked in #92 and its sub-issues. The harness gate's ignore list follows the moves.
+
 ## [0.12.0] - 2026-09-24
 
 ### Added
@@ -838,4 +851,4 @@ See [docs/MIGRATION-GUIDE.md](docs/MIGRATION-GUIDE.md) for step-by-step instruct
 
 ## Testing
 
-See [TESTING.md](TESTING.md) for comprehensive testing strategy and validation procedures.
+See [TESTING.md](docs/dev/TESTING.md) for comprehensive testing strategy and validation procedures.

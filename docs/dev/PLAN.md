@@ -134,7 +134,7 @@ Issues opened after the July review, dispositioned in the August 2026 triage and
 | #96 sync-notebooks action | Live, but unacknowledged tension with the v0.6.0 gh-pages-notebooks architecture | Sequencing decision required |
 | #98 `_build/.doctrees` clear | Live — the mechanism is intra-job doctree reuse across builders, not cache staleness | Needs a falsifiable repro |
 | #110 July 2026 audit tracking | Native sub-issue parent over #103–#109; revalidated 2026-09-23, recording four decisions (docs trim deferred, CLI pinning mechanism, both image sizes published, staged releases) | Tracker only |
-| #115 external actions worth studying | Reading list, no completion condition | Fold into `docs/FUTURE-DEVELOPMENT.md` or keep parked |
+| #115 external actions worth studying | Reading list, no completion condition | Keep parked |
 | #129 reproducibility of published lectures | Accurate and deliberately parked | Discussion; relates to #30 |
 | #135 release gating via a `v0-next` staging tag | Unbuilt; parent #138, fixture #136. Until it lands, releases carrying #105 or #107 are staged by hand (procedure in CONTRIBUTING.md) | Backlog items 0b–0d |
 

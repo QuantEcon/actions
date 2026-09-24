@@ -326,12 +326,10 @@ quantecon/actions/
 │   └── build-containers.yml       # Weekly automated builds
 │
 └── docs/
-    ├── ARCHITECTURE.md           # This file (architecture overview)
     ├── CONTAINER-GUIDE.md         # Container build and usage guide
-    ├── FUTURE-DEVELOPMENT.md      # Future enhancement plans
     ├── MIGRATION-GUIDE.md         # How to migrate lecture repos
     ├── QUICK-REFERENCE.md         # Quick reference for all actions
-    └── README.md                  # Documentation index
+    └── dev/                       # Developer docs: this file, testing, plan, GPU AMI
 ```
 
 ### Lecture Repos (Simplified)
@@ -481,10 +479,9 @@ lecture-python-intro/
 
 ## Related Documentation
 
-- [CONTAINER-GUIDE.md](CONTAINER-GUIDE.md) - Container build and usage guide
-- [MIGRATION-GUIDE.md](MIGRATION-GUIDE.md) - How to migrate lecture repos
-- [QUICK-REFERENCE.md](QUICK-REFERENCE.md) - Quick reference for all actions
-- [FUTURE-DEVELOPMENT.md](FUTURE-DEVELOPMENT.md) - Future enhancement plans
+- [CONTAINER-GUIDE.md](../CONTAINER-GUIDE.md) - Container build and usage guide
+- [MIGRATION-GUIDE.md](../MIGRATION-GUIDE.md) - How to migrate lecture repos
+- [QUICK-REFERENCE.md](../QUICK-REFERENCE.md) - Quick reference for all actions
 
 ---
 
