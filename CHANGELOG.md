@@ -73,8 +73,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   templates-only PR matches the ignore list and a gated job would skip exactly the PRs
   that can introduce drift. Consequence: a Dependabot major bump of such an action (today
   only `actions/checkout`) now goes red until the templates move in the same PR. (#109)
+- **CI**: `preview-cli-install` harness job — `npm ci` from each preview action's lockfile on
+  Node 24, after which the CLI must start and report the pinned version. The preview actions
+  themselves cannot run in the harness (a deploy needs the provider's token, and they skip
+  Dependabot's PRs outright), so without this job the Dependabot CLI bumps added below would
+  merge with no CI signal at all. It does not exercise a deploy: a new CLI still needs a real PR
+  against each provider. The gate's self-test now also treats the two lockfiles as must-run
+  paths. (#105)
 
 ### Changed
+- **`preview-cloudflare`, `preview-netlify`**: the CLI is no longer installed globally. Each
+  job runs `npm ci` into a fresh directory under `RUNNER_TEMP` — not `$GITHUB_ACTION_PATH`, which in a
+  container job is the `_actions` directory mounted from the host — and the deploy step calls
+  the binary by the absolute path the install step now outputs as `bin`. The
+  CLI's own executables (`wrangler`, `wrangler2`, `cf-wrangler`; `netlify`, `ntl`) are linked
+  into a `bin` directory added to `GITHUB_PATH`, so they stay on `PATH` for later steps in the
+  caller's job, as the global install left them, without the dependency bins in
+  `node_modules/.bin` shadowing the caller's tools. (#105)
 - **Container images**: Node.js moves from 20 (end-of-life 2026-04-30) to 24 LTS. The
   lean image carried 20.17.0 and the full image 20.20.2. It no longer comes from conda,
   which cannot supply 24 here: every `jupyterlab` below 4.6 on the defaults channel,
@@ -82,9 +97,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   images now install Node from nodejs.org, pinned by version and SHA256 like Miniconda,
   after the conda layer. Dropping the conda `nodejs` leaves the full image's solve
   unchanged; the lean image holds `icu=73.1`, the version the old `nodejs` pinned, so its
-  native stack does not re-solve. `netlify-cli@latest` (27.x, which needs node >=22.13) and
-  `wrangler@latest` (which refuses to run below node 22), both installed into the image
-  by `preview-netlify` and `preview-cloudflare`, are now inside their supported range.
+  native stack does not re-solve. `netlify-cli` (27.x, which needs node >=22.13) and
+  `wrangler` (which refuses to run below node 22), which `preview-netlify` and
+  `preview-cloudflare` install per job, are now inside their supported range.
 - **Templates**: `actions/checkout` moves from `@v4` to `@v7` in `ci.yml`, `cache.yml` and
   `publish.yml`, matching this repo's own workflows and the consumer repositories in
   `PLAN.md`'s table. `@v4` runs on node20, so every repository scaffolded from the templates brought
@@ -181,6 +196,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   added/modified filter dropped, so neither preview action linked it. `--no-renames`
   decomposes a rename into `D` + `A`, and the `A` half is kept like any added lecture.
   (#107)
+- **`preview-cloudflare`**: a failed deploy printed no diagnostic at all. Under
+  `bash -eo pipefail`, `DEPLOY_OUTPUT=$(wrangler pages deploy … 2>&1)` aborted the step on
+  wrangler's non-zero exit with wrangler's stderr captured into the variable, so the log ended
+  at `🔍 Deploying preview…` and the output dump and error branch after it were unreachable
+  (`DEPLOY_EXIT_CODE=$?` could only ever read 0). wrangler's output now streams into the
+  `Deployment Output` group through `tee`, the exit code is read from `PIPESTATUS` with `set -e`
+  suspended around the call, and a failure ends with an `::error::` annotation and wrangler's
+  own exit code. Neither preview action had any `::error::` annotation before. (#105)
+- **`preview-netlify`**: the same abort-before-dump shape threw away the captured `--json`
+  error payload of a failed deploy; netlify's readable error on stderr did reach the log.
+  stdout now goes through `tee` to a file, with the same `PIPESTATUS` capture and `::error::`.
+  It is stdout only: merging stderr would corrupt the JSON whenever a successful deploy prints
+  an npm or Node notice. Separately, the "Raw output was:" guard could not fire in the case it
+  was written for. `python3 -c "…json.load…"` exits non-zero on non-JSON stdout, and `set -e`
+  aborted the step at the assignment with a bare traceback, so the guard only ever fired on
+  valid JSON lacking `deploy_url`/`url`. The parse is now `|| true`, and the guard prints the
+  raw output and fails with an `::error::`. (#105)
 - **CI**: the image-size job in `test-container.yml` has never reported a size, so the
   v0.11.0 entry saying image size "is now reported from the manifest" (#108) did not hold.
   `docker/build-push-action` attaches a provenance attestation by default, which makes each
@@ -215,6 +247,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `github.event_name == 'pull_request'`, so under `pull_request_target` the fork check never
   fires and the deploy step is skipped. Both READMEs now say fork previews are unsupported and
   warn against `pull_request_target`. (#105)
+- **`preview-cloudflare`, `preview-netlify`**: `wrangler@latest` and `netlify-cli@latest` were
+  installed on every run and then handed the deploy credentials — two unpinned npm packages
+  with large dependency trees, in a repo that SHA-pins every third-party Action against tag
+  hijacking. Each CLI is now pinned to an exact version (wrangler 4.136.3, netlify-cli 27.8.1)
+  by a `package.json` and `package-lock.json` beside its `action.yml`, and `npm ci` installs
+  exactly that lockfile, integrity hashes included. The Dependabot `npm` entry that
+  `deploy-cloudflare` introduced now covers both preview directories as well, grouped like the
+  other ecosystems: minor/patch bumps of the three CLI pins in one PR, majors in another. (#105)
+- **`preview-netlify`**: the auth token is off the command line and out of the generated step
+  script. `--auth="${{ inputs.netlify-auth-token }}"` wrote the token into the script file the
+  runner puts on disk and into the argv of the netlify process. The step now passes it as
+  `NETLIFY_AUTH_TOKEN` and the site as `NETLIFY_SITE_ID`, both read natively by netlify-cli
+  (checked against 27.8.1's source), and drops `--auth` and `--site`. The PR number, head SHA
+  and `build-dir`, also interpolated into the script before, move into `env:` in the same
+  edit, as v0.11.1 did for `preview-cloudflare`. The deploy also passes `--no-build`: the site
+  is prebuilt, and netlify-cli 27 would otherwise run any configured build command first, in a
+  process that inherits the token. Closes `PLAN.md` backlog item 8. (#105)
 
 ## [0.11.1] - 2026-08-07
 

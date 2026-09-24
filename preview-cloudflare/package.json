@@ -1,0 +1,8 @@
+{
+  "private": true,
+  "name": "quantecon-actions-preview-cloudflare",
+  "description": "Pins the wrangler CLI that the preview-cloudflare action installs with npm ci from package-lock.json. Bumped by Dependabot; not published.",
+  "dependencies": {
+    "wrangler": "4.136.3"
+  }
+}
