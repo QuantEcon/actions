@@ -8,6 +8,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`build-jupyter-cache`**: `latex-requirements-file` input, passed through to
+  `setup-environment`. A `pdflatex` builder forces `install-latex` on, and in standard
+  (non-container) mode `setup-environment` then hard-fails when its requirements file is
+  missing, but the path could not be set from here. The default is
+  `latex-requirements.txt`, `setup-environment`'s own, and deliberately not `''`: the
+  runner passes an explicit empty value through instead of applying the callee's default,
+  which would have failed every standard-mode pdflatex build. Ignored in container mode,
+  where the images ship LaTeX. (#109)
+- **CI**: `bjc-builders-parse` harness job for the `builders` fix below. It turns the
+  runner into a container-mode host with the same `/etc/quantecon-container` marker a GPU
+  AMI carries, so the internal `setup-environment@v0` is a no-op and every build the
+  parser enables fails in seconds on a missing source dir; the per-builder statuses then
+  record exactly which builders were parsed. Two controls (`'jupyter,pdflatex,html'`, and
+  a two-line block value with a trailing comma) must attempt exactly their builders;
+  `'html,pdf'` and `'nojupyter'` must abort with no builder run. The old substring parser
+  would have built html and jupyter respectively, and the controls prove setup really was
+  a no-op, so an empty status cannot be a setup failure in disguise. `bjc-abort-guard`'s
+  `'nonsense'` could not catch either shape: it names no valid builder at all. (#107)
+- **CI**: `env-container-update` harness job, the first coverage anywhere of
+  `setup-environment`'s `environment-update` path, and the harness's first container job.
+  In `ghcr.io/quantecon/quantecon-build:latest` it applies a delta
+  file that says `name: wrong-name` and asserts that the pip package it lists (checked
+  absent beforehand) is importable by the `python` on `PATH`, that no `envs/wrong-name`
+  appeared, and that the image's own packages survived. (#107)
+- **CI**: the relevance gate now checks that every third-party `uses:` pin in
+  `templates/*.yml` matches the ref `.github/workflows/` pins for the same action, with
+  one `::error::` per mismatch. The templates are what consumer repositories are scaffolded
+  from, and nothing kept them current: Dependabot's github-actions ecosystem scans
+  `.github/workflows/` and named `action.yml` files only, so a `/templates` entry in
+  `dependabot.yml` would be a no-op. It runs in the gate, which always runs, because a
+  templates-only PR matches the ignore list and a gated job would skip exactly the PRs
+  that can introduce drift. Consequence: a Dependabot major bump of such an action (today
+  only `actions/checkout`) now goes red until the templates move in the same PR. (#109)
 - **CI**: `preview-cli-install` harness job — `npm ci` from each preview action's lockfile on
   Node 24, after which the CLI must start and report the pinned version. The preview actions
   themselves cannot run in the harness (a deploy needs the provider's token, and they skip
@@ -41,6 +74,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Node 20 back; `@v7` runs on node24. The `fetch-depth: 0` on the `cache.yml` and
   `publish.yml` checkouts is kept. Templates reach a repository only when it is scaffolded,
   so existing consumers and the `v0` tag are unaffected.
+- **`publish-gh-pages`**: `cname` still writes the `CNAME` file (it also lands in the
+  release archive) but now warns that it has no effect on the deploy. The GitHub Actions
+  Pages path this action uses (`configure-pages` → `upload-pages-artifact` →
+  `deploy-pages`) ignores `CNAME` files; the custom domain is set only in Settings → Pages,
+  which the input description and README now say. The value reaches the shell through
+  `env:` rather than `${{ }}` interpolation. (#109)
+- **Container tests**: the smoke fixture now builds with `quantecon_book_theme`, the theme both
+  images ship and every lecture site uses, instead of `sphinx_book_theme`, and no longer sets
+  `latex_elements.fontpkg: ""`. That override sent the PDF build down the TeX-defaults path,
+  so it never loaded the FreeFont `.otf` names that Sphinx's default xelatex `fontpkg` asks for
+  and both Dockerfiles symlink into place; a regression there could not fail the test. The
+  unused `containers/quantecon/tests/test-container.sh` (full image only, `set -e` only, in
+  no workflow) is deleted and the image README points at `smoke-test.sh` and the Test
+  Container workflow instead. `run-local-tests.sh` now passes `-W --keep-going` like the CI
+  script, so a warning that fails CI also fails locally. (#108)
+
+### Removed
+- **`publish-gh-pages`**: the `asset-url` output. It was bound to
+  `steps.upload-release.outputs.asset-url`, which `softprops/action-gh-release` never sets
+  (it exposes `url`, `id`, `upload_url` and `assets`), so it was always empty while the
+  README advertised it. Not repointed at `fromJSON(…assets)[0].browser_download_url`:
+  unguarded, that errors whenever the release step is skipped, which is the default. A
+  caller still reading it gets the same empty string as before. (#107)
 
 ### Fixed
 - **Container images, `build-lectures`**: every page built in a container job lost its
@@ -53,6 +109,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   trusts the source work tree when git cannot read it, and warns when it still cannot, or
   when the checkout is shallow (which dates every page to the checkout commit). The
   `publish.yml` and `cache.yml` templates now check out with `fetch-depth: 0`.
+- **`setup-environment`**: in container mode the delta update could land in the wrong
+  environment. `conda env update -f` took its target from the file's own `name:`, so a
+  delta saying `name: lecture-python` went to a new `envs/lecture-python`, not on `PATH`:
+  the step printed "✅ Environment updated successfully" and the build then failed with
+  `ModuleNotFoundError`. It now updates the environment that is actually active, the
+  prefix of the `python` on `PATH` (`conda env update -p`), and fails with diagnostics if
+  that is not a conda env. Not `-n <environment-name>` as #107 proposed: on a
+  container-mode host whose stack lives in `base` (the GPU AMI of `docs/GPU-AMI-SETUP.md`)
+  that would silently create a fresh `envs/quantecon`, because `conda env update` creates
+  a missing prefix without a word. A `::warning::` names any disagreement between the
+  file's `name:` or `environment-name` and the active env (a host whose stack is in `base`
+  silences the second with `environment-name: base`). Still no `--prune`, which would
+  strip the image's env down to the delta. The file path is quoted now and reaches the
+  shell through `env:`. (#107)
+- **`setup-environment`**: the LaTeX requirements file is parsed properly. `grep -v '^#'`
+  stripped only whole-line comments, so `texlive-xetex   # for unicode math` reached apt
+  verbatim, and a file of nothing but comments failed the `PACKAGES=$(…)` pipeline under
+  `pipefail`, killing the step with no output. `#` now starts a comment anywhere on a
+  line, CRLF and several packages per line work, and each name reaches `apt-get` as its
+  own quoted argument. A file with no package names is an explicit `::error::`, not the
+  warn-and-skip #107 proposed, deliberately: `install-latex: true` with nothing to install
+  is a misconfiguration, and skipping would only defer the failure to a harder-to-diagnose
+  missing-TeX error in the pdflatex build. (#107)
+- **`setup-environment`**: the environment summary listed the wrong Python in standard
+  mode. The step runs plain `bash` (deliberately, for containers), which has not run
+  `setup-miniconda`'s login-shell activation, so `pip list` showed the runner's default
+  Python right under "Conda: Restored from cache ✅". Standard mode now lists
+  `$CONDA/envs/<environment-name>` explicitly (`python -m pip list`, falling back to
+  `conda list -n`) without the `2>/dev/null` that hid errors, and never fails the step.
+  Container mode is unchanged. (#107)
+- **`build-lectures`**: the failure banner named an artifact that did not exist and the
+  wrong reports directory. It hardcoded `execution-reports-<builder>` although the upload
+  honours `failure-artifact-name`, which `test-containers-lectures.yml` always sets, so
+  every failing container-validation run printed a wrong download line; and it sent
+  pdflatex users to `_build/pdflatex/reports/`, where Sphinx's outdir is `_build/latex`.
+  The banner now takes the artifact name from the upload step's own expression and the
+  reports path from the upload step's path list. (#107)
+- **`build-jupyter-cache`**: `builders` was validated and parsed by substring, so
+  `'html,pdf'` passed and built html alone with no warning, `'nojupyter'` switched the
+  jupyter build on, and `install-latex`, derived from the same test, followed. The input
+  is now split on commas and any whitespace (newlines included, so a YAML block value
+  works), empty tokens are skipped, and each token must be exactly `jupyter`, `pdflatex`
+  or `html`; every unknown one gets its own `::error::` naming the valid set, before
+  setup starts. `'html, pdflatex'`, `'html pdflatex'` and `'html,'` still work, and
+  matching stays case-sensitive (`'HTML'` was already rejected). Validation and parsing
+  are one step now, and the input reaches the shell through `env:`. (#107)
+- **`build-jupyter-cache` README**: the `upload-artifact` row and the build-flow diagram
+  still put the `_build` artifact on the success path; since v0.8.0 it uploads only when a
+  build fails (the step's gate is `upload-artifact == 'true' && all-passed != 'true'`).
+  (#109)
+- **`scripts/detect-changed-lectures.sh`**: a renamed lecture never got a preview deep
+  link. `git diff --name-status` reported it as `R<score>` with two paths, which the
+  added/modified filter dropped, so neither preview action linked it. `--no-renames`
+  decomposes a rename into `D` + `A`, and the `A` half is kept like any added lecture.
+  (#107)
 - **`preview-cloudflare`**: a failed deploy printed no diagnostic at all. Under
   `bash -eo pipefail`, `DEPLOY_OUTPUT=$(wrangler pages deploy … 2>&1)` aborted the step on
   wrangler's non-zero exit with wrangler's stderr captured into the variable, so the log ended
@@ -82,6 +193,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   driver. It runs under `pipefail`, requires each figure to be a positive integer, and fails
   under the containerd image store, where that inspect field is the compressed content size
   instead. (#106, #108)
+
+### Documentation
+- Swept the docs against the shipped code (#106, #109, #99): the Anaconda 2026.06 baseline (the
+  full image's metapackage, the lean image's pin set); image sizes measured on 2026-09-23 and
+  labelled by metric (full 3.33 GB compressed / 8.60 GB on disk, lean 2.93 / 7.32 GB), replacing
+  "~8GB / ~3GB" and "~60% smaller"; the lean image's TeX Live is the full image's minus
+  `texlive-luatex`, not "minimal". Examples that call a preview action grant
+  `pull-requests: write`, and `actions/checkout` examples move to `@v7`.
+  Nonexistent inputs (`preview-netlify`'s `alias`, `build-lectures`' `build-html` and
+  `cache-workflow`), an invented LaTeX-cache log line, a Pages-404 fix that dropped `pages` and
+  `id-token`, and stale cache keys are corrected; custom domains point at Settings → Pages, since
+  the Actions Pages deploy ignores a CNAME file. New `templates/latex-requirements.txt` for
+  standard-runner PDF builds; CONTRIBUTING.md documents staged releases and the `v0` rollback.
 
 ### Security
 - **`preview-netlify`, `preview-cloudflare` READMEs**: the Security section suggested

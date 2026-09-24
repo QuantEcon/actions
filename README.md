@@ -6,7 +6,7 @@ Reusable composite GitHub Actions for building QuantEcon lecture repositories.
 
 This repository provides a set of composite actions that standardize and optimize the build process for QuantEcon lecture websites. These actions include intelligent caching strategies that significantly reduce build times.
 
-**Status:** Stable; current release `v0.8.0` (see the [CHANGELOG](./CHANGELOG.md)).
+**Status:** Stable; current release `v0.11.1` (see the [CHANGELOG](./CHANGELOG.md)).
 
 📋 **See:** [docs/CONTAINER-GUIDE.md](./docs/CONTAINER-GUIDE.md) for quick start, [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for design overview.
 
@@ -41,7 +41,7 @@ Deploys preview builds to Cloudflare Pages for pull requests.
 ### 🚀 [`publish-gh-pages`](./publish-gh-pages)
 Publishes production builds to GitHub Pages using native artifact-based deployment.
 
-**Features:** Custom domain support, native GitHub Pages deployment (no gh-pages branch), optional release assets
+**Features:** Native GitHub Pages deployment (no gh-pages branch), optional release assets; custom domains are set in Settings → Pages
 
 ### 💾 [`build-jupyter-cache`](./build-jupyter-cache)
 Weekly cache generation for main branch builds.
@@ -49,9 +49,9 @@ Weekly cache generation for main branch builds.
 **Features:** Multi-format builds (html, pdflatex, jupyter), validates all builds pass before saving, creates GitHub issues on failure, unique cache keys for safe updates
 
 ### 📥 [`restore-jupyter-cache`](./restore-jupyter-cache)
-Read-only cache restore for PR workflows.
+Cache restore for PR workflows.
 
-**Features:** Never saves (PRs can't corrupt cache), prefix matching for latest cache, detailed status logging, optional `fail-on-miss`
+**Features:** Read-only by default (optional `save-cache` saves a PR-scoped cache, which cannot affect `main` or other PRs), prefix matching for latest cache, detailed status logging, optional `fail-on-miss`
 
 ## Quick Start
 
@@ -68,9 +68,10 @@ jobs:
       image: ghcr.io/quantecon/quantecon-build:latest
     permissions:
       contents: read
+      pull-requests: write  # preview-netlify's PR comment
       packages: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       
@@ -111,7 +112,7 @@ jobs:
       issues: write
       packages: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       - uses: quantecon/actions/build-jupyter-cache@v0
         with:
@@ -128,7 +129,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       - uses: quantecon/actions/setup-environment@v0
         with:
@@ -144,8 +145,8 @@ jobs:
 
 ### Container-Based Setup
 - Pre-built container images with LaTeX and Python environment
-- `ghcr.io/quantecon/quantecon:latest` - Full image (~8.3 GB on disk, ~3.2 GB compressed pull)
-- `ghcr.io/quantecon/quantecon-build:latest` - Lean image (~7.1 GB on disk, ~2.9 GB compressed pull); drops the full Anaconda metapackage, so it's only modestly smaller
+- `ghcr.io/quantecon/quantecon:latest` - Full image (8.60 GB on disk, 3.33 GB compressed pull)
+- `ghcr.io/quantecon/quantecon-build:latest` - Lean image (7.32 GB on disk, 2.93 GB compressed pull); drops the full Anaconda metapackage, so it's only modestly smaller
 - Setup time: ~2-3 minutes (container pull + lecture-specific packages)
 - Weekly automated builds (Monday 2am UTC) for security updates
 
@@ -202,11 +203,7 @@ See [TESTING.md](./TESTING.md) for our testing strategy and validation procedure
 
 ## Contributing
 
-1. Create a feature branch
-2. Make changes to composite actions
-3. Test using `@main` reference in a lecture repository
-4. Create a pull request with test results
-5. After merge, create a new version tag
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for the development workflow, how to test a change by pointing a lecture repository at your branch, and the release steps, including moving the floating `v0` tag.
 
 ## License
 

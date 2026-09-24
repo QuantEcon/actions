@@ -5,7 +5,7 @@ Publishes QuantEcon lecture builds to GitHub Pages using native GitHub Pages dep
 ## Features
 
 - 📄 **Native GitHub Pages deployment** - No gh-pages branch needed
-- 🌐 **Custom domain support** via CNAME file
+- 🌐 **Custom domains** - set in Settings → Pages; the optional `cname` input only writes a `CNAME` file (see [Custom Domain Setup](#custom-domain-setup))
 - � **Release assets** - Optional HTML archive, checksum, and manifest
 - �📊 **Deployment statistics** (file count, size)
 - 🔗 **Automatic URL generation** from GitHub
@@ -27,7 +27,7 @@ This action uses GitHub's native Pages deployment (via artifacts) instead of pus
 | Input | Description | Required | Default |
 |-------|-------------|----------|---------|
 | `build-dir` | Directory with built site | Yes | - |
-| `cname` | Custom domain | No | - |
+| `cname` | Writes a `CNAME` file into `build-dir`. Does **not** set the custom domain: the Pages deploy ignores `CNAME` files, so set it in Settings → Pages (see [Custom Domain Setup](#custom-domain-setup)) | No | - |
 | `create-release-assets` | Create and upload release assets | No | `false` |
 | `asset-name` | Base name for assets (e.g., "lecture-python-html") | No | `<repo>-html` |
 | `github-token` | Token for uploading release assets | If creating assets | - |
@@ -39,7 +39,6 @@ This action uses GitHub's native Pages deployment (via artifacts) instead of pus
 | Output | Description |
 |--------|-------------|
 | `page-url` | URL of deployed site |
-| `asset-url` | URL of uploaded release asset (if created) |
 
 ## Usage
 
@@ -52,6 +51,8 @@ This action uses GitHub's native Pages deployment (via artifacts) instead of pus
 ```
 
 ### With Custom Domain
+
+Set the domain itself in Settings → Pages → Custom domain; the Pages deploy does not read a `CNAME` file. `cname` only writes one into `build-dir` and the release archive, and the action warns that it has no effect on the deploy.
 
 ```yaml
 - uses: quantecon/actions/publish-gh-pages@v0
@@ -134,7 +135,10 @@ concurrency:
 
 If using custom domain:
 
-1. Add `cname` to action inputs
+1. Set the domain in repository Settings → Pages → Custom domain. This is the only
+   place a GitHub Actions Pages deploy reads it from: it ignores `CNAME` files, so the
+   `cname` input only writes one into `build-dir` (and the release archive) and warns
+   that it has no effect on the deploy.
 2. Configure DNS records at your domain provider:
    - CNAME record: `python → quantecon.github.io`
    - Or A records to GitHub's IPs
@@ -173,7 +177,7 @@ If using custom domain:
 **Solutions:**
 1. Verify DNS records at domain provider
 2. Wait for DNS propagation (up to 24 hours)
-3. Check CNAME file exists in deployed site
+3. Check the domain is set in Settings → Pages → Custom domain (a `CNAME` file in the site is not read)
 4. Enable HTTPS in repository settings
 
 ## Performance
@@ -212,7 +216,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deploy.outputs.page-url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       - uses: quantecon/actions/setup-environment@v0
         with:

@@ -26,6 +26,7 @@ Builds QuantEcon lectures using Jupyter Book.
 | `html-copy-pdf` | Copy PDFs to `_build/html/_pdf/` (HTML only) | No | `false` |
 | `html-copy-notebooks` | Copy notebooks to `_build/html/_notebooks/` (HTML only) | No | `false` |
 | `upload-failure-reports` | Upload execution reports on failure | No | `false` |
+| `failure-artifact-name` | Custom name for the failure-report artifact | No | `''` (uses `execution-reports-{builder}`) |
 
 ## Outputs
 
@@ -157,7 +158,7 @@ See the [cache actions documentation](../build-jupyter-cache/README.md) for setu
 **Output:** `_build/latex/`
 
 **Requirements:**
-- LaTeX packages (use `setup-latex` action)
+- LaTeX packages: pre-installed in the QuantEcon containers; on a standard runner, use `setup-environment` with `install-latex: 'true'`
 - ~30-45 minutes build time
 
 **Use for:**
@@ -265,7 +266,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       - uses: quantecon/actions/setup-environment@v0
         with:
@@ -287,7 +288,7 @@ jobs:
   build-html:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: quantecon/actions/setup-environment@v0
       - uses: quantecon/actions/build-lectures@v0
         with:
@@ -296,7 +297,7 @@ jobs:
   build-pdf:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: quantecon/actions/setup-environment@v0
         with:
           install-latex: 'true'

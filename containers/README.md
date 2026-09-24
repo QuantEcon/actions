@@ -6,8 +6,10 @@ This directory contains Docker container definitions for building QuantEcon lect
 
 | Container | Image | Size | Use Case |
 |-----------|-------|------|----------|
-| **quantecon** | `ghcr.io/quantecon/quantecon:latest` | ~8GB | Full compatibility - includes Anaconda + TexLive |
-| **quantecon-build** | `ghcr.io/quantecon/quantecon-build:latest` | ~3GB | Optimized for CI builds - lean package set |
+| **quantecon** | `ghcr.io/quantecon/quantecon:latest` | 3.33 GB compressed, 8.60 GB on disk | Full compatibility - includes Anaconda + TexLive |
+| **quantecon-build** | `ghcr.io/quantecon/quantecon-build:latest` | 2.93 GB compressed, 7.32 GB on disk | CI builds - explicit package list instead of the Anaconda metapackage |
+
+Compressed is what a cold pull downloads; on disk is the unpacked image (measured 2026-09-23 on `ubuntu-latest`). The two share their TeX Live packages (the lean image drops only `texlive-luatex`), so the lean image is only ~12% smaller to pull.
 
 ## Container Comparison
 
@@ -15,8 +17,8 @@ This directory contains Docker container definitions for building QuantEcon lect
 
 **Best for:** Local development, maximum compatibility, running all lecture code
 
-- Full Anaconda 2025.12 distribution
-- Complete TexLive installation
+- Full Anaconda 2026.06 distribution
+- TeX Live from the Ubuntu 24.04 apt packages (`texlive-latex-extra`, `texlive-fonts-extra`, XeLaTeX, LuaTeX)
 - All Jupyter Book extensions
 - ~450+ pre-installed packages
 
@@ -27,12 +29,11 @@ container:
 
 ### quantecon-build (Lean)
 
-**Best for:** CI/CD pipelines, faster image pulls, lecture HTML/PDF builds
+**Best for:** CI/CD pipelines, lecture HTML/PDF builds (a modestly smaller pull than the full image)
 
-- Miniconda + explicit package list (only what's needed)
-- Minimal TexLive (XeLaTeX + required packages)
-- Jupyter Book build tools only
-- ~100 packages, ~60% smaller
+- Miniconda + explicit package list instead of the `anaconda` metapackage, with the science stack pinned to the Anaconda 2026.06 baseline
+- The same TeX Live apt packages as the full image, except `texlive-luatex` (it adds `graphviz`)
+- Jupyter Book build tools
 
 ```yaml
 container:
