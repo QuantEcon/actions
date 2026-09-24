@@ -22,19 +22,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`restore-jupyter-cache` README**: the cache status sample now matches what the action prints.
   It showed an "Age Information" block the action has never produced, left out the "Directory
   Sizes" block it does produce, and showed an exact `Cache Hit` that a read-only restore with the
-  generated key cannot get, since saved keys end in the saving run's id.
-- **`docs/dev/PLAN.md`** refreshed after v0.12.0 delivered the rest of the July 2026 audit (#110): items 7 and 8
-  are done, item 10 is absorbed by the user manual (#178), item 15 is down to one cosmetic fix, a
-  new item 18 records the `${{ }}` expressions still expanded inside `run:` scripts, and the
-  consumers section lists the two follow-ups outside this repo (dropping `cname:` in six
-  consumers, a permanent `preview-cloudflare` step in the canary).
+  generated key cannot get, since saved keys end in the saving run's id. (#187)
+- **`docs/dev/PLAN.md`** refreshed after v0.12.0 delivered the rest of the July 2026 audit
+  (#110): items 7 and 8 are done, item 10 is absorbed by the user manual (#178), item 15 is down
+  to one cosmetic fix, a new item 18 records the `${{ }}` expressions still expanded inside `run:`
+  scripts, and the consumers section lists the two follow-ups outside this repo (dropping
+  `cname:` in six consumers, a permanent `preview-cloudflare` step in the canary). (#187)
 
 ### Fixed
 - **`scripts/check-latex-versions.sh`** runs under `set -euo pipefail` (PLAN item 15). A failed
   `apt-get update` used to be ignored, so the script went on to report versions from a stale
   package index. It now fails the run. The per-package lookup gains an explicit `|| true`: `grep`
   exits 1 for a package apt does not know, which under `pipefail` would abort the script before it
-  could print `NOT FOUND`.
+  could print `NOT FOUND`. (#187)
 
 ## [0.12.0] - 2026-09-24
 
