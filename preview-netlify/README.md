@@ -30,7 +30,7 @@ That's it! Changed lecture detection works automatically for files in the `lectu
   - The pinned `netlify-cli` needs Node.js 22.13 or later
   - The QuantEcon containers (`ghcr.io/quantecon/quantecon`, `ghcr.io/quantecon/quantecon-build`) include Node.js 24 LTS
   - For other runners, use `actions/setup-node@v7` with `node-version: '24'` before this action
-- **`netlify-cli` version:** pinned exactly in [`package.json`](package.json) (currently 27.8.1) and installed per job with `npm ci` from [`package-lock.json`](package-lock.json), so the runner needs access to `registry.npmjs.org`. Dependabot bumps the pin
+- **`netlify-cli` version:** pinned exactly in [`package.json`](package.json) and installed per job with `npm ci` from [`package-lock.json`](package-lock.json), so the runner needs access to `registry.npmjs.org`. Dependabot bumps the pin
 - **python3:** For parsing Netlify JSON output (included in ubuntu-latest and QuantEcon container)
 - **Git history:** Use `fetch-depth: 0` in checkout for change detection
 - **Netlify secrets:** `NETLIFY_AUTH_TOKEN` and `NETLIFY_SITE_ID`

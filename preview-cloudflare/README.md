@@ -31,7 +31,7 @@ That's it! Changed lecture detection works automatically for files in the `lectu
   - The pinned `wrangler` needs Node.js 22 or later
   - The QuantEcon containers (`ghcr.io/quantecon/quantecon`, `ghcr.io/quantecon/quantecon-build`) include Node.js 24 LTS
   - For other runners, use `actions/setup-node@v7` with `node-version: '24'` before this action
-- **`wrangler` version:** pinned exactly in [`package.json`](package.json) (currently 4.136.3) and installed per job with `npm ci` from [`package-lock.json`](package-lock.json), so the runner needs access to `registry.npmjs.org`. Dependabot bumps the pin
+- **`wrangler` version:** pinned exactly in [`package.json`](package.json) and installed per job with `npm ci` from [`package-lock.json`](package-lock.json), so the runner needs access to `registry.npmjs.org`. Dependabot bumps the pin
 - **Git history:** Use `fetch-depth: 0` in checkout for change detection
 - **Cloudflare secrets:** `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`
 - **Cloudflare Pages project:** Must be created beforehand

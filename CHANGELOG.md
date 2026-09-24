@@ -83,7 +83,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **`preview-cloudflare`, `preview-netlify`**: the CLI is no longer installed globally. Each
-  job runs `npm ci` into a fresh temp directory — not `$GITHUB_ACTION_PATH`, which in a
+  job runs `npm ci` into a fresh directory under `RUNNER_TEMP` — not `$GITHUB_ACTION_PATH`, which in a
   container job is the `_actions` directory mounted from the host — and the deploy step calls
   the binary by the absolute path the install step now outputs as `bin`. The
   CLI's own executables (`wrangler`, `wrangler2`, `cf-wrangler`; `netlify`, `ntl`) are linked
@@ -252,16 +252,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with large dependency trees, in a repo that SHA-pins every third-party Action against tag
   hijacking. Each CLI is now pinned to an exact version (wrangler 4.136.3, netlify-cli 27.8.1)
   by a `package.json` and `package-lock.json` beside its `action.yml`, and `npm ci` installs
-  exactly that lockfile, integrity hashes included. A new Dependabot `npm` entry keeps both
-  current, grouped like the other ecosystems: minor/patch bumps of the two CLIs in one PR,
-  majors in another. (#105)
+  exactly that lockfile, integrity hashes included. The Dependabot `npm` entry that
+  `deploy-cloudflare` introduced now covers both preview directories as well, grouped like the
+  other ecosystems: minor/patch bumps of the three CLI pins in one PR, majors in another. (#105)
 - **`preview-netlify`**: the auth token is off the command line and out of the generated step
   script. `--auth="${{ inputs.netlify-auth-token }}"` wrote the token into the script file the
   runner puts on disk and into the argv of the netlify process. The step now passes it as
   `NETLIFY_AUTH_TOKEN` and the site as `NETLIFY_SITE_ID`, both read natively by netlify-cli
   (checked against 27.8.1's source), and drops `--auth` and `--site`. The PR number, head SHA
   and `build-dir`, also interpolated into the script before, move into `env:` in the same
-  edit, as v0.11.1 did for `preview-cloudflare`. Closes `PLAN.md` backlog item 8. (#105)
+  edit, as v0.11.1 did for `preview-cloudflare`. The deploy also passes `--no-build`: the site
+  is prebuilt, and netlify-cli 27 would otherwise run any configured build command first, in a
+  process that inherits the token. Closes `PLAN.md` backlog item 8. (#105)
 
 ## [0.11.1] - 2026-08-07
 

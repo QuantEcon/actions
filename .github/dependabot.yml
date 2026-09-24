@@ -110,14 +110,20 @@ updates:
       # Don't propose bumps to our own internal sibling references (floating @v0).
       - dependency-name: "quantecon/actions*"
 
-  # ── npm (deploy-cloudflare's wrangler) ─────────────────────────────────────
-  # deploy-cloudflare installs wrangler with `npm ci` from the lockfile in its
-  # own directory, so the exact version is committed and bumps arrive here.
-  # The action harness dry-runs the generated config through the bumped
-  # wrangler (dc-wrangler-config), so a bump that breaks it goes red in CI.
+  # ── npm (the CLIs the deploy actions install) ─────────────────────────────
+  # deploy-cloudflare, preview-cloudflare and preview-netlify install wrangler
+  # or netlify-cli with `npm ci` from the package.json + package-lock.json
+  # beside each action.yml, pinned to an exact version because the CLI is
+  # handed the deploy token (#105, #163). The groups bump all three in one PR
+  # (a second one for majors). Such a PR cannot run a deploy, so the CI signal
+  # is the harness: dc-wrangler-config dry-runs deploy-cloudflare's generated
+  # config through the bumped wrangler, and preview-cli-install runs `npm ci`
+  # from each preview lockfile and checks `--version`.
   - package-ecosystem: "npm"
     directories:
       - "/deploy-cloudflare"
+      - "/preview-cloudflare"
+      - "/preview-netlify"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
@@ -167,35 +173,3 @@ updates:
     ignore:
       # Stay on the 24.04 LTS base; bump deliberately when moving to the next LTS.
       - dependency-name: "ubuntu"
-
-  # ── Preview-action CLIs (npm) ──────────────────────────────────────────────
-  # preview-cloudflare and preview-netlify install wrangler and netlify-cli with
-  # `npm ci` from the package.json + package-lock.json beside each action.yml,
-  # pinned to an exact version because the CLI is handed the deploy token
-  # (#105). The groups bump both CLIs in one PR (a second one for majors). As the
-  # header says, such a PR cannot run a preview deploy, so the harness's
-  # preview-cli-install job — an `npm ci` from each lockfile plus `--version` —
-  # is its only CI signal.
-  - package-ecosystem: "npm"
-    directories:
-      - "/preview-cloudflare"
-      - "/preview-netlify"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 10
-    labels:
-      - "maintenance"
-    commit-message:
-      prefix: "deps"
-    groups:
-      npm:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
-      npm-major:
-        patterns:
-          - "*"
-        update-types:
-          - "major"

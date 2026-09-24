@@ -34,13 +34,13 @@ runs:
       run: |
         # Skip for dependabot and fork PRs (they can't access secrets)
         if [ "${{ github.actor }}" = "dependabot[bot]" ]; then
-          echo "skip=true" >> $GITHUB_OUTPUT
+          echo "skip=true" >> "$GITHUB_OUTPUT"
           echo "⚠️ Skipping Netlify deploy for dependabot"
         elif [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
-          echo "skip=true" >> $GITHUB_OUTPUT
+          echo "skip=true" >> "$GITHUB_OUTPUT"
           echo "⚠️ Skipping Netlify deploy for fork PR"
         else
-          echo "skip=false" >> $GITHUB_OUTPUT
+          echo "skip=false" >> "$GITHUB_OUTPUT"
         fi
 
     - name: Detect Changed Lecture Files
@@ -63,10 +63,12 @@ runs:
         # token, so it is pinned like every third-party Action in this repo,
         # and Dependabot's npm entry keeps the pin current.
         #
-        # Installed into a fresh temp dir rather than $GITHUB_ACTION_PATH,
-        # which in a container job is the _actions directory mounted from the
-        # host. Install scripts stay on, as they were for the global install.
-        D="$(mktemp -d)"
+        # Installed into a fresh directory under RUNNER_TEMP rather than
+        # $GITHUB_ACTION_PATH, which in a container job is the _actions directory
+        # mounted from the host. RUNNER_TEMP is cleared between jobs, so nothing
+        # accumulates on a persistent self-hosted runner, as it would in /tmp.
+        # Install scripts stay on, as they were for the global install.
+        D="$(mktemp -d "${RUNNER_TEMP:-/tmp}/preview-netlify.XXXXXX")"
         cp "$GITHUB_ACTION_PATH/package.json" "$GITHUB_ACTION_PATH/package-lock.json" "$D/"
         npm ci --prefix "$D" --no-audit --no-fund \
           || { echo "::error::npm ci of the pinned netlify-cli failed — see the npm output above (it needs registry.npmjs.org)"; exit 1; }
@@ -120,7 +122,10 @@ runs:
         JSON="$(mktemp)"
         echo "::group::Deployment Output"
         set +e
+        # --no-build: the site is prebuilt. Without it, netlify-cli 27 runs any
+        # configured build command first, in a process that inherits the token.
         "$NETLIFY" deploy \
+          --no-build \
           --dir="${BUILD_DIR}" \
           --alias="pr-${PR_NUMBER}" \
           --message="PR #${PR_NUMBER} (${SHORT_SHA})" \
@@ -153,7 +158,7 @@ runs:
           exit 1
         fi
 
-        echo "deploy-url=$DEPLOY_URL" >> $GITHUB_OUTPUT
+        echo "deploy-url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
         
         echo "✅ Deployment successful!"
         echo "📍 URL: $DEPLOY_URL"
