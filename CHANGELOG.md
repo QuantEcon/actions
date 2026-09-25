@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **`build-lectures`**: when notebooks fail to execute, the failure report now prints each one's
+  traceback (the last 200 lines of `reports/<doc>.err.log`) in its own collapsible log group.
+  myst-nb logs only `CellExecutionError` and the report's path, so the traceback was otherwise
+  only in the 7-day reports artifact; diagnosing #159 took far longer for that reason.
+  `stop-commands` wraps each traceback, so notebook output cannot act as a workflow command.
 - **`build-containers.yml`**: an edit to a README under `containers/` no longer rebuilds and
   pushes both `:latest` images, or re-runs the container test workflows that follow the build.
   The Dockerfiles copy only `environment.yml`, so a README cannot change an image. Other Markdown
