@@ -108,6 +108,11 @@ jobs:
       # A transient raw-GitHub 429 can fail one notebook while the successful
       # executions remain in the Jupyter cache. Retry once so only the failed
       # notebooks execute again; a second failure still fails the job.
+      - name: Reset the Sphinx environment for the retry
+        if: steps.build-html.outcome == 'failure'
+        shell: bash -l {0}
+        run: jb clean lecture-repo
+
       - name: Retry HTML build after failure
         if: steps.build-html.outcome == 'failure'
         uses: ./actions-repo/build-lectures
