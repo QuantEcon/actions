@@ -34,7 +34,11 @@ jobs:
   test:
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
-    timeout-minutes: 120
+    # Per repo: an entry may set its own ceiling, otherwise 120. lecture-python.myst
+    # needs more: on CPU its HTML build alone takes 72-118 min depending on the
+    # runner, so at 120 a leg's result depended on which host it landed on (#141,
+    # #159). Its runtime is discussed in #196; lower this once that lands.
+    timeout-minutes: ${{ matrix.repo.timeout-minutes || 120 }}
 
     permissions:
       contents: read
@@ -56,6 +60,7 @@ jobs:
             owner: QuantEcon
           - repo: lecture-python.myst
             owner: QuantEcon
+            timeout-minutes: 180
           - repo: lecture-python-advanced.myst
             owner: QuantEcon
           # TODO: Re-enable after https://github.com/QuantEcon/lecture-jax/issues/284 is resolved
@@ -73,6 +78,17 @@ jobs:
     name: ${{ matrix.repo.repo }} · ${{ matrix.container }}
 
     steps:
+      # Build times differ by up to ~1.6x between legs running identical inputs,
+      # so record the host CPU with each run: without it, a slow leg cannot be
+      # told apart from a slower build (#141).
+      - name: Record runner CPU
+        env:
+          LEG: ${{ matrix.repo.repo }} · ${{ matrix.container }}
+        run: |
+          model=$(grep -m1 '^model name' /proc/cpuinfo | cut -d: -f2- | sed 's/^ *//' || true)
+          echo "Runner CPU: ${model:-unknown} ($(nproc) cores)"
+          echo "**$LEG**: ${model:-unknown CPU}, $(nproc) cores" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Checkout actions repository
         uses: actions/checkout@v7
         with:

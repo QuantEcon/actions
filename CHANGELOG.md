@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **`test-containers-lectures.yml`**: each matrix repo can set its own `timeout-minutes`
+  (default 120), and `lecture-python.myst` gets 180. Its CPU HTML build alone takes 72-118 min
+  depending on the runner, so at 120 a leg's result depended on the host it landed on (#159);
+  its runtime is discussed in #196. Each leg also records the runner's CPU model and core count
+  in the job summary (#141).
 - **`build-lectures`**: when notebooks fail to execute, the failure report now prints each one's
   traceback (the last 200 lines of `reports/<doc>.err.log`) in its own collapsible log group.
   myst-nb logs only `CellExecutionError` and the report's path, so the traceback was otherwise
