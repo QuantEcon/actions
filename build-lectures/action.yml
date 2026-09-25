@@ -237,6 +237,29 @@ runs:
         echo ""
         echo "════════════════════════════════════════════════════════════════════"
         echo ""
+
+        # myst-nb logs only "CellExecutionError" and the report path for a
+        # notebook that raised: the traceback goes to <outdir>/reports/<doc>.err.log
+        # and nowhere else, so without this it lives only in a 7-day artifact.
+        # Print each one, trimmed, in its own group. stop-commands keeps a
+        # notebook's output from being read as workflow commands.
+        if [ -n "$REPORTS_DIR" ] && [ -d "$REPORTS_DIR" ]; then
+          mapfile -t ERR_LOGS < <(find "$REPORTS_DIR" -name '*.err.log' -type f | sort)
+          if [ "${#ERR_LOGS[@]}" -gt 0 ]; then
+            echo "📓 ${#ERR_LOGS[@]} notebook(s) failed to execute; their tracebacks (last 200 lines each):"
+            TOKEN="tb-$RANDOM$RANDOM$RANDOM"
+            for f in "${ERR_LOGS[@]}"; do
+              echo "::group::${f#"$REPORTS_DIR"/}"
+              echo "::stop-commands::$TOKEN"
+              # sed ensures a final newline, so the resume token starts its own line.
+              tail -n 200 "$f" | sed -e '$a\'
+              echo "::$TOKEN::"
+              echo "::endgroup::"
+            done
+            echo ""
+          fi
+        fi
+
         if [ "$UPLOAD_FAILURE_REPORTS" = "true" ]; then
           echo "📦 Execution reports will be uploaded as artifact: $ARTIFACT_NAME"
           echo ""
