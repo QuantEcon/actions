@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Containers**: both images move to the **Anaconda 2026.07** baseline, which every lecture repo
+  in the validation matrix already pins (#188). The full image's metapackage goes to
+  `anaconda=2026.07`. The lean image's pin set is re-derived from the 2026.07 linux-64 py313 MKL
+  build, which moves three of its ten pins: scipy 1.17.1 → 1.18.0, matplotlib 3.10.9 → 3.11.0 and
+  scikit-learn 1.8.0 → 1.9.0; numpy, pandas, seaborn, sympy, numba, networkx and statsmodels are
+  unchanged. The lean image's `icu=73.1` hold, kept so the Node 24 move did not re-solve its native
+  stack, is dropped as planned, with its Dependabot `ignore`: the lean image now resolves icu 78.3
+  (as the full image does), Qt 6 in place of Qt 5 (pyqt 5.15 → 6.11), lxml 5.3 → 6.1 and libxml2
+  2.13 → 2.15. The documented image sizes were measured on the 2026.06 images. (#199)
 - **`test-containers-lectures.yml`**: each matrix repo can set its own `timeout-minutes`
   (default 120), and `lecture-python.myst` gets 180. Its CPU HTML build alone takes 72-118 min
   depending on the runner, so at 120 a leg's result depended on the host it landed on (#159);
