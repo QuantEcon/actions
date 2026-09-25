@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **`test-containers-lectures.yml`**: each matrix repo can set its own `timeout-minutes`
+  (default 120), and `lecture-python.myst` gets 180. Its CPU HTML build alone takes 72-118 min
+  depending on the runner, so at 120 a leg's result depended on the host it landed on (#159);
+  its runtime is discussed in #196. Each leg also records the runner's CPU model and core count
+  in the job summary (#141).
 - **`build-containers.yml`**: an edit to a README under `containers/` no longer rebuilds and
   pushes both `:latest` images, or re-runs the container test workflows that follow the build.
   The Dockerfiles copy only `environment.yml`, so a README cannot change an image. Other Markdown
