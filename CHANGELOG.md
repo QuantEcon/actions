@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   depending on the runner, so at 120 a leg's result depended on the host it landed on (#159);
   its runtime is discussed in #196. Each leg also records the runner's CPU model and core count
   in the job summary (#141).
+- **`build-lectures`**: when notebooks fail to execute, the failure report now prints each one's
+  traceback (the last 200 lines of `reports/<doc>.err.log`) in its own collapsible log group.
+  myst-nb logs only `CellExecutionError` and the report's path, so the traceback was otherwise
+  only in the 7-day reports artifact; diagnosing #159 took far longer for that reason.
+  `stop-commands` wraps each traceback, so notebook output cannot act as a workflow command.
 - **`build-containers.yml`**: an edit to a README under `containers/` no longer rebuilds and
   pushes both `:latest` images, or re-runs the container test workflows that follow the build.
   The Dockerfiles copy only `environment.yml`, so a README cannot change an image. Other Markdown
@@ -24,6 +29,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `CONTAINER-VALIDATION.md`, with a `docs/dev/README.md` index. `docs/README.md`,
   `docs/FUTURE-DEVELOPMENT.md` and `PROJECT-OPTIMIZE-PREVIEWS.md` are removed; the preview plan
   is tracked in #92 and its sub-issues. The harness gate's ignore list follows the moves.
+- **`restore-jupyter-cache` README**: the cache status sample now matches what the action prints.
+  It showed an "Age Information" block the action has never produced, left out the "Directory
+  Sizes" block it does produce, and showed an exact `Cache Hit` that a read-only restore with the
+  generated key cannot get, since saved keys end in the saving run's id. (#187)
+- **`docs/dev/PLAN.md`** refreshed after v0.12.0 delivered the rest of the July 2026 audit
+  (#110): items 7 and 8 are done, item 10 is absorbed by the user manual (#178), item 15 is down
+  to one cosmetic fix, a new item 18 records the `${{ }}` expressions still expanded inside `run:`
+  scripts, and the consumers section lists the two follow-ups outside this repo (dropping
+  `cname:` in six consumers, a permanent `preview-cloudflare` step in the canary). (#187)
+
+### Fixed
+- **`scripts/check-latex-versions.sh`** runs under `set -euo pipefail` (PLAN item 15). A failed
+  `apt-get update` used to be ignored, so the script went on to report versions from a stale
+  package index. It now fails the run. The per-package lookup gains an explicit `|| true`: `grep`
+  exits 1 for a package apt does not know, which under `pipefail` would abort the script before it
+  could print `NOT FOUND`. (#187)
 
 ## [0.12.0] - 2026-09-24
 
