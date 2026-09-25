@@ -9,7 +9,7 @@ This directory contains Docker container definitions for building QuantEcon lect
 | **quantecon** | `ghcr.io/quantecon/quantecon:latest` | 3.33 GB compressed, 8.60 GB on disk | Full compatibility - includes Anaconda + TexLive |
 | **quantecon-build** | `ghcr.io/quantecon/quantecon-build:latest` | 2.93 GB compressed, 7.32 GB on disk | CI builds - explicit package list instead of the Anaconda metapackage |
 
-Compressed is what a cold pull downloads; on disk is the unpacked image (measured 2026-09-23 on `ubuntu-latest`). The two share their TeX Live packages (the lean image drops only `texlive-luatex`), so the lean image is only ~12% smaller to pull.
+Compressed is what a cold pull downloads; on disk is the unpacked image (measured 2026-09-23 on `ubuntu-latest`, before the move to 2026.07). The two share their TeX Live packages (the lean image drops only `texlive-luatex`), so the lean image is only ~12% smaller to pull.
 
 ## Container Comparison
 
