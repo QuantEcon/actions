@@ -17,7 +17,7 @@ Compressed is what a cold pull downloads; on disk is the unpacked image (measure
 
 **Best for:** Local development, maximum compatibility, running all lecture code
 
-- Full Anaconda 2026.06 distribution
+- Full Anaconda 2026.07 distribution
 - TeX Live from the Ubuntu 24.04 apt packages (`texlive-latex-extra`, `texlive-fonts-extra`, XeLaTeX, LuaTeX)
 - All Jupyter Book extensions
 - ~450+ pre-installed packages
@@ -31,7 +31,7 @@ container:
 
 **Best for:** CI/CD pipelines, lecture HTML/PDF builds (a modestly smaller pull than the full image)
 
-- Miniconda + explicit package list instead of the `anaconda` metapackage, with the science stack pinned to the Anaconda 2026.06 baseline
+- Miniconda + explicit package list instead of the `anaconda` metapackage, with the science stack pinned to the Anaconda 2026.07 baseline
 - The same TeX Live apt packages as the full image, except `texlive-luatex` (it adds `graphviz`)
 - Jupyter Book build tools
 

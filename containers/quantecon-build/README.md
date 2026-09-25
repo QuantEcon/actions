@@ -11,7 +11,7 @@ ghcr.io/quantecon/quantecon-build:latest
 **Contents:**
 - Ubuntu 24.04 LTS
 - Miniconda with Python 3.13
-- Explicit package list (not full Anaconda), science stack pinned to the Anaconda 2026.06 baseline
+- Explicit package list (not full Anaconda), science stack pinned to the Anaconda 2026.07 baseline
 - TeX Live: the same apt packages as the full container, except `texlive-luatex`
 - Jupyter Book build tools
 
@@ -23,7 +23,7 @@ ghcr.io/quantecon/quantecon-build:latest
 
 ### Python Packages (Superset for all QuantEcon lectures)
 
-Core scientific stack (pinned to the Anaconda 2026.06 baseline, matching the
+Core scientific stack (pinned to the Anaconda 2026.07 baseline, matching the
 versions the lecture repos build against):
 - numpy, scipy, pandas, matplotlib, seaborn
 - sympy, numba, networkx, statsmodels
@@ -78,7 +78,7 @@ docker pull ghcr.io/quantecon/quantecon:latest
 |---------|-----------|-----------------|
 | Size (compressed pull) | 3.33 GB | 2.93 GB |
 | Size (on disk) | 8.60 GB | 7.32 GB |
-| Anaconda | Full 2026.06 | Explicit list (science stack pinned to 2026.06) |
+| Anaconda | Full 2026.07 | Explicit list (science stack pinned to 2026.07) |
 | TeX Live | Ubuntu 24.04 apt set, incl. `texlive-luatex` | Same set, without `texlive-luatex` |
 | Best for | Development | CI/CD |
 

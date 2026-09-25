@@ -9,7 +9,7 @@ Our next-generation CI/CD system combines three complementary elements:
 **Pre-built Docker images solve the LaTeX bottleneck:**
 
 - **Images:** `ghcr.io/quantecon/quantecon:latest` (full) and `ghcr.io/quantecon/quantecon-build:latest` (lean) — CPU only
-- **Contents:** Ubuntu 24.04 LTS + TexLive (latest) + Miniconda + Anaconda 2026.06 base (lean: an explicit package list pinned to that baseline) + Jupyter Book tools
+- **Contents:** Ubuntu 24.04 LTS + TexLive (latest) + Miniconda + Anaconda 2026.07 base (lean: an explicit package list pinned to that baseline) + Jupyter Book tools
 - **Build:** Weekly automated builds via GitHub Actions (Monday 2am UTC)
 - **Registry:** GitHub Container Registry (GHCR) - free for public repos
 - **Size:** full 8.60 GB / lean 7.32 GB on disk (3.33 / 2.93 GB compressed pull, fetched each run on GitHub-hosted runners)

@@ -101,7 +101,7 @@ ENV CONDA_DEFAULT_ENV=quantecon
 # wrangler (refuses to start below node 22). Installed from nodejs.org, pinned by
 # version and SHA256 like Miniconda above, and deliberately NOT from conda: every
 # jupyterlab build below 4.6 on the defaults channel, including the one the
-# Anaconda 2026.06 baseline pins, constrains nodejs to 20.x, so a conda nodejs
+# Anaconda 2026.07 baseline pins, constrains nodejs to 20.x, so a conda nodejs
 # cannot reach 24 without moving the Jupyter stack. Outside conda it cannot touch
 # the solve, and placed after the conda layer a Node bump does not re-run it.
 # Bump NODE_VERSION and NODE_SHA256 together, from

@@ -11,7 +11,7 @@ Working plan for `QuantEcon/actions`: current state, prioritized backlog, depend
 The core infrastructure is complete, hardened, and in production:
 
 - **Actions (8)** — `setup-environment`, `build-lectures`, `build-jupyter-cache`, `restore-jupyter-cache`, `preview-netlify`, `preview-cloudflare`, `publish-gh-pages`, `deploy-cloudflare` (#163); latest release **`v0.12.0`** (2026-09-24), and `@v0` points to it (both resolve to `a53dbe4`)
-- **Containers (2)** — `quantecon` (full) and `quantecon-build` (lean); science stack pinned as a set to the Anaconda 2026.06 baseline (#28, #84, migrated in #95), `kaleido<1.0` (#85), Miniconda SHA-pinned (#32)
+- **Containers (2)** — `quantecon` (full) and `quantecon-build` (lean); science stack pinned as a set to the Anaconda 2026.07 baseline (#28, #84, #95; moved to 2026.07 in #199), `kaleido<1.0` (#85), Miniconda SHA-pinned (#32)
 - **June 2026 hardening pass** — third-party actions SHA-pinned (#39, #79), shell safety in `build-lectures` (#36), preview actions de-duplicated and injection-hardened (#35), standard-mode conda caching fixed (#33, #78), docs sweep (#40, #66)
 - **August 2026 alerting pass** — unattended cache-build failures now reach the tracker on every failure path: during the builds (#83, #122) and before them (#123, #127). Shipped in v0.11.0. The half neither fix can prove in-repo is whether an issue is *actually filed* — that needs `issues: write` and would open real issues on every PR run — so the canary is now the only place it is exercised, and it only started exercising it when `v0` moved to v0.11.0.
 - **September 2026 audit close-out** — v0.12.0 delivered the rest of the July 2026 audit (#110): preview deploy errors surfaced and both CLIs pinned by lockfile (#105), the #107 correctness batch with new harness coverage, a smoke fixture that exercises the real theme and FreeFont path (#108), and the docs reconciled with the code and the 2026.06 baseline (#106, #109, #99). It was the first release staged by hand (CONTRIBUTING.md, Staged Releases): `v0` moved only after the canary ran real `preview-netlify` and `preview-cloudflare` deploys and a `cache.yml` dispatch at the candidate tag.
@@ -103,7 +103,7 @@ One correction to how that closure was written up: "cannot silently no-op" was t
 
 ## Dependency policy
 
-The lean image's science stack (`numpy`, `scipy`, `pandas`, …) is **pinned as a set** to the Anaconda baseline the lecture repos pin (currently `anaconda=2026.06`, migrated in #95). Drifting individual packages ahead of that baseline is what broke lecture execution in #28.
+The lean image's science stack (`numpy`, `scipy`, `pandas`, …) is **pinned as a set** to the Anaconda baseline the lecture repos pin (currently `anaconda=2026.07`, moved in #199; 2026.06 came in #95). Drifting individual packages ahead of that baseline is what broke lecture execution in #28.
 
 - Stack bumps happen as **one coordinated move** — both containers together, only when the lecture repos adopt a new anaconda baseline, validated by a container lecture-build run (and, once built, the #29 env-test harness).
 - Dependabot handles everything else: minors/patches grouped per ecosystem, majors grouped for individual review (#67, #76). The conda stack should be excluded via `ignore` (backlog item 3).
