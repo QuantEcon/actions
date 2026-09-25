@@ -121,7 +121,7 @@ The lean image's science stack (`numpy`, `scipy`, `pandas`, …) is **pinned as 
 | #29 composite-vs-workflow docs + env harness | Docs half still valid; the env-harness half is overtaken by the live canary | Backlog item 11 (item 9 done) |
 | #30 env/config manifest | Partially addressed — v0 stub exists | Backlog item 12 |
 | #18 container-mode caching | Re-scoped — pre-baking covers the common stack; only the per-lecture delta install is uncached. Quantify before investing | Keep open, low priority |
-| #27 HTML recovery tool | Still valid — producer half exists (release assets + checksums); consumer unbuilt. Likely belongs in `workflow-backups`, not here | Decide home, then build |
+| #27 HTML recovery tool | Home decided 2026-09-25: here, as a `restore-gh-pages` action and a `templates/restore.yml` each lecture repo runs by `workflow_dispatch`. A Pages site with an Actions source can only be deployed from a run in its own repo, so the restore cannot live in `workflow-backups` or a CLI. Producer half exists (release assets + checksums); consumer unbuilt | Build; scope and gaps in #27 |
 | #2 isolated lecture execution | Exploratory — most tractable first step is an execution check of the *built* notebooks, which nothing in the repo executes today | Keep open, low priority |
 
 Issues opened after the July review, dispositioned in the August 2026 triage and refreshed 2026-09-23; the rows v0.12.0 closed are updated to 2026-09-24:
@@ -179,4 +179,4 @@ The February 2026 gap analysis concluded every `lecture-python.myst` build featu
 - [ ] **`actions/cache` on RunsOn** — confirm cache save/restore works on the self-hosted GPU runners
 - [ ] **OIDC Pages deployment from RunsOn** — confirm `actions/deploy-pages` token flow works from self-hosted runners
 
-Settled architectural decisions: eliminate the `.notebooks` repos in favour of gh-pages notebooks + theme-generated Colab URLs ([quantecon-book-theme#359](https://github.com/QuantEcon/quantecon-book-theme/issues/359)); notebook-zip stays an inline workflow step; `collab.yml` and `linkcheck.yml` remain standalone workflows.
+Settled architectural decisions: eliminate the `.notebooks` repos in favour of gh-pages notebooks + theme-generated Colab URLs ([quantecon-book-theme#359](https://github.com/QuantEcon/quantecon-book-theme/issues/359)); notebook-zip stays an inline workflow step; `collab.yml` and `linkcheck.yml` remain standalone workflows; the HTML recovery tool (#27) is built here as a restore action, not in `workflow-backups`, and the release archives get no off-GitHub copy (the sources are the backup).
