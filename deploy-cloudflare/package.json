@@ -4,6 +4,6 @@
   "description": "The wrangler CLI that deploy-cloudflare installs with `npm ci`. Exact pin; Dependabot proposes bumps.",
   "license": "MIT",
   "dependencies": {
-    "wrangler": "4.136.3"
+    "wrangler": "4.139.0"
   }
 }
