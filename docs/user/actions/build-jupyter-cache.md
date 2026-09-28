@@ -4,7 +4,7 @@
 
 Builds the lectures from scratch, in each format listed in `builders`, and saves the result as the cache that pull-request and publish builds restore with [`restore-jupyter-cache`](restore-jupyter-cache.md). It saves two caches:
 
-- **The build cache**: the whole `_build` directory, with the HTML, the PDF, the notebooks and the execution cache.
+- **The build cache**: the whole `_build` directory, with the output of each builder in `builders` and the execution cache.
 - **The execution cache**: `_build/.jupyter_cache` alone, which holds each notebook's executed outputs.
 
 Both are saved only when every build passes. A failed run saves nothing, so the builds that restore keep the last good cache, and it files an issue, so that the failure is seen.
@@ -23,7 +23,7 @@ Use it in a workflow of its own, on the default branch: weekly, on demand, and w
 - **Node.** None.
 - **Permissions.** `issues: write`, to file the failure issue, unless `create-issue-on-failure` is `'false'`. The job also needs `contents: read` for `actions/checkout`, and the templates grant `packages: read` in a `container:` job, for the image pull. Saving caches and uploading artifacts need no permission.
 - **Secrets.** None: the failure issue is filed with the job's own token.
-- **Files in your repository.** The book in `source-dir`. In standard mode, the environment file, and with `pdflatex` the LaTeX package list; see [`setup-environment`](setup-environment.md#requirements). In container mode, the `environment-update` file if you set one. Check out with `fetch-depth: 0`, so that the cached HTML dates each page from its own history.
+- **Files in your repository.** The book in `source-dir`, whose `_config.yml` sets `execute_notebooks: cache` under `execute:`. With Jupyter Book's default, `auto`, notebooks are executed without jupyter-cache, and there is no execution cache to save. In standard mode, the environment file, and with `pdflatex` the LaTeX package list; see [`setup-environment`](setup-environment.md#requirements). In container mode, the `environment-update` file if you set one. Check out with `fetch-depth: 0`, so that the cached HTML dates each page from its own history.
 - **Setup outside GitHub.** None.
 
 ## Inputs
@@ -52,7 +52,7 @@ Use it in a workflow of its own, on the default branch: weekly, on demand, and w
 
 | Output | Description |
 |---|---|
-| `cache-saved` | `'true'` when every requested build passed, which is when the build and execution caches are saved; `'false'` otherwise, including a run that stopped before any build. Always set. |
+| `cache-saved` | `'true'` when every requested build passed, which is when the action saves the build and execution caches; `'false'` otherwise, including a run that stopped before any build. Always set. A save that fails only logs a warning, as on a re-run of a run that passed, whose keys already exist. |
 | `build-success` | The same value as `cache-saved`: `'true'` only when every requested build passed; `'false'` for anything else, including a run that stopped during setup, before any build. Always set. |
 | `cache-key` | The key the build cache is saved under, `build-<hash of environment>-<hash of environment-update>-<run id>`. Set even when a build fails and nothing is saved. |
 | `jupyter-status` | `success` or `failure` for a `jupyter` build that ran, `skipped` when `builders` does not list it. Empty when the run stopped before the builds. |
@@ -115,7 +115,7 @@ Leave out the `container:` block. `setup-environment` then builds the Conda envi
 
 1. **Builders.** `builders` is split on commas and whitespace, and every name must be `jupyter`, `pdflatex` or `html`.
 2. **Environment.** `setup-environment` runs with `environment`, `environment-update` and `latex-requirements-file`, and installs LaTeX only when `pdflatex` is among the builders. Its other inputs keep their defaults, so in standard mode the environment is named `quantecon`, uses Python 3.13, and is cached under `cache-version` `v1`.
-3. **Builds.** `build-lectures` runs once for each requested builder, always in the order `jupyter`, `pdflatex`, `html`, with its default `extra-args`, `-W --keep-going`, and `output-dir`, `.`. The `html` build copies in the PDF when `pdflatex` ran, and the notebooks when `jupyter` ran. A failed build does not stop the later ones, so each run reports on every builder.
+3. **Builds.** `build-lectures` runs once for each requested builder, always in the order `jupyter`, `pdflatex`, `html`, with its default `extra-args`, `-W --keep-going`, and `output-dir`, `.`. The `html` build copies in the PDF when `pdflatex` ran, and the notebooks when `jupyter` ran. A failed build does not stop the later ones, but they build on what it read: all the builders share `_build/.doctrees`, and a later builder rereads only the pages that changed. So a notebook that fails usually fails only the first builder to run it, and the later ones pass. The run still fails, and saves nothing; start from the first builder that failed.
 4. **Caches.** If every build passed, both caches are saved:
 
    | Cache | Path | Key |
@@ -123,16 +123,16 @@ Leave out the `container:` block. `setup-environment` then builds the Conda envi
    | Build | `_build` | `build-<hash of environment>-<hash of environment-update>-<run id>` |
    | Execution | `_build/.jupyter_cache` | `jupyter-cache-<hash of the .md files under source-dir>-<run id>` |
 
-   A file that does not exist hashes to an empty string, so with no `environment-update` the build cache's key is `build-<hash>--<run id>`. Every successful run saves new entries, and `restore-jupyter-cache` restores the newest through a prefix match. GitHub removes a cache that has not been restored for 7 days, and the oldest caches first when the repository's cache storage is full.
-5. **Job summary.** "Jupyter Cache Build Summary" gives the outcome, the cache key, the trigger, the commit, the mode `setup-environment` ran in, each builder's result and the size of each directory in `_build`.
+   A file that does not exist hashes to an empty string, so with no `environment-update` the build cache's key is `build-<hash>--<run id>`. Every successful run saves new entries, and `restore-jupyter-cache` restores the newest through a prefix match. GitHub removes a cache that has not been restored for 7 days, and the least recently used caches first when the repository's cache storage is full.
+5. **Job summary.** "Jupyter Cache Build Summary" gives the outcome, the cache key, the trigger, the commit, the mode `setup-environment` ran in, each builder's result, and the size of `_build` and of each builder's directory in it.
 
-The action runs `setup-environment` and `build-lectures` at `@v0`, whichever version of `build-jupyter-cache` the workflow pins.
+The action runs `setup-environment` and `build-lectures` at `@v0`, whichever version of `build-jupyter-cache` the workflow pins. So inside it they behave as in the latest release, not as this manual describes `main`: a change listed under `[Unreleased]` in the CHANGELOG reaches them only when a release moves `v0`.
 
 ### When a build fails
 
 1. **Nothing is saved.** The last good caches stay, and the builds that restore them carry on as before.
 2. **Artifacts.** With `upload-artifact`, the whole `_build` directory as `build-cache-<run id>`. With `upload-failure-reports`, each failed build's reports as `execution-reports-<builder>`.
-3. **The failure issue.** With `create-issue-on-failure`, the action files an issue titled `🔴 Cache Build Failed - <date>`, with the labels in `issue-labels` and the assignees in `issue-assignees`. If an open issue already carries the first of those labels, it adds a comment there instead. Either way the text links to the run, gives each builder's result, names the artifacts the run actually uploaded, and gives a command to reproduce each failed build locally. The action then checks that the issue was filed, and fails if it was not.
+3. **The failure issue.** With `create-issue-on-failure`, the action files an issue titled `🔴 Cache Build Failed - <date>`, with the labels in `issue-labels` and the assignees in `issue-assignees`. If an open issue already carries the first of those labels, it adds a comment there instead. Either way the text links to the run, gives each builder's result, and gives a command to reproduce each failed build locally. It names the `_build` artifact only if the run uploaded one. With `upload-failure-reports`, it also names an `execution-reports-<builder>` artifact for each failed builder, although a build that failed before writing any report uploads none. The action then checks that the issue was filed, and fails if it was not.
 4. **The job fails**, with `One or more builds failed - see summary above`.
 
 A run can also stop before any lecture is built: on an invalid `builders`, or when `setup-environment` fails. It then fails with `The cache build aborted during …, before any lecture was built`, and the issue says that no lecture was built, so that the failure is not mistaken for a broken lecture. Every builder then reads `not run`.
@@ -149,4 +149,4 @@ A run can also stop before any lecture is built: on an invalid `builders`, or wh
 
 **New failures comment on an old issue.** The action comments on the open issue that carries the first label. Close the issue once the build is fixed; the next failure files a new one.
 
-**Pull requests do not restore the new cache.** A cache saved on another branch does not reach them: run the workflow on the default branch. Check also that the runs that restore pass the same `environment` and `environment-update`, since both files' hashes are in the key.
+**Pull requests do not restore the new cache.** A cache saved on another branch does not reach them: run the workflow on the default branch. Check also that the runs that restore pass the same `environment`, whose hash is in the key, and that they run where `zstd` is installed if the cache build did, or the other way round: see [`restore-jupyter-cache`](restore-jupyter-cache.md#troubleshooting).

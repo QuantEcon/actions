@@ -13,7 +13,7 @@ inputs:
       What to build: `html`, the default, builds the website into `<output-dir>/_build/html`;
       `pdflatex` builds the PDF into `<output-dir>/_build/latex`, and needs LaTeX; `jupyter`
       builds notebooks into `<output-dir>/_build/jupyter`. Any other value is passed to `jb build`
-      as `--builder <value>`.
+      as `--builder <value>`, which writes into a directory under `<output-dir>/_build`.
     required: false
     default: 'html'
   source-dir:
@@ -76,9 +76,9 @@ outputs:
   build-path:
     description: >-
       The directory the builder wrote to: `<output-dir>/_build/html`, `_build/latex` or
-      `_build/jupyter` for those three builders, and `<output-dir>/_build` for any other. With the
-      default `output-dir` it starts with `./`, as in `./_build/html`. Set whether or not the
-      build succeeds.
+      `_build/jupyter` for those three builders. For any other it is `<output-dir>/_build`, the
+      directory above the one that builder wrote to. With the default `output-dir` it starts
+      with `./`, as in `./_build/html`. Set whether or not the build succeeds.
     value: ${{ steps.build.outputs.build-path }}
 
 runs:

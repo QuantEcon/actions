@@ -32,7 +32,7 @@ Use it in any job that builds lectures, after [`setup-environment`](setup-enviro
 
 | Input | Required | Default | Description |
 |---|---|---|---|
-| `builder` | no | `html` | What to build: `html`, the default, builds the website into `<output-dir>/_build/html`; `pdflatex` builds the PDF into `<output-dir>/_build/latex`, and needs LaTeX; `jupyter` builds notebooks into `<output-dir>/_build/jupyter`. Any other value is passed to `jb build` as `--builder <value>`. |
+| `builder` | no | `html` | What to build: `html`, the default, builds the website into `<output-dir>/_build/html`; `pdflatex` builds the PDF into `<output-dir>/_build/latex`, and needs LaTeX; `jupyter` builds notebooks into `<output-dir>/_build/jupyter`. Any other value is passed to `jb build` as `--builder <value>`, which writes into a directory under `<output-dir>/_build`. |
 | `source-dir` | no | `lectures` | The book to build: the directory that holds its `_config.yml` and `_toc.yml`, relative to the workspace. |
 | `output-dir` | no | `.` | The directory the build is written under, passed to `jb build` as `--path-output`, so the output lands in `<output-dir>/_build`. The cache actions read and write `_build` at the workspace root, so keep the default, `.`, in a job that uses them. |
 | `extra-args` | no | `-W --keep-going` | Further arguments for `jb build`. They are split on whitespace, so a quoted value that contains a space cannot be passed. Setting this replaces the default, so keep `-W` in it: without `-W`, a notebook that raises an exception is only a warning, and the build succeeds. |
@@ -51,7 +51,7 @@ Paths are relative to the workspace, which is the repository root after `actions
 
 | Output | Description |
 |---|---|
-| `build-path` | The directory the builder wrote to: `<output-dir>/_build/html`, `_build/latex` or `_build/jupyter` for those three builders, and `<output-dir>/_build` for any other. With the default `output-dir` it starts with `./`, as in `./_build/html`. Set whether or not the build succeeds. |
+| `build-path` | The directory the builder wrote to: `<output-dir>/_build/html`, `_build/latex` or `_build/jupyter` for those three builders. For any other it is `<output-dir>/_build`, the directory above the one that builder wrote to. With the default `output-dir` it starts with `./`, as in `./_build/html`. Set whether or not the build succeeds. |
 
 <!-- END GENERATED -->
 
@@ -108,7 +108,7 @@ Build the notebooks and the PDF first, in the same job, then the website with bo
     html-copy-notebooks: 'true'
 ```
 
-The website then holds both, and the theme links to them:
+The website then holds both, and quantecon-book-theme links every page to them:
 
 ```text
 _build/html/
@@ -119,6 +119,11 @@ _build/html/
     ├── <lecture>.ipynb
     └── …
 ```
+
+Two limits apply to the links:
+
+- **Lectures in subdirectories.** The theme links a page to `/_notebooks/<page>.ipynb`, with the page's directory in `<page>`, but the notebooks are copied into `_notebooks/` side by side. So the notebook link of a page in a subdirectory leads nowhere, and two notebooks with the same name overwrite each other ([#217](https://github.com/QuantEcon/actions/issues/217)). A book whose lectures all sit at the top of `source-dir` is not affected.
+- **Sites served under a path.** Both links start at the site's root, `/_pdf/…` and `/_notebooks/…`, so they lead nowhere on a site that is not at the root of its domain, such as a GitHub Pages project site with no custom domain. The theme's `download_nb_path` option puts a prefix in front of the notebook links; the PDF link has no such option.
 
 After `restore-jupyter-cache`, the copies can also come from the build cache, if its cache build ran those builders: `_build/latex` and `_build/jupyter` are then already in place, as the last cache build left them.
 
@@ -132,18 +137,18 @@ Keep `-W --keep-going` in any value you set, because it replaces the default:
     extra-args: '-W --keep-going --all'   # rebuild every page, not only the changed ones
 ```
 
-`-v` makes the log more verbose, `-q` quieter, and `-n` turns on Sphinx's nitpicky mode, which warns about every reference it cannot resolve. The `pdflatex` and `jupyter` builders already pass `-n`.
+`-v` makes the log more verbose, `-q` quieter, and `-n` turns on Sphinx's nitpicky mode, which warns about every reference it cannot resolve. The `pdflatex` and `jupyter` builders already pass `-n`, so with `-W` every reference they cannot resolve fails the build, even where the `html` build passes.
 
 ### In the templates
 
-The [workflow templates](https://github.com/QuantEcon/actions/tree/main/templates) build the website with this action, with `upload-failure-reports: 'true'`: [`ci.yml`](https://github.com/QuantEcon/actions/blob/main/templates/ci.yml) for a pull request's preview, and [`publish.yml`](https://github.com/QuantEcon/actions/blob/main/templates/publish.yml) before it publishes to GitHub Pages. `publish.yml` carries the `jupyter` and `pdflatex` steps, and the two copy inputs, as comments. [`cache.yml`](https://github.com/QuantEcon/actions/blob/main/templates/cache.yml) builds through `build-jupyter-cache` instead.
+The [workflow templates](https://github.com/QuantEcon/actions/tree/main/templates) build the website with this action, with `upload-failure-reports: 'true'`: [`ci.yml`](https://github.com/QuantEcon/actions/blob/main/templates/ci.yml) for a pull request's preview, and [`publish.yml`](https://github.com/QuantEcon/actions/blob/main/templates/publish.yml) before it publishes to GitHub Pages. `publish.yml` carries the `jupyter` and `pdflatex` steps, and the two copy inputs, as comments. [`cache.yml`](https://github.com/QuantEcon/actions/blob/main/templates/cache.yml) builds through `build-jupyter-cache` instead. `publish.yml` and `cache.yml` check out the full history, with `fetch-depth: 0`; `ci.yml` does not, so a preview dates every page to the pull request's commit, and its log carries the shallow-clone warning.
 
 ## Behaviour
 
-1. **Downloads.** For an `html` build with `html-copy-pdf: 'true'`, every `.pdf` anywhere under `_build/latex` is copied into `_build/html/_pdf/`. With `html-copy-notebooks: 'true'`, every `.ipynb` under `_build/jupyter` is copied into `_build/html/_notebooks/`. Both copies are flat: files from subdirectories land side by side. A missing source directory is a warning, not a failure.
+1. **Downloads.** For an `html` build with `html-copy-pdf: 'true'`, every `.pdf` anywhere under `_build/latex` is copied into `_build/html/_pdf/`. With `html-copy-notebooks: 'true'`, every `.ipynb` under `_build/jupyter` is copied into `_build/html/_notebooks/`. Both copies are flat: files from subdirectories land side by side, which the notebook links do not expect (see [Downloads on the site](#downloads-on-the-site)). A missing source directory is a warning, not a failure.
 2. **Git history.** For every builder but `pdflatex` and `jupyter`, the action checks that git can read the repository, because [quantecon-book-theme](https://github.com/QuantEcon/quantecon-book-theme) dates each page and builds its changelog from `git log`, and drops both without a word when git fails.
-   - In a container job git refuses the work tree, reporting "dubious ownership": the runner creates the workspace as its own user, and the container's steps run as root. The action then trusts the work tree for the rest of the job, by adding `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_<n>` and `GIT_CONFIG_VALUE_<n>` to the job's environment, so later steps can run git too. Nothing is written to disk, and nothing outlasts the job.
-   - A warning says when the build will lack the dates: git is missing, `source-dir` is not in a git work tree, or the clone is shallow. A shallow clone dates every page to the checked-out commit.
+   - In a container whose image does not already trust every directory, git refuses the work tree, reporting "dubious ownership": the runner creates the workspace as its own user, and the container's steps run as root. Both QuantEcon images trust every directory, so there git reads the tree and nothing is added. Elsewhere the action trusts the work tree for the rest of the job, by adding `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_<n>` and `GIT_CONFIG_VALUE_<n>` to the job's environment, so later steps can run git too. No git configuration file is written, and the entries do not outlast the job.
+   - A warning says when the build will lack the dates: git is missing, `source-dir` is not in a git work tree, git cannot read the work tree, or the clone is shallow. A shallow clone dates every page to the checked-out commit.
 3. **The build.** The action runs, in a login shell, so that on a standard runner the Conda environment from `setup-environment` is active:
 
    ```text
@@ -155,7 +160,7 @@ The [workflow templates](https://github.com/QuantEcon/actions/tree/main/template
    | `html` | none | `<output-dir>/_build/html` |
    | `pdflatex` | `--builder pdflatex -n` | `<output-dir>/_build/latex` |
    | `jupyter` | `--builder=custom --custom-builder=jupyter -n` | `<output-dir>/_build/jupyter` |
-   | any other | `--builder <builder>` | `<output-dir>/_build` |
+   | any other | `--builder <builder>` | a directory under `<output-dir>/_build`, which is what `build-path` gives |
 
    The log shows the full command in its "Build Command" group.
 4. **On failure**, the action prints a summary of the builder, source and output. For the `html`, `pdflatex` and `jupyter` builders it then prints each failed notebook's traceback, from `reports/*.err.log` in the build's output directory: the last 200 lines of each, in a log group named after the report. With `upload-failure-reports: 'true'` it uploads the reports and the execution cache as an artifact.
@@ -164,6 +169,8 @@ The [workflow templates](https://github.com/QuantEcon/actions/tree/main/template
 ### What fails the job
 
 `jb build` exiting with an error. With `-W`, which the default `extra-args` passes, that includes every warning, so a notebook cell that raises an exception fails the build.
+
+A second build over the same `_build`, after one that failed with `-W --keep-going`, reads nothing, warns about nothing and passes: Sphinx's saved state counts every page as up to date. To see the failures again, rebuild with `--all` in `extra-args`.
 
 > [!WARNING]
 > Keep `-W` in any `extra-args` you set. A cell that raises is not an error to Jupyter Book: myst-nb logs it as a warning and carries on, and only `-W` turns that into a failed build. Without it the build exits 0 over a broken lecture, and the job goes on to deploy it. `--keep-going` makes the build report every such warning before it fails, instead of stopping at the first; without `-W` it does nothing.
@@ -184,4 +191,8 @@ The [workflow templates](https://github.com/QuantEcon/actions/tree/main/template
 
 **`git cannot find the work tree for …`.** `source-dir` is not inside a git checkout: check that `actions/checkout` runs first, and where it checks out to.
 
-**The failure-report upload fails because `an artifact with this name already exists`.** Another job in the run uploaded reports for the same builder. Give each job its own `failure-artifact-name`.
+**The failure-report upload fails because `an artifact with this name already exists`.** Another job in the run, or an earlier step in the same job, uploaded reports for the same builder. Give each build its own `failure-artifact-name`.
+
+**A `pdflatex` or `jupyter` build fails on a reference the `html` build accepts.** Those two builders run with `-n`, so every reference they cannot resolve is a warning, and `-W` makes it an error. Fix the reference.
+
+**A rebuild passes after a failed build, with no warnings.** It read nothing: see [What fails the job](#what-fails-the-job). Rebuild with `--all`.

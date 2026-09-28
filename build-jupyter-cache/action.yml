@@ -95,8 +95,10 @@ inputs:
 outputs:
   cache-saved:
     description: >-
-      `'true'` when every requested build passed, which is when the build and execution caches
-      are saved; `'false'` otherwise, including a run that stopped before any build. Always set.
+      `'true'` when every requested build passed, which is when the action saves the build and
+      execution caches; `'false'` otherwise, including a run that stopped before any build. Always
+      set. A save that fails only logs a warning, as on a re-run of a run that passed, whose keys
+      already exist.
     value: ${{ steps.status.outputs.all-passed }}
   build-success:
     description: >-

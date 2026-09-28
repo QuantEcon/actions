@@ -57,7 +57,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The `preview-cloudflare` setup guide now asks for a token with Cloudflare Pages Edit alone,
     not the broader "Edit Cloudflare Workers" template.
   - `deploy-cloudflare`'s `account-subdomain` example no longer names a real account, and its
-    refusal message points at the chapter's setup checklist instead of the README. (#190)
+    refusal message points at the chapter's setup checklist instead of the README.
+  - The caches save execution time only when the book sets `execute_notebooks: cache`, which the
+    `build-jupyter-cache` and `restore-jupyter-cache` chapters now require. Sphinx re-reads every
+    page of a fresh checkout, so the old claim that it rewrites only the changed pages is gone.
+  - `restore-jupyter-cache`'s `save-cache` reaches every pull request when saved from a branch,
+    so the chapter keeps it to pull-request builds, and a re-run, which matches its own key
+    exactly, saves nothing.
+  - Three limits in the code are documented, and filed: the preview actions' change detection
+    lists lectures changed on the base branch after the pull request branched off (#215);
+    `preview-cloudflare` builds its URLs from `project-name`, which is wrong when Cloudflare gives
+    the project another `pages.dev` address (#216); and `html-copy-notebooks` copies the notebooks
+    flat, so the download link of a page in a subdirectory leads nowhere (#217).
+  - Both QuantEcon images trust every directory for git, so the `build-lectures` chapter's
+    "dubious ownership" handling is for other images only. (#190)
 - **`preview-netlify`, `preview-cloudflare` READMEs**: the Security sections said a notification
   is logged whenever the deploy is skipped. That holds only for Dependabot and fork PRs. On any
   event other than `pull_request`, both actions skip change detection, the deploy and the PR
@@ -108,6 +121,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `cname:` in six consumers, a permanent `preview-cloudflare` step in the canary). (#187)
 
 ### Fixed
+- **`deploy-cloudflare`**: when a hostname serving the Worker is found ungated, the error said to
+  turn Access on or turn off the Worker's `workers.dev` route. With the route off its preview URLs
+  stay on, which wrangler itself warns may leave them public, so the message now says to turn off
+  both the route and the preview URLs. (#190)
 - **`setup-environment`**: bumping `cache-version` builds a fresh Conda environment, as it was
   documented to. It was in the exact cache key but in neither `restore-keys` fallback, and the
   first fallback matched the same environment file under any version, so a bump restored the
