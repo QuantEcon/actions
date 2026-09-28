@@ -621,6 +621,42 @@ jobs:
           [ -f harness/_build/.jupyter_cache/global.db ] || { echo "::error::_build/.jupyter_cache/global.db missing — execution cache was not populated"; exit 1; }
           echo "✅ build-lectures produced an executed site from the cache-restored env"
 
+  env-version-bump:
+    # #205: bumping cache-version must build a fresh environment. A salted
+    # version matches no cache, so a restore-key chain that stays within one
+    # version restores nothing and conda-cache-hit is empty. A chain that
+    # leaves cache-version out restores env-seed's cache, which holds this
+    # same environment file, and reports 'false'.
+    name: 'setup-environment: a cache-version bump builds a fresh environment'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: env-seed
+    steps:
+      - uses: actions/checkout@v7
+
+      # Same salt as env-seed: only cache-version differs from its cache.
+      - name: Recreate salted fixture
+        run: |
+          cp -r .github/fixtures/mini-lectures harness
+          printf '\n# harness-salt: %s-book\n' "$SALT" >> harness/environment.yml
+          printf '%% harness salt: %s-book\n' "$SALT" > harness/lectures/salt.md
+
+      - name: Setup environment under a new cache-version
+        id: setup
+        uses: ./setup-environment
+        with:
+          environment: 'harness/environment.yml'
+          cache-version: bump-${{ env.SALT }}
+
+      - name: Assert nothing was restored, and the fresh environment works
+        env:
+          CONDA_CACHE_HIT: ${{ steps.setup.outputs.conda-cache-hit }}
+        run: |
+          [ -z "$CONDA_CACHE_HIT" ] || { echo "::error::conda-cache-hit: expected empty (nothing restored) after a cache-version bump, got [$CONDA_CACHE_HIT]. 'false' means a restore-keys fallback restored another version's environment, so the bump did not build a fresh one (#205)"; exit 1; }
+          "$CONDA/envs/quantecon/bin/python" -c 'import myst_nb' \
+            || { echo "::error::the freshly built environment cannot import myst_nb"; exit 1; }
+          echo "✅ a cache-version bump restored nothing and built the environment fresh"
+
   build-fail-guard:
     # The negative half of the build-lectures contract. env-hit-build proves a
     # successful build reports success; this proves a *failed* build still
@@ -1559,6 +1595,7 @@ jobs:
       - unit-exec-restore-save
       - env-seed
       - env-hit-build
+      - env-version-bump
       - build-fail-guard
       - env-container-update
       - bjc-smoke
