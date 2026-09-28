@@ -289,6 +289,10 @@ runs:
           echo "📦 Mode: Standard runner"
           if [ "$CONDA_CACHE_HIT" == "true" ]; then
             echo "   Conda: Restored from cache ✅ (saved ~5-6 minutes)"
+          elif [ "$CONDA_CACHE_HIT" == "false" ]; then
+            # The restore-keys fallback found an earlier environment of this
+            # cache-version, and the update step reconciled it with the file.
+            echo "   Conda: Restored from an earlier cache, then updated from the environment file"
           else
             echo "   Conda: Installed fresh"
           fi

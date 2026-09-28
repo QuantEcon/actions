@@ -76,7 +76,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   environment from scratch once. Container mode has no Conda cache and is unaffected, and so is
   every current consumer: those that use `setup-environment` run it in a container. A new harness
   job, `env-version-bump`, bumps the version on a cached environment and fails unless nothing is
-  restored. (#205)
+  restored; a second, `env-file-edit`, checks the other half, that an edited environment file
+  under the same version still restores through the fallback. The step's closing summary now
+  tells that case apart ("Restored from an earlier cache, then updated from the environment
+  file") instead of reporting it as "Installed fresh". (#205)
 - **`test-containers-lectures.yml`**: the HTML stage is tried twice. Several lectures fetch a
   dataset from raw GitHub in a hidden cell at build time, and with the matrix building several
   repos at once from shared runner IPs that fetch is sometimes refused with HTTP 429,
