@@ -31,9 +31,10 @@ inputs:
     required: true
   lectures-dir:
     description: >-
-      The directory of lecture `.md` files that change detection looks in: each one the pull
-      request adds or modifies gets a link in the comment, and is listed in `changed-files`.
-      Empty turns change detection off, and the comment gives only the preview URL.
+      The directory of lecture `.md` files that change detection looks in, as a path from the
+      repository root such as `lectures`, with no `./` or trailing slash: each lecture that differs
+      from the base branch gets a link in the comment, and is listed in `changed-files`. Empty
+      turns change detection off, and the comment gives only the preview URL.
     required: false
     default: 'lectures'
 
@@ -53,8 +54,9 @@ outputs:
     value: ${{ steps.deploy.outputs.deployment-url }}
   changed-files:
     description: >-
-      The lecture files that the pull request adds or modifies under `lectures-dir`, one path per
-      line. Empty when there are none, with `lectures-dir: ''`, on an event other than
+      The lecture files under `lectures-dir` that were added or modified between the tip of the
+      pull request's base branch and its head, one path per line, so a lecture changed on the base
+      branch since the pull request branched off is listed too. Empty when there are none, with `lectures-dir: ''`, on an event other than
       `pull_request`, and for a pull request from a fork or by Dependabot.
     value: ${{ steps.detect-changes.outputs.changed-files }}
 

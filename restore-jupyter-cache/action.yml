@@ -49,8 +49,9 @@ inputs:
   key:
     description: >-
       A key to restore in place of the generated ones. It is matched as a prefix, so the newest
-      cache whose key starts with it is restored, and with `save-cache: 'true'` the cache is saved
-      under exactly this key. Empty, the default, uses the generated keys.
+      cache whose key starts with it is restored. With `save-cache: 'true'` the cache is saved
+      under exactly this key, and only once: a cache is never overwritten, and a later run that
+      matches the key exactly saves nothing. Empty, the default, uses the generated keys.
     required: false
     default: ''
   fail-on-miss:
@@ -61,9 +62,10 @@ inputs:
     default: 'false'
   save-cache:
     description: >-
-      `'true'` also saves the directory at the end of the job, if the job succeeds, under a key
-      that ends in the run id. GitHub scopes a cache to the branch or pull request that saved it,
-      so only later runs of the same pull request restore it. `'false'`, the default, only
+      `'true'` also saves the directory at the end of the job, if the job succeeds and its key did
+      not match exactly. Saved from a pull request's run, the cache can be restored only by that
+      pull request's later runs; saved from a run on a branch, it reaches every pull request that
+      targets the branch. So use it in pull-request builds only. `'false'`, the default, only
       restores.
     required: false
     default: 'false'
@@ -73,7 +75,8 @@ outputs:
     description: >-
       `'true'` when a cache was restored, whether its key matched exactly or only as a prefix;
       `'false'` when nothing was restored. Always set. Unlike the `actions/cache` output of the
-      same name, it counts a prefix match, which is how the generated keys always match.
+      same name, it counts a prefix match, which is how a read-only restore with the generated
+      keys always matches.
     value: ${{ steps.restore.outputs.cache-matched-key != '' }}
   cache-key:
     description: >-
