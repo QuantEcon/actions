@@ -58,6 +58,13 @@ jobs:
         repo:
           - repo: lecture-python-intro
             owner: QuantEcon
+          # Dropped without a note by the February 2026 rewrite (81e96ff),
+          # unlike lecture-jax below, while the validation docs went on
+          # describing a four-repo matrix; restored in #102. Its notebooks
+          # fetch from raw GitHub at build time too, so it relies on the HTML
+          # retry below.
+          - repo: lecture-python-programming
+            owner: QuantEcon
           - repo: lecture-python.myst
             owner: QuantEcon
             timeout-minutes: 180
@@ -107,8 +114,40 @@ jobs:
       - name: Setup Environment
         uses: ./actions-repo/setup-environment
 
-      # Stage 1: HTML (executes notebooks)
+      # Stage 1: HTML (executes notebooks). Tried twice.
+      #
+      # Several lectures fetch a dataset from raw GitHub in a hidden cell at
+      # build time, and with the matrix building several repos at once from
+      # shared runner IPs that fetch is sometimes refused with HTTP 429. It is
+      # transient — the same notebook passed on the other container in the
+      # same run — but nothing in the stack retries it, so one 429 failed the
+      # leg and, off the weekly workflow_run trigger, filed a CI-failure issue
+      # for a flake (#102). The lectures cannot read the data locally instead:
+      # the published notebooks are a flat directory opened in Colab, where a
+      # local path does not exist.
+      #
+      # So a first attempt that fails is rebuilt once. The retry is cheap, so
+      # it is not gated on the 429 string: the lecture repos build with
+      # `execute_notebooks: cache`, and lecture-repo/_build/.jupyter_cache
+      # survives between steps — it is why stages 2 and 3 skip execution — so
+      # the second build executes only the notebooks that failed the first.
+      #
+      # `--all` is what makes the retry sound. After a failed `-W --keep-going`
+      # build the saved Sphinx environment counts every page as up to date, so
+      # a plain rebuild reads nothing, re-executes nothing, re-emits no warning
+      # and exits 0 with the traceback still in the page: it would pass every
+      # persistent failure. `--all` discards that environment, so every page
+      # is re-read and every warning re-checked, while the jupyter cache still
+      # spares the notebooks that executed. A persistent failure fails the
+      # retry, and with it the leg.
+      #
+      # The first attempt's failure report — its traceback, `::error::`
+      # annotation and reports artifact — still appears on a leg the retry
+      # turns green. That is deliberate: with the job-summary line below, it
+      # is how a flake stays visible.
       - name: Build HTML (Execute Notebooks)
+        id: build-html
+        continue-on-error: true
         uses: ./actions-repo/build-lectures
         with:
           source-dir: lecture-repo/lectures
@@ -116,6 +155,33 @@ jobs:
           builder: html
           upload-failure-reports: true
           failure-artifact-name: reports-html-${{ matrix.container }}-${{ matrix.repo.repo }}
+
+      # The first attempt's execution reports are in its own artifact by now.
+      # Cleared so that a retry that fails too reports, and uploads, only the
+      # notebooks that failed on the retry (myst-nb recreates the directory).
+      - name: Record the HTML retry and clear the first attempt's reports
+        if: steps.build-html.outcome == 'failure'
+        env:
+          LEG: ${{ matrix.repo.repo }} · ${{ matrix.container }}
+          ARTIFACT: reports-html-${{ matrix.container }}-${{ matrix.repo.repo }}
+        run: |
+          rm -rf lecture-repo/_build/html/reports
+          echo "The first HTML build attempt failed; retrying with --all. Its execution reports are in the $ARTIFACT artifact."
+          echo "**$LEG**: the first HTML build attempt failed and was retried (its execution reports: \`$ARTIFACT\`)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build HTML (Retry)
+        if: steps.build-html.outcome == 'failure'
+        uses: ./actions-repo/build-lectures
+        with:
+          source-dir: lecture-repo/lectures
+          output-dir: lecture-repo
+          builder: html
+          extra-args: -W --keep-going --all
+          upload-failure-reports: true
+          # Its own name: build-lectures uploads the reports under this name
+          # when the build fails, and a run cannot hold two artifacts of one
+          # name, so reusing the first attempt's would fail the upload.
+          failure-artifact-name: reports-html-retry-${{ matrix.container }}-${{ matrix.repo.repo }}
 
       # The lecture repos use quantecon-book-theme, which renders a page's
       # "Last changed" header only when git can read the checkout during the

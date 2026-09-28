@@ -6,7 +6,9 @@ This document records validation test results for the QuantEcon containers acros
 
 Containers are tested by [`test-containers-lectures.yml`](../../.github/workflows/test-containers-lectures.yml), which runs after the **Build QuantEcon Containers** workflow completes. Each job builds one lecture repo on one container through the full builder pipeline (HTML → pdflatex → jupyter) **sequentially**, reusing the executed notebooks across builders. Concurrency groups serialize jobs for the same repo to avoid network contention from concurrent dataset downloads; different repos run in parallel.
 
-**Matrix:** 2 containers (`quantecon`, `quantecon-build`) × the QuantEcon lecture repos — `lecture-python-intro`, `lecture-python.myst`, `lecture-python-advanced.myst` (`lecture-jax` is temporarily disabled pending [lecture-jax#284](https://github.com/QuantEcon/lecture-jax/issues/284)).
+The HTML stage is tried twice. Several lectures fetch a dataset from raw GitHub at build time, and with several repos building at once from shared runner IPs that fetch is sometimes refused with HTTP 429, non-deterministically. A first attempt that fails is rebuilt once with `--all`, which re-executes only the notebooks that did not reach the jupyter cache and re-checks every warning, so a transient 429 no longer fails a leg while a persistent failure still does. A retried leg says so in the run's job summary, and the first attempt's execution reports stay available as the `reports-html-<container>-<repo>` artifact (#102).
+
+**Matrix:** 2 containers (`quantecon`, `quantecon-build`) × the QuantEcon lecture repos — `lecture-python-intro`, `lecture-python-programming`, `lecture-python.myst`, `lecture-python-advanced.myst` (`lecture-jax` is temporarily disabled pending [lecture-jax#284](https://github.com/QuantEcon/lecture-jax/issues/284)).
 
 A companion workflow, [`test-container.yml`](../../.github/workflows/test-container.yml), smoke-tests the freshly built images (XeLaTeX compile + a minimal Jupyter Book HTML/PDF build).
 
@@ -22,7 +24,7 @@ A companion workflow, [`test-container.yml`](../../.github/workflows/test-contai
 | Repository | Lectures | Notes |
 |-----------|----------|-------|
 | `lecture-python-intro` | 46 | Standard, Netlify deployment |
-| `lecture-python-programming.myst` | ~40 | Standard, GitHub Pages |
+| `lecture-python-programming` | ~40 | Standard, GitHub Pages |
 | `lecture-python-advanced.myst` | ~50 | Standard, GitHub Pages |
 | `lecture-python.myst` | ~80 | GPU lectures, GitHub Pages |
 
@@ -39,15 +41,15 @@ A companion workflow, [`test-container.yml`](../../.github/workflows/test-contai
 | Builder | Repository | quantecon-build (lean) | quantecon (full) |
 |---------|-----------|:---:|:---:|
 | **html** | lecture-python-intro | ✅ 12m | ✅ 13m |
-| | lecture-python-programming.myst | ✅ 5m | ✅ 5m |
+| | lecture-python-programming | ✅ 5m | ✅ 5m |
 | | lecture-python-advanced.myst | ✅ 34m | ✅ 36m |
 | | lecture-python.myst | ✅ 58m | ✅ 100m |
 | **pdflatex** | lecture-python-intro | ✅ 14m | ✅ 14m |
-| | lecture-python-programming.myst | ✅ 6m | ✅ 7m |
+| | lecture-python-programming | ✅ 6m | ✅ 7m |
 | | lecture-python-advanced.myst | ✅ 36m | ✅ 38m |
 | | lecture-python.myst | ✅ 62m | ✅ 63m |
 | **jupyter** | lecture-python-intro | ✅ 12m | ✅ 12m |
-| | lecture-python-programming.myst | ✅ 4m | ✅ 5m |
+| | lecture-python-programming | ✅ 4m | ✅ 5m |
 | | lecture-python-advanced.myst | ✅ 34m | ✅ 35m |
 | | lecture-python.myst | ✅ 58m | ✅ 58m |
 
@@ -61,6 +63,7 @@ A companion workflow, [`test-container.yml`](../../.github/workflows/test-contai
 ### Notes
 
 - Build times are approximate (rounded to nearest minute, measured from job start to completion).
+- The workflow named `lecture-python-programming` as `lecture-python-programming.myst` at the time, so the run's job names carry that name.
 - The lean container (`quantecon-build`) performs comparably to the full container across all builders and repos.
 - `lecture-python.myst` HTML build is significantly slower on the full container (~100m vs ~58m on lean) — likely due to conda solver overhead with the larger Anaconda environment during package installation.
 - All builds use Jupyter Book 1.0.4post1, Python 3.13, and XeLaTeX for PDF output.
