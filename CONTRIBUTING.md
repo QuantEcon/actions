@@ -122,6 +122,14 @@ skipped job reports success to a required check). If the harness should ignore a
 extend `IGNORED` in that job; it is an ignore list, so anything unrecognised runs the harness
 rather than silently passing.
 
+The `gate` job also checks the user manual, so a docs-only PR is checked too. The input and output
+tables in `docs/user/actions/`, the action table in `docs/user/README.md` and the README of every
+action with a chapter are generated from each `action.yml` by `scripts/generate-docs.py`, and the
+gate fails when a committed copy no longer matches: run the script and commit what it writes. It
+also checks every example in `docs/user` and `templates/` against the `action.yml` files, for
+`permissions:`, and with actionlint. [docs/dev/CHAPTER-TEMPLATE.md](docs/dev/CHAPTER-TEMPLATE.md)
+lists the checks and how to run them locally.
+
 ### Breaking Changes
 
 **During 0.x phase (current):**
@@ -138,13 +146,13 @@ rather than silently passing.
 ### Inputs
 
 - Use descriptive names with clear defaults
-- Document all inputs in action's README.md
+- Write each `description:` for a reader, with the values it accepts: it is copied into the user manual (see [Documentation](#documentation))
 - Prefer `'false'` as default for optional features
 
 ### Outputs
 
 - Provide useful outputs for downstream steps
-- Document output values and when they're available
+- Say in each `description:` when the output is set, and what it holds when it is not
 
 ### Error Handling
 
@@ -166,7 +174,8 @@ Update these docs when adding features:
 
 | Doc | Update When |
 |-----|-------------|
-| Action's `README.md` | Any input/output changes |
+| The action's `action.yml` descriptions, then run `python3 scripts/generate-docs.py` | Any input or output change |
+| The action's chapter, `docs/user/actions/<action>.md`, or its `README.md` while it has no chapter | A change in what the action does |
 | `docs/QUICK-REFERENCE.md` | New inputs added |
 | `docs/MIGRATION-GUIDE.md` | Workflow patterns change |
 | `docs/dev/PLAN.md` | A backlog item or tracked issue opens, closes or changes scope; a consumer changes the ref it pins |

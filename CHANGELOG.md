@@ -33,6 +33,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   under `containers/` still triggers a build: the smoke-test fixture's pages are Markdown. (#178)
 
 ### Documentation
+- **User manual** (#178): `docs/user/` gets its index, `docs/user/README.md`, and its first
+  chapter, `docs/user/actions/setup-environment.md`, which absorbs `setup-environment/README.md`;
+  that README is now a signpost to it. The chapter's Inputs and Outputs tables, the index's action
+  table and the signpost are generated from `action.yml` by `scripts/generate-docs.py`, between
+  `BEGIN GENERATED` / `END GENERATED` markers. The harness `gate` job fails when they drift, and
+  checks every example in `docs/user` and `templates/`: each `quantecon/actions` step passes only
+  inputs its `action.yml` declares and every required one, each complete workflow sets
+  `permissions:`, and each passes actionlint 1.7.12, a release pinned by checksum. PyYAML is pinned
+  in `scripts/requirements.txt`, which a new Dependabot pip entry tracks; the generator and that
+  file join the gate's ignore list, since the gate's own checks are their test. New chapters start
+  from `docs/dev/CHAPTER-TEMPLATE.md`. (#189)
+- **`setup-environment`**: the input and output descriptions in `action.yml`, which the manual now
+  copies verbatim, are rewritten for readers and corrected in three places. `conda-cache-hit` is
+  empty, not `false`, in container mode and on a cache miss. `environment-name` overrides the
+  environment file's `name:` rather than having to match it. And changing `cache-version` does not
+  give a fresh environment, as it claimed: the `restore-keys` fallback restores the previous cache
+  first, which `conda env update` then adjusts. `docs/QUICK-REFERENCE.md`, which gave the same
+  advice, now says so. (#189)
 - Developer docs move to `docs/dev/`, the first step of the user manual (#178): `ARCHITECTURE.md`,
   `GPU-AMI-SETUP.md`, `PLAN.md`, `TESTING.md`, and `containers/VALIDATION.md` as
   `CONTAINER-VALIDATION.md`, with a `docs/dev/README.md` index. `docs/README.md`,

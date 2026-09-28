@@ -140,6 +140,35 @@ updates:
         update-types:
           - "major"
 
+  # ── pip (the docs generator) ──────────────────────────────────────────────
+  # scripts/requirements.txt pins PyYAML for scripts/generate-docs.py. The
+  # harness gate runs the script, so a bump PR is checked there: it regenerates
+  # the manual's tables and must find them unchanged. actionlint, which the
+  # gate also runs, is a pinned release with a checksum in test-actions.yml that
+  # no ecosystem here tracks, so bump it by hand.
+  - package-ecosystem: "pip"
+    directories:
+      - "/scripts"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "maintenance"
+    commit-message:
+      prefix: "deps"
+    groups:
+      pip:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      pip-major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+
   # ── Container base image ───────────────────────────────────────────────────
   # Tracks the `FROM ubuntu:24.04` base in each Dockerfile (not the Miniconda
   # installer, which is pinned + checksummed in the RUN step).

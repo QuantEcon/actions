@@ -1,43 +1,81 @@
 name: 'Setup Environment'
-description: 'Flexible environment setup - auto-detects container or installs Conda and LaTeX'
+description: >-
+  Sets up the Python environment for a lecture build. Inside a QuantEcon container it uses the
+  image's environment, adding any extra packages you list; on a standard runner it builds a cached
+  Conda environment and can install LaTeX.
 author: 'QuantEcon'
 
+# Each description below is copied verbatim into the user manual
+# (docs/user/actions/setup-environment.md) by scripts/generate-docs.py, so it is
+# written for a reader. "Container mode" and "standard mode" are defined there.
 inputs:
   python-version:
-    description: 'Python version to use (ignored in container mode)'
+    description: >-
+      Standard mode: the Python version the Conda environment is created with. It is part of the
+      Conda cache key, so changing it starts a separate cache. Keep it in step with any `python`
+      pin in `environment`. Ignored in container mode, which uses the Python already on `PATH`.
     required: false
     default: '3.13'
   environment:
-    description: 'Path to environment.yml for full environment (non-container builds)'
+    description: >-
+      Standard mode: path to the Conda environment file the environment is built from. The job
+      fails if the file does not exist. Its hash is part of the Conda cache key, so editing the
+      file makes the next run update the environment and save it under a new key. Ignored in
+      container mode: use `environment-update` there.
     required: false
     default: 'environment.yml'
   environment-update:
-    description: 'Path to delta environment.yml for container builds (empty = use pre-installed packages only)'
+    description: >-
+      Container mode: path to a Conda environment file listing only the packages to add to the
+      image's environment. It is applied with `conda env update`, without `--prune`, to the
+      environment whose `python` is on `PATH`; the file's `name:` is ignored. The job fails if the
+      file does not exist. Empty, the default, uses the image's packages as they are. Ignored in
+      standard mode.
     required: false
     default: ''
   environment-name:
-    description: 'Conda environment name (must match name in environment.yml)'
+    description: >-
+      Standard mode: the name of the Conda environment to create and activate, at
+      `$CONDA/envs/<name>`. It takes precedence over any `name:` in `environment`, and is part of
+      the Conda cache key. In container mode it selects nothing: the update goes to the environment
+      on `PATH`, with a warning if that environment has a different name.
     required: false
     default: 'quantecon'
   cache-version:
-    description: 'Cache version for manual invalidation of the standard-mode Conda env cache (bump to force a rebuild). No effect in container mode, which uses the pre-installed environment and has no Conda cache.'
+    description: >-
+      Standard mode: the last part of the Conda cache key. Changing it (say `v1` to `v2`) makes the
+      exact key miss, so the next run updates the environment from `environment` and saves it
+      under the new key. It does not give a fresh environment: the `restore-keys` fallback still
+      restores the previous cache first. No effect in container mode, which has no Conda cache.
     required: false
     default: 'v1'
   install-latex:
-    description: 'Whether to install LaTeX packages (auto-disabled in container mode)'
+    description: >-
+      Standard mode: `'true'` installs the apt packages listed in `latex-requirements-file`, which
+      a `pdflatex` build needs; `'false'`, the default, installs none. Ignored in container mode,
+      which expects LaTeX to be installed already, as it is in the images.
     required: false
     default: 'false'
   latex-requirements-file:
-    description: 'Path to latex-requirements.txt file listing packages to install'
+    description: >-
+      Standard mode, with `install-latex: 'true'`: path to the list of apt packages to install,
+      separated by spaces or newlines, where `#` starts a comment anywhere on a line. The job fails
+      if the file is missing or names no package.
     required: false
     default: 'latex-requirements.txt'
 
 outputs:
   container-mode:
-    description: 'Whether running in container mode'
+    description: >-
+      `'true'` when `/etc/quantecon-container` exists, as it does in the QuantEcon images and on
+      hosts that carry the same marker file; `'false'` otherwise. Always set.
     value: ${{ steps.detect-container.outputs.container-mode }}
   conda-cache-hit:
-    description: 'Whether conda cache was hit (standard mode only, always false in container mode)'
+    description: >-
+      Standard mode: `'true'` when the Conda environment was restored from an exact cache-key
+      match; `'false'` when only a `restore-keys` prefix matched, after which the environment is
+      updated from `environment`; empty on a cache miss. Always empty in container mode, which has
+      no Conda cache. Test it with `== 'true'`.
     value: ${{ steps.conda-cache.outputs.cache-hit }}
 
 runs:
