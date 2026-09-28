@@ -694,6 +694,126 @@ jobs:
             || { echo "::error::the restored and updated environment cannot import myst_nb"; exit 1; }
           echo "✅ an edited environment file restored an earlier environment of its version, then updated it"
 
+  # ==========================================================================
+  # setup-environment — a restore must be an exact copy of the cache (#209)
+  # ==========================================================================
+  #
+  # setup-miniconda creates the environment fresh before the cache restore,
+  # and tar extracts over whatever is there without deleting what only the
+  # fresh environment has. The fixture above pins nothing, so its fresh and
+  # cached environments hold the same versions and a mix never shows. These
+  # jobs pin pip below what a fresh `conda create` installs, under their own
+  # salted cache-version, so a mixed restore leaves two pip records in
+  # conda-meta and, on a fallback restore, a pip that `conda env update`
+  # crashes on.
+
+  env-pinned-seed:
+    name: 'setup-environment: seed a pinned stack under its own cache-version'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Create the fixture, pinning pip
+        run: |
+          cp -r .github/fixtures/mini-lectures harness
+          sed -i 's/^  - pip$/  - pip=25.3/' harness/environment.yml
+          grep -qx '  - pip=25.3' harness/environment.yml \
+            || { echo "::error::fixture setup failed: pip is not pinned"; exit 1; }
+
+      - name: Setup environment
+        id: setup
+        uses: ./setup-environment
+        with:
+          environment: 'harness/environment.yml'
+          cache-version: pinned-${{ env.SALT }}
+
+      - name: Assert a true miss, and the pinned pip
+        env:
+          CONDA_CACHE_HIT: ${{ steps.setup.outputs.conda-cache-hit }}
+        run: |
+          [ -z "$CONDA_CACHE_HIT" ] || { echo "::error::conda-cache-hit: expected empty under a salted cache-version, got [$CONDA_CACHE_HIT]"; exit 1; }
+          version=$("$CONDA/envs/quantecon/bin/python" -m pip --version) || { echo "::error::pip does not run in the new environment"; exit 1; }
+          case "$version" in "pip 25.3 "*) ;; *) echo "::error::expected pip 25.3, got [$version]"; exit 1 ;; esac
+          echo "✅ built the pinned environment fresh: $version"
+
+  env-pinned-hit:
+    name: 'setup-environment: an exact hit restores the cached environment exactly'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: env-pinned-seed
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Recreate the pinned fixture
+        run: |
+          cp -r .github/fixtures/mini-lectures harness
+          sed -i 's/^  - pip$/  - pip=25.3/' harness/environment.yml
+
+      - name: Setup environment
+        id: setup
+        uses: ./setup-environment
+        with:
+          environment: 'harness/environment.yml'
+          cache-version: pinned-${{ env.SALT }}
+
+      - name: Assert an exact hit, with nothing of the fresh environment left
+        env:
+          CONDA_CACHE_HIT: ${{ steps.setup.outputs.conda-cache-hit }}
+        run: |
+          [ "$CONDA_CACHE_HIT" = "true" ] || { echo "::error::conda-cache-hit: expected [true], got [$CONDA_CACHE_HIT]"; exit 1; }
+          shopt -s nullglob
+          records=("$CONDA"/envs/quantecon/conda-meta/pip-[0-9]*.json)
+          if [ "${#records[@]}" -ne 1 ]; then
+            echo "::error::conda-meta holds ${#records[@]} pip records: the restore mixed the cached environment with the one setup-miniconda created (#209)"
+            printf '  %s\n' "${records[@]##*/}"
+            exit 1
+          fi
+          version=$("$CONDA/envs/quantecon/bin/python" -m pip --version) || { echo "::error::pip does not run in the restored environment (#209)"; exit 1; }
+          case "$version" in "pip 25.3 "*) ;; *) echo "::error::expected the cached pip 25.3, got [$version]"; exit 1 ;; esac
+          echo "✅ the exact hit restored the cached environment and nothing else: $version"
+
+  env-pinned-edit:
+    name: 'setup-environment: a fallback restore of a pinned stack updates cleanly'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: env-pinned-seed
+    steps:
+      - uses: actions/checkout@v7
+
+      # One more line than env-pinned-seed's file, so only the fallback
+      # matches; `conda env update` then runs pip for the pip: section.
+      - name: Recreate the pinned fixture, then edit it
+        run: |
+          cp -r .github/fixtures/mini-lectures harness
+          sed -i 's/^  - pip$/  - pip=25.3/' harness/environment.yml
+          printf '# harness-edit: %s\n' "$SALT" >> harness/environment.yml
+
+      - name: Setup environment
+        id: setup
+        uses: ./setup-environment
+        with:
+          environment: 'harness/environment.yml'
+          cache-version: pinned-${{ env.SALT }}
+
+      - name: Assert the fallback restored and updated a single environment
+        env:
+          CONDA_CACHE_HIT: ${{ steps.setup.outputs.conda-cache-hit }}
+        run: |
+          [ "$CONDA_CACHE_HIT" = "false" ] || { echo "::error::conda-cache-hit: expected [false] (the fallback), got [$CONDA_CACHE_HIT]"; exit 1; }
+          shopt -s nullglob
+          records=("$CONDA"/envs/quantecon/conda-meta/pip-[0-9]*.json)
+          if [ "${#records[@]}" -ne 1 ]; then
+            echo "::error::conda-meta holds ${#records[@]} pip records: the restore mixed the cached environment with the one setup-miniconda created (#209)"
+            printf '  %s\n' "${records[@]##*/}"
+            exit 1
+          fi
+          version=$("$CONDA/envs/quantecon/bin/python" -m pip --version) || { echo "::error::pip does not run in the updated environment (#209)"; exit 1; }
+          case "$version" in "pip 25.3 "*) ;; *) echo "::error::expected pip 25.3, got [$version]"; exit 1 ;; esac
+          echo "✅ the fallback restore was updated cleanly: $version"
+
   build-fail-guard:
     # The negative half of the build-lectures contract. env-hit-build proves a
     # successful build reports success; this proves a *failed* build still
@@ -1635,6 +1755,9 @@ jobs:
       - env-hit-build
       - env-version-bump
       - env-file-edit
+      - env-pinned-seed
+      - env-pinned-hit
+      - env-pinned-edit
       - build-fail-guard
       - env-container-update
       - bjc-smoke
