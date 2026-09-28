@@ -80,6 +80,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   under the same version still restores through the fallback. The step's closing summary now
   tells that case apart ("Restored from an earlier cache, then updated from the environment
   file") instead of reporting it as "Installed fresh". (#205)
+- **`setup-environment`**: a restored Conda environment is an exact copy of the cache.
+  `setup-miniconda` creates the environment before the restore, and the restore's `tar`
+  extracted the cache on top of it, keeping every file only the fresh environment had. A cache
+  whose packages differ from what a fresh `conda create` installs, as any pinned stack's do, came
+  back as a mix of both. On the canary's Anaconda 2025.12 stack that put pip 26.2.1's files beside
+  pip 25.3's, and pip failed to import: an exact hit left it broken, and a fallback restore failed
+  the job, because `conda env update` runs pip. The environment `setup-miniconda` creates is now
+  removed before the restore, and created again with `python-version` when nothing is restored.
+  New harness jobs pin pip below a fresh install's, so the two environments differ, and check that
+  an exact hit and a fallback restore each hold a single, working pip. (#209)
 - **`test-containers-lectures.yml`**: the HTML stage is tried twice. Several lectures fetch a
   dataset from raw GitHub in a hidden cell at build time, and with the matrix building several
   repos at once from shared runner IPs that fetch is sometimes refused with HTTP 429,

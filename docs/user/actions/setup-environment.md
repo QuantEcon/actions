@@ -144,7 +144,7 @@ The [workflow templates](https://github.com/QuantEcon/actions/tree/main/template
 ### Standard mode
 
 1. The environment file must exist.
-2. [setup-miniconda](https://github.com/conda-incubator/setup-miniconda) prepares the runner's Conda and creates the environment `environment-name` with `python-version`.
+2. [setup-miniconda](https://github.com/conda-incubator/setup-miniconda) prepares the runner's Conda, and sets up later login shells to activate `environment-name`. The environment it creates is removed again, so that a restore is an exact copy of the cache.
 3. [actions/cache](https://github.com/actions/cache) restores `$CONDA/envs/<environment-name>`:
 
    | Match | Cache key |
@@ -153,9 +153,10 @@ The [workflow templates](https://github.com/QuantEcon/actions/tree/main/template
    | Fallback | `conda-<os>-<environment-name>-<cache-version>-py<python-version>-` |
 
    The fallback restores the most recent cache whose key starts with it: the latest environment with the same name, `cache-version` and Python version, whatever environment file it was built from. It never crosses a `cache-version`, so changing that builds the environment from scratch.
-4. Unless the key matched exactly, `conda env update -n <environment-name> -f <environment> --prune` brings the environment in line with the file, removing packages it no longer lists.
-5. With `install-latex: 'true'`, the packages in `latex-requirements-file` are installed with `sudo apt-get install`.
-6. At the end of the job, if the job succeeded and the key did not match exactly, the environment is saved under the key. A failed job saves nothing.
+4. If nothing was restored, the environment is created with `python-version`.
+5. Unless the key matched exactly, `conda env update -n <environment-name> -f <environment> --prune` brings the environment in line with the file, removing packages it no longer lists.
+6. With `install-latex: 'true'`, the packages in `latex-requirements-file` are installed with `sudo apt-get install`.
+7. At the end of the job, if the job succeeded and the key did not match exactly, the environment is saved under the key. A failed job saves nothing.
 
 **Your own steps.** setup-miniconda activates the environment for login shells only. A `run:` step that needs it sets `shell: bash -l {0}`; under the default shell, `python` is the runner's own. `build-lectures` already does this. In container mode the environment is on `PATH` from the start.
 
