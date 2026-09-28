@@ -1,40 +1,63 @@
 name: 'Preview Cloudflare'
-description: 'Deploys lecture builds to Cloudflare Pages for PR previews with smart comments showing changed pages'
+description: >-
+  Deploys a pull request's built site to Cloudflare Pages as a preview, at a URL that stays the
+  same for every push, and comments on the pull request with it and with links to the lectures it
+  changes.
 author: 'QuantEcon'
 
+# Each description below is copied verbatim into the user manual
+# (docs/user/actions/preview-cloudflare.md) by scripts/generate-docs.py, so it
+# is written for a reader.
 inputs:
   cloudflare-api-token:
-    description: 'Cloudflare API token (use secrets.CLOUDFLARE_API_TOKEN)'
+    description: >-
+      A Cloudflare API token that can edit Cloudflare Pages in the account, from a repository
+      secret such as `secrets.CLOUDFLARE_API_TOKEN`.
     required: true
   cloudflare-account-id:
-    description: 'Cloudflare Account ID (use secrets.CLOUDFLARE_ACCOUNT_ID)'
+    description: >-
+      The ID of the Cloudflare account that owns the Pages project, from a repository secret such
+      as `secrets.CLOUDFLARE_ACCOUNT_ID`.
     required: true
   project-name:
-    description: 'Cloudflare Pages project name'
+    description: >-
+      The Cloudflare Pages project to deploy to, which must already exist. Its name is part of
+      every preview URL, as in `<project-name>.pages.dev`.
     required: true
   build-dir:
-    description: 'Directory containing built site'
+    description: >-
+      The directory that holds the built site, such as `_build/html`, which `build-lectures` gives
+      in its `build-path` output.
     required: true
   lectures-dir:
-    description: 'Directory containing lecture .md files for change detection. Set to empty string to disable.'
+    description: >-
+      The directory of lecture `.md` files that change detection looks in, as a path from the
+      repository root such as `lectures`, with no `./` or trailing slash: each lecture that differs
+      from the base branch gets a link in the comment, and is listed in `changed-files`. Empty
+      turns change detection off, and the comment gives only the preview URL.
     required: false
     default: 'lectures'
 
 outputs:
   deploy-url:
     description: >-
-      Stable preview URL for this PR — https://pr-{number}.{project}.pages.dev.
-      This is the branch alias, so it keeps pointing at the newest deployment as
-      the PR gets more commits. Use it for anything a human will follow.
+      The pull request's preview URL, `https://pr-<number>.<project-name>.pages.dev`, which always
+      shows its newest push, so use it for anything a person will follow. Empty when nothing was
+      deployed: on an event other than `pull_request`, and for a pull request from a fork or by
+      Dependabot.
     value: ${{ steps.deploy.outputs.deploy-url }}
   deployment-url:
     description: >-
-      Immutable URL of this one deployment — https://{hash}.{project}.pages.dev.
-      Pinned to the commit that produced it, so use it to compare a specific
-      revision. Empty if wrangler's output did not name it.
+      The URL of this one deployment, `https://<hash>.<project-name>.pages.dev`, which goes on
+      showing this push after later ones. Empty when wrangler's output does not name it, and when
+      nothing was deployed.
     value: ${{ steps.deploy.outputs.deployment-url }}
   changed-files:
-    description: 'List of changed lecture files'
+    description: >-
+      The lecture files under `lectures-dir` that were added or modified between the tip of the
+      pull request's base branch and its head, one path per line, so a lecture changed on the base
+      branch since the pull request branched off is listed too. Empty when there are none, with `lectures-dir: ''`, on an event other than
+      `pull_request`, and for a pull request from a fork or by Dependabot.
     value: ${{ steps.detect-changes.outputs.changed-files }}
 
 runs:

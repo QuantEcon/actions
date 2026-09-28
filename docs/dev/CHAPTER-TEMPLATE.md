@@ -12,7 +12,7 @@ Each action has one chapter in the user manual, at `docs/user/actions/<action>.m
   python3 scripts/generate-docs.py
   ```
 
-  It fills the chapter's Inputs and Outputs tables, rewrites the action's `README.md` as a signpost to the chapter, and updates the action table in `docs/user/README.md`. The harness `gate` job runs it with `--check`, and fails when a committed table no longer matches.
+  It fills the chapter's Inputs and Outputs tables, rewrites the action's `README.md` as a signpost to the chapter, and updates the action table in `docs/user/README.md`. The harness `gate` job runs it with `--check`, and fails when a committed table no longer matches, or when an action has no chapter.
 - **Examples.** The minimal example is a complete workflow: `name:`, `on:`, `permissions:` and `jobs:`. Anything shorter is a fragment of steps, with no `jobs:` key. The realistic example is a link to the template that uses the action, not a copy of it.
 
 ## What the gate checks

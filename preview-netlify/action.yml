@@ -1,28 +1,51 @@
 name: 'Preview Netlify'
-description: 'Deploys lecture builds to Netlify for PR previews with smart comments showing changed pages'
+description: >-
+  Deploys a pull request's built site to Netlify as a preview, at a URL that stays the same for
+  every push, and comments on the pull request with it and with links to the lectures it changes.
 author: 'QuantEcon'
 
+# Each description below is copied verbatim into the user manual
+# (docs/user/actions/preview-netlify.md) by scripts/generate-docs.py, so it is
+# written for a reader.
 inputs:
   netlify-auth-token:
-    description: 'Netlify authentication token (use secrets.NETLIFY_AUTH_TOKEN)'
+    description: >-
+      A Netlify personal access token, from a repository secret such as
+      `secrets.NETLIFY_AUTH_TOKEN`. It reaches `netlify-cli` through the environment, never on its
+      command line.
     required: true
   netlify-site-id:
-    description: 'Netlify site ID (use secrets.NETLIFY_SITE_ID)'
+    description: >-
+      The ID of the Netlify site to deploy to, from a repository secret such as
+      `secrets.NETLIFY_SITE_ID`.
     required: true
   build-dir:
-    description: 'Directory containing built site'
+    description: >-
+      The directory that holds the built site, such as `_build/html`, which `build-lectures` gives
+      in its `build-path` output.
     required: true
   lectures-dir:
-    description: 'Directory containing lecture .md files for change detection. Set to empty string to disable.'
+    description: >-
+      The directory of lecture `.md` files that change detection looks in, as a path from the
+      repository root such as `lectures`, with no `./` or trailing slash: each lecture that differs
+      from the base branch gets a link in the comment, and is listed in `changed-files`. Empty
+      turns change detection off, and the comment gives only the preview URL.
     required: false
     default: 'lectures'
 
 outputs:
   deploy-url:
-    description: 'URL of the deployed preview site'
+    description: >-
+      The preview's URL, `https://pr-<number>--<site>.netlify.app`, the same for every push to the
+      pull request. Empty when nothing was deployed: on an event other than `pull_request`, and
+      for a pull request from a fork or by Dependabot.
     value: ${{ steps.deploy.outputs.deploy-url }}
   changed-files:
-    description: 'List of changed lecture files'
+    description: >-
+      The lecture files under `lectures-dir` that were added or modified between the tip of the
+      pull request's base branch and its head, one path per line, so a lecture changed on the base
+      branch since the pull request branched off is listed too. Empty when there are none, with `lectures-dir: ''`, on an event other than
+      `pull_request`, and for a pull request from a fork or by Dependabot.
     value: ${{ steps.detect-changes.outputs.changed-files }}
 
 runs:

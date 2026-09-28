@@ -1,61 +1,74 @@
 name: 'Deploy Cloudflare'
-description: 'Publishes a built site to an existing Cloudflare Worker behind Cloudflare Access, and fails unless the site is proven gated before and after the deploy'
+description: >-
+  Publishes a built site to an existing Cloudflare Worker behind Cloudflare Access, for a site only
+  members may see, and fails unless the site is proven gated before and after the deploy.
 author: 'QuantEcon'
 
+# Each description below is copied verbatim into the user manual
+# (docs/user/actions/deploy-cloudflare.md) by scripts/generate-docs.py, so it
+# is written for a reader. The repository is public: no account details here.
 inputs:
   cloudflare-api-token:
     description: >-
-      Cloudflare API token (use secrets.CLOUDFLARE_API_TOKEN). Account-owned,
-      with Editor on the named Worker only: it can deploy that Worker but
-      cannot create one, so a mistyped worker-name fails instead of creating a
-      new, ungated Worker.
+      An account-owned Cloudflare API token with Editor on this one Worker, from a repository
+      secret such as `secrets.CLOUDFLARE_API_TOKEN`. It can deploy the Worker but not create one,
+      so a mistyped `worker-name` fails instead of creating a new Worker that nothing gates. The
+      job fails if the token is empty, as it is on runs from forks and by Dependabot.
     required: true
   cloudflare-account-id:
-    description: 'Cloudflare account ID (use secrets.CLOUDFLARE_ACCOUNT_ID)'
+    description: >-
+      The ID of the Cloudflare account that owns the Worker, from a repository secret such as
+      `secrets.CLOUDFLARE_ACCOUNT_ID`. The job fails if it is empty.
     required: true
   worker-name:
     description: >-
-      The Worker to deploy to, one per site. It must already exist and already
-      be behind Access; see the README setup checklist.
+      The Worker to deploy to, one per site: lowercase letters, digits and dashes, not starting or
+      ending with a dash, at most 63 characters. It must already exist, with its `workers.dev`
+      route on, and already be behind Access.
     required: true
   account-subdomain:
     description: >-
-      The account's workers.dev subdomain, e.g. `quantecon` for
-      `*.quantecon.workers.dev`. The URLs are constructed from it, never parsed
-      from wrangler output.
+      The account's `workers.dev` subdomain: `my-subdomain` for `*.my-subdomain.workers.dev`, which
+      `my-subdomain.workers.dev` also gives. The URLs are built from it, never read from
+      wrangler's output.
     required: true
   team-domain:
     description: >-
-      The Access team's login domain, `<team>.cloudflareaccess.com` (a bare
-      `<team>` is accepted). The gate check requires the redirect to land on
-      exactly this host.
+      The Access team's login domain, `<team>.cloudflareaccess.com`; a bare `<team>` is accepted
+      too. Every gate check requires an anonymous request to be redirected to exactly this host.
     required: true
   build-dir:
-    description: 'Directory containing the built site'
+    description: >-
+      The directory that holds the built site. The job fails if it is missing or holds no files,
+      and warns if it has no `index.html`, since the site's root would then answer 404.
     required: true
   alias:
     description: >-
-      Also upload the same build as a named preview alias, e.g. `report-2026-08`,
-      for a permanent URL alongside the moving production one. Lowercase
-      letters, digits and dashes, starting with a letter; `<alias>-<worker-name>`
-      must fit in 63 characters. Empty for none.
+      Also uploads the same build as a named preview alias, such as `report-2026-08`, for a
+      permanent URL beside the production one, which moves with each deploy. Lowercase letters,
+      digits and dashes, starting with a letter and not ending with a dash, and
+      `<alias>-<worker-name>` must fit in 63 characters. Empty, the default, uploads no alias.
     required: false
     default: ''
   require-access:
     description: >-
-      Prove the site is gated: before uploading, after deploying (production
-      and the new version's preview URL) and on the alias after its upload, an
-      unauthenticated request must be redirected to team-domain. `false` skips
-      every one of these checks and should never be used for private content.
+      `'true'`, the default, proves the site is gated: before anything is uploaded, after the
+      deploy, on production and on the new version's own preview URL, and on the alias after its
+      upload, an anonymous request must be redirected to `team-domain`. `'false'` skips every
+      check, with a warning: never use it for private content. Any other value fails the job.
     required: false
     default: 'true'
 
 outputs:
   deploy-url:
-    description: 'Production URL, https://{worker}.{subdomain}.workers.dev. Set once the deploy succeeds.'
+    description: >-
+      The production URL, `https://<worker-name>.<account-subdomain>.workers.dev`. Set once the
+      deploy succeeds, even if the gate check after it then fails the job.
     value: ${{ steps.deploy.outputs.deploy-url }}
   alias-url:
-    description: 'Preview alias URL, https://{alias}-{worker}.{subdomain}.workers.dev. Empty when no alias is given.'
+    description: >-
+      The alias's URL, `https://<alias>-<worker-name>.<account-subdomain>.workers.dev`. Empty when
+      no `alias` is given, or when its upload failed or did not run.
     value: ${{ steps.alias.outputs.alias-url }}
 
 runs:
@@ -153,7 +166,7 @@ runs:
     # Prevention, not detection. Before anything is uploaded, the Worker must
     # already answer an anonymous request with a redirect to this team's login.
     # That refuses a Worker that does not exist (a mistyped name, which a
-    # broader token than the README's would otherwise create, ungated), one
+    # broader token than the manual's would otherwise create, ungated), one
     # that is public, and one gated by the wrong Access organisation.
     - name: Check the Access gate before deploying
       id: gate-before
@@ -168,7 +181,7 @@ runs:
         urls=("$URL/")
         [ -z "$PROBE_PATH" ] || urls+=("$URL$PROBE_PATH")
         if ! bash "$GITHUB_ACTION_PATH/../scripts/check-access-gate.sh" "$TEAM" "${urls[@]}"; then
-          echo "::error::Refusing to deploy: $URL is not behind Access for $TEAM. Nothing was uploaded. An admin must create the Worker and turn Access on (All traffic) before its first deploy; see the deploy-cloudflare README setup checklist."
+          echo "::error::Refusing to deploy: $URL is not behind Access for $TEAM. Nothing was uploaded. An admin must create the Worker and turn Access on (All traffic) before its first deploy; see the setup checklist at https://github.com/QuantEcon/actions/blob/main/docs/user/actions/deploy-cloudflare.md#setup-checklist"
           exit 1
         fi
 
@@ -302,7 +315,7 @@ runs:
           failed=1
         fi
         if ! bash "$GITHUB_ACTION_PATH/../scripts/check-access-gate.sh" "$TEAM" "${urls[@]}"; then
-          echo "::error::A hostname serving this Worker is NOT behind Access for $TEAM (see above). Treat the site as public until this is fixed: turn Access on for the Worker with All traffic, which also covers its preview URLs, or disable its workers.dev route."
+          echo "::error::A hostname serving this Worker is NOT behind Access for $TEAM (see above). Treat the site as public until this is fixed: turn Access on for the Worker with All traffic, which also covers its preview URLs, or turn off both its workers.dev route and its preview URLs."
           failed=1
         fi
         exit "$failed"

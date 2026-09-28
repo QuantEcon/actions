@@ -1,31 +1,55 @@
 name: 'Publish to GitHub Pages'
-description: 'Publishes lecture builds to GitHub Pages using native GitHub Pages deployment (no gh-pages branch needed)'
+description: >-
+  Publishes a built site to GitHub Pages with GitHub's own Pages deploy, so no gh-pages branch is
+  needed. On a tag it can also attach the site to the release, as an archive with its checksum and
+  a manifest.
 author: 'QuantEcon'
 
+# Each description below is copied verbatim into the user manual
+# (docs/user/actions/publish-gh-pages.md) by scripts/generate-docs.py, so it is
+# written for a reader.
 inputs:
   build-dir:
-    description: 'Directory containing built site'
+    description: >-
+      The directory that holds the built site, such as `_build/html`, which `build-lectures` gives
+      in its `build-path` output. The job fails if it does not exist.
     required: true
   cname:
-    description: 'Domain to write into build-dir as a CNAME file (it also lands in the release archive). Has no effect on the Pages deploy, which ignores CNAME files: set the custom domain in Settings -> Pages.'
+    description: >-
+      A domain to write into `build-dir` as a `CNAME` file, which also lands in the release
+      archive. It does not set the site's custom domain, and a warning says so: a GitHub Actions
+      Pages deploy ignores `CNAME` files, so set the domain under Settings, Pages. Empty, the
+      default, writes no file.
     required: false
     default: ''
   create-release-assets:
-    description: 'Create and upload release assets (HTML archive, checksum, manifest)'
+    description: >-
+      `'true'` also attaches the site to the GitHub release of the tag the run was triggered by,
+      creating the release if there is none: an archive, its SHA-256 checksum and a manifest. It
+      needs `github-token`, and a run triggered by a tag: any other run skips it, with a warning.
+      `'false'`, the default, attaches nothing.
     required: false
     default: 'false'
   asset-name:
-    description: 'Base name for release assets (e.g., "lecture-python-html")'
+    description: >-
+      With `create-release-assets: 'true'`: the start of each asset's file name. Empty, the
+      default, uses the repository's name followed by `-html`, as in `<repository>-html`.
     required: false
     default: ''
   github-token:
-    description: 'GitHub token for uploading release assets (only needed if create-release-assets is true)'
+    description: >-
+      With `create-release-assets: 'true'`: a token that can write the repository's releases,
+      such as `secrets.GITHUB_TOKEN` in a job with `contents: write`. On a run triggered by a tag,
+      the job fails if it is empty. The Pages deploy does not use it.
     required: false
     default: ''
 
 outputs:
   page-url:
-    description: 'URL of the deployed GitHub Pages site'
+    description: >-
+      The URL of the published site, as GitHub Pages reports it, such as
+      `https://<owner>.github.io/<repository>/`, or the custom domain's. Set once the deploy
+      succeeds.
     value: ${{ steps.deployment.outputs.page_url }}
 
 runs:

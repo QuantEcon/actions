@@ -1,48 +1,84 @@
 name: 'Build Lectures'
-description: 'Builds QuantEcon lectures using Jupyter Book'
+description: >-
+  Builds the lectures with Jupyter Book, as the website, the PDF or notebooks. When the build
+  fails it prints each failing notebook's traceback, and can upload the execution reports.
 author: 'QuantEcon'
 
-# NOTE: For caching, use the dedicated cache actions:
-#   - build-jupyter-cache: Weekly cache generation on main branch
-#   - restore-jupyter-cache: Read-only restore for PR workflows
-
+# Each description below is copied verbatim into the user manual
+# (docs/user/actions/build-lectures.md) by scripts/generate-docs.py, so it is
+# written for a reader.
 inputs:
   builder:
-    description: 'Jupyter Book builder to use (html, pdflatex, custom --custom-builder=jupyter)'
+    description: >-
+      What to build: `html`, the default, builds the website into `<output-dir>/_build/html`;
+      `pdflatex` builds the PDF into `<output-dir>/_build/latex`, and needs LaTeX; `jupyter`
+      builds notebooks into `<output-dir>/_build/jupyter`. Any other value is passed to `jb build`
+      as `--builder <value>`, which writes into a directory under `<output-dir>/_build`.
     required: false
     default: 'html'
   source-dir:
-    description: 'Source directory containing lectures'
+    description: >-
+      The book to build: the directory that holds its `_config.yml` and `_toc.yml`, relative to
+      the workspace.
     required: false
     default: 'lectures'
   output-dir:
-    description: 'Output directory for build artifacts'
+    description: >-
+      The directory the build is written under, passed to `jb build` as `--path-output`, so the
+      output lands in `<output-dir>/_build`. The cache actions read and write `_build` at the
+      workspace root, so keep the default, `.`, in a job that uses them.
     required: false
     default: '.'
   extra-args:
-    description: 'Extra arguments to pass to jupyter-book build. Passed unquoted so multiple flags word-split (e.g. "-W --keep-going"); quoted arguments containing spaces are not supported.'
+    description: >-
+      Further arguments for `jb build`. They are split on whitespace, so a quoted value that
+      contains a space cannot be passed. Setting this replaces the default, so keep `-W` in it:
+      without `-W`, a notebook that raises an exception is only a warning, and the build
+      succeeds.
     required: false
     default: '-W --keep-going'
   html-copy-pdf:
-    description: 'Stage PDF from _build/latex/ into _build/html/_pdf/ before HTML build so theme can detect and enable downloads (requires prior pdflatex build)'
+    description: >-
+      With `builder: html`: `'true'` copies each PDF under `<output-dir>/_build/latex` into
+      `<output-dir>/_build/html/_pdf/` before the build, so the site offers it for download. The
+      PDF comes from a `pdflatex` build earlier in the job, or from a restored build cache; if
+      that directory does not exist, a warning says so and the site is built without it. Ignored
+      by the other builders.
     required: false
     default: 'false'
   html-copy-notebooks:
-    description: 'Stage notebooks from _build/jupyter/ into _build/html/_notebooks/ before HTML build so theme can detect and enable downloads (requires prior jupyter build)'
+    description: >-
+      With `builder: html`: `'true'` copies each notebook under `<output-dir>/_build/jupyter` into
+      `<output-dir>/_build/html/_notebooks/` before the build, so the site offers them for
+      download. The notebooks come from a `jupyter` build earlier in the job, or from a restored
+      build cache; if that directory does not exist, a warning says so and the site is built
+      without them. Ignored by the other builders.
     required: false
     default: 'false'
   upload-failure-reports:
-    description: 'Upload execution reports as artifacts when build fails'
+    description: >-
+      `'true'` uploads an artifact when the build fails, holding the `reports` directories in
+      `_build/html`, `_build/latex` and `_build/jupyter`, and `_build/.jupyter_cache`, all under
+      `output-dir`, kept for 7 days. `'false'`, the default, uploads nothing. For the `html`,
+      `pdflatex` and `jupyter` builders the log shows each failing notebook's traceback either
+      way.
     required: false
     default: 'false'
   failure-artifact-name:
-    description: 'Custom name for failure report artifact (default: execution-reports-{builder})'
+    description: >-
+      The name of the artifact that `upload-failure-reports` uploads. Empty, the default, names it
+      `execution-reports-<builder>`. A name can be used only once in a workflow run, so set this
+      when more than one job in a run builds with the same builder.
     required: false
     default: ''
 
 outputs:
   build-path:
-    description: 'Path to the build output directory'
+    description: >-
+      The directory the builder wrote to: `<output-dir>/_build/html`, `_build/latex` or
+      `_build/jupyter` for those three builders. For any other it is `<output-dir>/_build`, the
+      directory above the one that builder wrote to. With the default `output-dir` it starts
+      with `./`, as in `./_build/html`. Set whether or not the build succeeds.
     value: ${{ steps.build.outputs.build-path }}
 
 runs:

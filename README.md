@@ -191,7 +191,6 @@ We're in the `0.x` development phase (pre-1.0.0). Reference the actions with:
 - **[docs/user/](./docs/user/README.md)** - User manual: what each action does, how to set it up, and every input and output
 - **[docs/CONTAINER-GUIDE.md](./docs/CONTAINER-GUIDE.md)** - Quick start with containers
 - **[docs/MIGRATION-GUIDE.md](./docs/MIGRATION-GUIDE.md)** - Migrating lecture repositories
-- **[docs/QUICK-REFERENCE.md](./docs/QUICK-REFERENCE.md)** - Action reference
 - **[docs/dev/](./docs/dev/README.md)** - Developer docs: design, testing, container validation, the GPU AMI, and the work plan
 
 ## Getting Started

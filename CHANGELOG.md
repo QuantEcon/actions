@@ -33,6 +33,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   under `containers/` still triggers a build: the smoke-test fixture's pages are Markdown. (#178)
 
 ### Documentation
+- **User manual** (#178): every action has its chapter. `build-lectures`, `build-jupyter-cache`,
+  `restore-jupyter-cache`, `preview-netlify`, `preview-cloudflare`, `publish-gh-pages` and
+  `deploy-cloudflare` get theirs in `docs/user/actions/`, and their READMEs become generated
+  signposts. What only the READMEs held moves into the chapters: the Netlify and Cloudflare Pages
+  setup guides; the comparison of the two, now kept to what the actions do, since provider pricing
+  is not something this repository can keep current; the preview actions' note, from #143, that they
+  deploy nothing on events other than `pull_request`; the `publish-gh-pages` migration notes; and
+  the `deploy-cloudflare` Access checklist, with no account details. The `publish-gh-pages` chapter
+  documents the release assets, the archive, its SHA-256 checksum and the manifest, as a contract
+  that a release changes only with a CHANGELOG entry (#27). `docs/QUICK-REFERENCE.md` is removed:
+  its action table is the manual's index, and the rest is in the chapters. The harness gate now
+  fails when an action has no chapter. (#190)
+- **The seven actions' `action.yml` descriptions** are rewritten for readers, since the manual
+  copies them verbatim, and corrected where they, or the READMEs, were wrong:
+  - `restore-jupyter-cache`'s `path` said a different path restores the cache into a directory
+    the build does not read. The path is part of what identifies a cache, so any path but
+    `_build` finds none of the caches `build-jupyter-cache` saves.
+  - The `build-jupyter-cache` README listed a third, bare `build-` fallback key, which
+    `restore-jupyter-cache` no longer uses. The chapters give the two it does.
+  - The preview READMEs said change detection needs `fetch-depth: 0`. The actions fetch the pull
+    request's base and head commits themselves.
+  - The `preview-cloudflare` setup guide now asks for a token with Cloudflare Pages Edit alone,
+    not the broader "Edit Cloudflare Workers" template.
+  - `deploy-cloudflare`'s `account-subdomain` example no longer names a real account, and its
+    refusal message points at the chapter's setup checklist instead of the README.
+  - The caches save execution time only when the book sets `execute_notebooks: cache`, which the
+    `build-jupyter-cache` and `restore-jupyter-cache` chapters now require. Sphinx re-reads every
+    page of a fresh checkout, so the old claim that it rewrites only the changed pages is gone.
+  - `restore-jupyter-cache`'s `save-cache` reaches every pull request when saved from a branch,
+    so the chapter keeps it to pull-request builds, and a re-run, which matches its own key
+    exactly, saves nothing.
+  - Three limits in the code are documented, and filed: the preview actions' change detection
+    lists lectures changed on the base branch after the pull request branched off (#215);
+    `preview-cloudflare` builds its URLs from `project-name`, which is wrong when Cloudflare gives
+    the project another `pages.dev` address (#216); and `html-copy-notebooks` copies the notebooks
+    flat, so the download link of a page in a subdirectory leads nowhere (#217).
+  - Both QuantEcon images trust every directory for git, so the `build-lectures` chapter's
+    "dubious ownership" handling is for other images only. (#190)
 - **`preview-netlify`, `preview-cloudflare` READMEs**: the Security sections said a notification
   is logged whenever the deploy is skipped. That holds only for Dependabot and fork PRs. On any
   event other than `pull_request`, both actions skip change detection, the deploy and the PR
@@ -83,6 +121,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `cname:` in six consumers, a permanent `preview-cloudflare` step in the canary). (#187)
 
 ### Fixed
+- **`deploy-cloudflare`**: when a hostname serving the Worker is found ungated, the error said to
+  turn Access on or turn off the Worker's `workers.dev` route. With the route off its preview URLs
+  stay on, which wrangler itself warns may leave them public, so the message now says to turn off
+  both the route and the preview URLs. (#190)
 - **`setup-environment`**: bumping `cache-version` builds a fresh Conda environment, as it was
   documented to. It was in the exact cache key but in neither `restore-keys` fallback, and the
   first fallback matched the same environment file under any version, so a bump restored the

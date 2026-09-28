@@ -1,47 +1,87 @@
 name: 'Restore Jupyter Cache'
-description: 'Restores Jupyter Book build cache from GitHub Actions cache, with optional save for PR-scoped caching'
+description: >-
+  Restores the cache that `build-jupyter-cache` saved, so a pull request or publish build re-executes
+  only the notebooks that changed. It only restores by default, and can also save a cache for the
+  later runs of the same pull request.
 author: 'QuantEcon'
 
+# Each description below is copied verbatim into the user manual
+# (docs/user/actions/restore-jupyter-cache.md) by scripts/generate-docs.py, so
+# it is written for a reader.
 inputs:
   cache-type:
-    description: 'Type of cache to restore: execution (.jupyter_cache only) or build (full _build directory)'
+    description: >-
+      What to restore. `build`, the default, restores the whole `_build` directory the last cache
+      build saved: its HTML, PDF and notebooks, and the execution cache in `_build/.jupyter_cache`.
+      `execution` restores only `_build/.jupyter_cache`, which holds each notebook's executed
+      outputs.
     required: false
     default: 'build'
   path:
-    description: 'Directory to restore the cache into. Must match where build-lectures reads/writes (_build); pointing it elsewhere restores the cached _build to a directory the build steps will not use.'
+    description: >-
+      The build directory to restore into. The path is part of what identifies a cache, so only
+      `_build`, the default, finds the caches that `build-jupyter-cache` saves; any other path
+      finds only what this action saved with `save-cache` and the same `path`. With
+      `cache-type: execution` the cache goes into `<path>/.jupyter_cache`.
     required: false
     default: '_build'
   source-dir:
-    description: 'Source directory containing lectures (used for content hash in execution cache)'
+    description: >-
+      With `cache-type: execution`: the book's directory. The key hashes every `.md` file under
+      it, as `build-jupyter-cache` does with its own `source-dir`. Ignored for the build cache.
     required: false
     default: 'lectures'
   environment:
-    description: 'Path to environment file (used for cache key hash)'
+    description: >-
+      With `cache-type: build`: the Conda environment file whose hash is part of the key. Give the
+      same file that `build-jupyter-cache` was given, or no cache matches. Ignored for the
+      execution cache.
     required: false
     default: 'environment.yml'
   environment-update:
-    description: 'Path to delta environment file for container builds (used for cache key hash)'
+    description: >-
+      With `cache-type: build`: the container delta file whose hash is part of the key. Give the
+      same file that `build-jupyter-cache` was given; with another, only the fallback matches,
+      restoring the newest cache built from the same `environment`. Ignored for the execution
+      cache.
     required: false
     default: ''
   key:
-    description: 'Cache key to look for (auto-generated if not specified)'
+    description: >-
+      A key to restore in place of the generated ones. It is matched as a prefix, so the newest
+      cache whose key starts with it is restored. With `save-cache: 'true'` the cache is saved
+      under exactly this key, and only once: a cache is never overwritten, and a later run that
+      matches the key exactly saves nothing. Empty, the default, uses the generated keys.
     required: false
     default: ''
   fail-on-miss:
-    description: 'Fail the workflow if no cache is found'
+    description: >-
+      `'true'` fails the job when nothing is restored. `'false'`, the default, carries on without a
+      cache, and the build starts from scratch.
     required: false
     default: 'false'
   save-cache:
-    description: 'Save build cache at end of job for faster subsequent PR runs. Cache is scoped to the PR branch and cannot affect other PRs or main.'
+    description: >-
+      `'true'` also saves the directory at the end of the job, if the job succeeds and its key did
+      not match exactly. Saved from a pull request's run, the cache can be restored only by that
+      pull request's later runs; saved from a run on a branch, it reaches every pull request that
+      targets the branch. So use it in pull-request builds only. `'false'`, the default, only
+      restores.
     required: false
     default: 'false'
 
 outputs:
   cache-hit:
-    description: 'Whether the cache was successfully restored (includes prefix match)'
+    description: >-
+      `'true'` when a cache was restored, whether its key matched exactly or only as a prefix;
+      `'false'` when nothing was restored. Always set. Unlike the `actions/cache` output of the
+      same name, it counts a prefix match, which is how a read-only restore with the generated
+      keys always matches.
     value: ${{ steps.restore.outputs.cache-matched-key != '' }}
   cache-key:
-    description: 'The cache key that was matched (empty if no hit)'
+    description: >-
+      The key of the cache that was restored: a saved key such as `build-<hash>-<hash>-<run id>`,
+      not the prefix that found it. Empty when nothing was restored.
     value: ${{ steps.restore.outputs.cache-matched-key }}
 
 runs:

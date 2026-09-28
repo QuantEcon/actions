@@ -328,7 +328,7 @@ quantecon/actions/
 └── docs/
     ├── CONTAINER-GUIDE.md         # Container build and usage guide
     ├── MIGRATION-GUIDE.md         # How to migrate lecture repos
-    ├── QUICK-REFERENCE.md         # Quick reference for all actions
+    ├── user/                      # The user manual: a chapter for each action
     └── dev/                       # Developer docs: this file, testing, plan, GPU AMI
 ```
 
@@ -481,7 +481,7 @@ lecture-python-intro/
 
 - [CONTAINER-GUIDE.md](../CONTAINER-GUIDE.md) - Container build and usage guide
 - [MIGRATION-GUIDE.md](../MIGRATION-GUIDE.md) - How to migrate lecture repos
-- [QUICK-REFERENCE.md](../QUICK-REFERENCE.md) - Quick reference for all actions
+- [User manual](../user/README.md) - What each action does, how to set it up, and every input and output
 
 ---
 
