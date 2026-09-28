@@ -18,7 +18,7 @@ Use it to publish a public site, after [`build-lectures`](build-lectures.md), as
 - **Runner.** Any.
 - **Node.** None.
 - **Permissions.** `pages: write` and `id-token: write`, for the deploy. The job also needs `contents: read` for `actions/checkout`, or `contents: write` with `create-release-assets: 'true'`, for the release.
-- **Secrets.** None. The deploy authenticates with the job's OIDC token, and the release upload with the `github-token` you pass, which can be the job's own `GITHUB_TOKEN`.
+- **Secrets.** None. The deploy authenticates with the job's own token and its OIDC token, and the release upload with the `github-token` you pass, which can be the job's own `GITHUB_TOKEN`.
 - **Files in your repository.** None beyond the built site.
 - **Repository settings.**
   - Under **Settings**, **Pages**, set **Source** to **GitHub Actions**, not **Deploy from a branch**.
@@ -36,7 +36,7 @@ Use it to publish a public site, after [`build-lectures`](build-lectures.md), as
 | `cname` | no | `''` | A domain to write into `build-dir` as a `CNAME` file, which also lands in the release archive. It does not set the site's custom domain, and a warning says so: a GitHub Actions Pages deploy ignores `CNAME` files, so set the domain under Settings, Pages. Empty, the default, writes no file. |
 | `create-release-assets` | no | `false` | `'true'` also attaches the site to the GitHub release of the tag the run was triggered by, creating the release if there is none: an archive, its SHA-256 checksum and a manifest. It needs `github-token`, and a run triggered by a tag: any other run skips it, with a warning. `'false'`, the default, attaches nothing. |
 | `asset-name` | no | `''` | With `create-release-assets: 'true'`: the start of each asset's file name. Empty, the default, uses the repository's name followed by `-html`, as in `<repository>-html`. |
-| `github-token` | no | `''` | With `create-release-assets: 'true'`: a token that can write the repository's releases, such as `secrets.GITHUB_TOKEN` in a job with `contents: write`. The job fails if it is empty. The Pages deploy does not use it. |
+| `github-token` | no | `''` | With `create-release-assets: 'true'`: a token that can write the repository's releases, such as `secrets.GITHUB_TOKEN` in a job with `contents: write`. On a run triggered by a tag, the job fails if it is empty. The Pages deploy does not use it. |
 
 <!-- END GENERATED -->
 
@@ -46,7 +46,7 @@ Use it to publish a public site, after [`build-lectures`](build-lectures.md), as
 
 | Output | Description |
 |---|---|
-| `page-url` | The URL of the published site, as GitHub Pages reports it: `https://<owner>.github.io/<repository>/`, or the custom domain's. Set once the deploy succeeds. |
+| `page-url` | The URL of the published site, as GitHub Pages reports it, such as `https://<owner>.github.io/<repository>/`, or the custom domain's. Set once the deploy succeeds. |
 
 <!-- END GENERATED -->
 
@@ -150,7 +150,8 @@ The `github-pages` environment must also allow the tags to deploy: under **Setti
 4. **Release assets**, with `create-release-assets: 'true'`, after the deploy:
    - On a run not triggered by a tag, a warning says they are skipped, and the job carries on.
    - With `github-token` empty, the job fails.
-   - Otherwise the action writes the three files in [Release assets](#release-assets), and uploads them with [action-gh-release](https://github.com/softprops/action-gh-release) to the release named after the tag, which it creates if there is none.
+   - Otherwise the action writes the three files in [Release assets](#release-assets), and uploads them with [action-gh-release](https://github.com/softprops/action-gh-release) to the tag's release. If the tag has no release, it creates one, named after the tag.
+   - A tag whose name contains `/` fails here, after the site is live: the tag is part of the archive's file name, and the slash makes it a path that does not exist.
 5. **Summary.** A "Deployment Summary" log group gives the page URL, the `CNAME` domain if any, and the release's URL if assets were uploaded.
 
 The site is live before the release assets are made, so a failure in making or uploading them leaves the new site published.
@@ -169,11 +170,13 @@ With `create-release-assets: 'true'`, a run triggered by the tag `<tag>` attache
 |---|---|---|
 | `name` | string | `<asset-name>` |
 | `tag` | string | `<tag>` |
-| `commit` | string | The full SHA of the commit the run built. |
+| `commit` | string | The full SHA of the commit the run built, `GITHUB_SHA`. |
 | `timestamp` | string | When the assets were made: ISO 8601 date and time to the second, with the UTC offset, as in `2026-09-28T10:04:05+00:00`. |
 | `size_mb` | number | The disk space `build-dir` takes, in mebibytes, as `du -sm` reports it: a whole number, rounded up. |
-| `file_count` | number | The number of files in `build-dir`, not counting a `CNAME` file that `cname` writes. |
+| `file_count` | number | The number of files in `build-dir`. |
 | `repository` | string | `<owner>/<repository>`. |
+
+`size_mb` and `file_count` are measured before `cname` writes its `CNAME` file, which the archive then includes.
 
 For example:
 
@@ -195,7 +198,7 @@ To check an archive, run `sha256sum` in the directory that holds both files:
 sha256sum --check lecture-python-html-checksum.txt
 ```
 
-This is the contract. A release of this project that changes a file name, the archive's layout, the checksum's format, or a manifest field's name or meaning says so in its CHANGELOG entry. Read the manifest as JSON, and ignore any field you do not know, so that a field added later does no harm. The checksum's and the manifest's names do not carry the tag, so keep each release's files in a directory of their own.
+This is the contract. A release of this project that changes a file name, the archive's layout, the checksum's format, or a manifest field's name or meaning says so in its CHANGELOG entry. Read the manifest as JSON, and ignore any field you do not know, so that a field added later does no harm. The checksum's and the manifest's names do not carry the tag, so keep each release's files in a directory of their own. Tags must not contain `/`, as [Behaviour](#behaviour) explains.
 
 ## Custom domain
 
@@ -205,13 +208,16 @@ This is the contract. A release of this project that changes a file name, the ar
 
 ## Moving from a `gh-pages` branch
 
-A repository that publishes by pushing to a branch, with peaceiris/actions-gh-pages or a version of this action that took a `target-branch` input, moves over in five steps:
+A repository that publishes by pushing to a branch, with peaceiris/actions-gh-pages or a similar action, moves over in six steps:
 
 1. Under **Settings**, **Pages**, change **Source** from **Deploy from a branch** to **GitHub Actions**.
 2. Give the job `pages: write` and `id-token: write`, and run it in the `github-pages` environment. It no longer needs `contents: write`, unless it makes release assets.
-3. Replace the deploy step with this action, passing only `build-dir`. The deploy needs no token.
-4. Set the custom domain under **Settings**, **Pages**: a `CNAME` file in the site no longer applies.
-5. Once the new deploy is live, delete the `gh-pages` branch, if you like, to shrink the repository.
+3. If the workflow publishes on tags, allow their pattern in that environment, under **Settings**, **Environments**, **github-pages**, **Deployment branches and tags**. By default only the default branch may deploy.
+4. Replace the deploy step with this action, passing only `build-dir`. The deploy needs no token.
+5. Set the custom domain under **Settings**, **Pages**: a `CNAME` file in the site no longer applies.
+6. Once the new deploy is live, delete the `gh-pages` branch, if you like, to shrink the repository.
+
+The [migration guide](../../MIGRATION-GUIDE.md) moves a whole lecture repository onto these actions, publishing included.
 
 ## Troubleshooting
 
@@ -224,6 +230,8 @@ A repository that publishes by pushing to a branch, with peaceiris/actions-gh-pa
 **`Tag "…" is not allowed to deploy to github-pages due to environment protection rules`.** Allow the tag pattern under **Settings**, **Environments**, **github-pages**, **Deployment branches and tags**. A branch other than the default is refused the same way.
 
 **`create-release-assets is enabled but this run was not triggered by a tag …; skipping release assets`.** Release assets need a tag trigger, such as `tags: ['publish*']` under `on.push`.
+
+**`Cannot open: No such file or directory`, when making the release assets.** The tag's name contains `/`. Use a tag without one, such as `publish-2026-09-28`.
 
 **`create-release-assets is enabled but 'github-token' is empty`.** Pass `github-token: ${{ secrets.GITHUB_TOKEN }}`.
 

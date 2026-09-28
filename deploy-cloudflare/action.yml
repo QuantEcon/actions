@@ -22,9 +22,9 @@ inputs:
     required: true
   worker-name:
     description: >-
-      The Worker to deploy to, one per site: lowercase letters, digits and dashes, at most 63
-      characters. It must already exist, with its `workers.dev` route on, and already be behind
-      Access.
+      The Worker to deploy to, one per site: lowercase letters, digits and dashes, not starting or
+      ending with a dash, at most 63 characters. It must already exist, with its `workers.dev`
+      route on, and already be behind Access.
     required: true
   account-subdomain:
     description: >-
@@ -55,7 +55,7 @@ inputs:
       `'true'`, the default, proves the site is gated: before anything is uploaded, after the
       deploy, on production and on the new version's own preview URL, and on the alias after its
       upload, an anonymous request must be redirected to `team-domain`. `'false'` skips every
-      check, with a warning: never use it for private content.
+      check, with a warning: never use it for private content. Any other value fails the job.
     required: false
     default: 'true'
 
@@ -315,7 +315,7 @@ runs:
           failed=1
         fi
         if ! bash "$GITHUB_ACTION_PATH/../scripts/check-access-gate.sh" "$TEAM" "${urls[@]}"; then
-          echo "::error::A hostname serving this Worker is NOT behind Access for $TEAM (see above). Treat the site as public until this is fixed: turn Access on for the Worker with All traffic, which also covers its preview URLs, or disable its workers.dev route."
+          echo "::error::A hostname serving this Worker is NOT behind Access for $TEAM (see above). Treat the site as public until this is fixed: turn Access on for the Worker with All traffic, which also covers its preview URLs, or turn off both its workers.dev route and its preview URLs."
           failed=1
         fi
         exit "$failed"

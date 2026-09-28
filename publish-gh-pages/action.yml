@@ -39,16 +39,17 @@ inputs:
   github-token:
     description: >-
       With `create-release-assets: 'true'`: a token that can write the repository's releases,
-      such as `secrets.GITHUB_TOKEN` in a job with `contents: write`. The job fails if it is
-      empty. The Pages deploy does not use it.
+      such as `secrets.GITHUB_TOKEN` in a job with `contents: write`. On a run triggered by a tag,
+      the job fails if it is empty. The Pages deploy does not use it.
     required: false
     default: ''
 
 outputs:
   page-url:
     description: >-
-      The URL of the published site, as GitHub Pages reports it: `https://<owner>.github.io/<repository>/`,
-      or the custom domain's. Set once the deploy succeeds.
+      The URL of the published site, as GitHub Pages reports it, such as
+      `https://<owner>.github.io/<repository>/`, or the custom domain's. Set once the deploy
+      succeeds.
     value: ${{ steps.deployment.outputs.page_url }}
 
 runs:

@@ -6,7 +6,7 @@
 # (#163).
 #
 #   check-access-gate.sh <team-domain> <url> [<url> ...]
-#   check-access-gate.sh quantecon.cloudflareaccess.com \
+#   check-access-gate.sh <team>.cloudflareaccess.com \
 #     https://<worker>.<account-subdomain>.workers.dev/ \
 #     https://<worker>.<account-subdomain>.workers.dev/data/latest.json
 #

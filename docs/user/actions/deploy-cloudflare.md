@@ -37,13 +37,13 @@ Use it to publish a site that must not be public.
    - Authorization callback URL: `https://<team>.cloudflareaccess.com/cdn-cgi/access/callback`
 
    Then add it in Zero Trust, under **Settings**, **Authentication**, **Login methods**, **GitHub**.
-3. **Make GitHub the only login method.** A new Zero Trust account starts with another login method switched on. Remove it.
-4. **One reusable policy per audience.** Under **Access controls**, **Policies**, create an Allow policy with the **GitHub Organization** selector, your organisation, and a named team. Reference it from each application. Use a team rather than the whole organisation: an organisation's members usually include people a private site is not meant for, such as outside collaborators. A session can last up to a month.
+3. **Make GitHub the only login method.** A new Zero Trust account starts with *Cloudflare account membership* as a login method. Remove it.
+4. **One reusable policy per audience.** Under **Access controls**, **Policies**, create an Allow policy with the **GitHub Organization** selector, your organisation, and a named team. Reference it from each application. Use a team rather than the whole organisation: an organisation's members usually include people a private site is not meant for, such as members who joined for a translation or a course. A session can last up to a month.
 
 ### Once per site
 
 1. **Create the Worker by hand, under its final name,** as a placeholder that holds no data, such as the dashboard's Hello World template. Keep its `workers.dev` route on: the action deploys to `https://<worker-name>.<account-subdomain>.workers.dev`, and checks that URL. Creating a Worker needs Admin on the Workers product, which the deploy token deliberately lacks; see Cloudflare's [authorization docs](https://developers.cloudflare.com/workers/authorization/).
-2. **Turn Access on for the Worker with *All traffic*,** not *Previews only*. That covers the `workers.dev` hostname, every preview URL, and so every alias, and any custom domain you attach later. Attach the reusable policy, and turn on instant authentication. Use this setting on the Worker, not the account-wide "Protect all Workers" switch, if the account also serves public sites.
+2. **Turn Access on for the Worker with *All traffic*,** not *Previews only*. That covers the `workers.dev` hostname and every preview URL, and so every alias. A custom domain needs a check of its own: see [What the generated configuration means for the Worker](#what-the-generated-configuration-means-for-the-worker). Attach the reusable policy, and turn on instant authentication. Use this setting on the Worker, not the account-wide "Protect all Workers" switch, if the account also serves public sites.
 3. **Prove the gate on the placeholder** before the first real deploy, with [`check-access-gate.sh`](https://github.com/QuantEcon/actions/blob/main/scripts/check-access-gate.sh) from a clone of this repository:
 
    ```bash
@@ -61,7 +61,7 @@ Use it to publish a site that must not be public.
 
 ### Why the action does not do this setup itself
 
-The Access application is set up once per Worker, and the login method once per account. Doing either from a workflow would put a token that can edit Access applications and policies into every repository that deploys, for a step that runs once. For the same reason the action cannot create the Worker: its token can deploy only to one that exists. An organisation that wants its Cloudflare account under code can manage the same settings with Terraform, whose resources `zero_trust_access_application` and `zero_trust_access_policy` cover them.
+The Access application is set up once per Worker, and the login method once per account. Doing either from a workflow would put a token that can edit Access applications and policies into every repository that deploys, for a step that runs once. For the same reason the action cannot create the Worker: its token can deploy only to one that exists. An organisation that wants its Cloudflare account under code can manage the same settings with Terraform, whose resources `cloudflare_zero_trust_access_application` and `cloudflare_zero_trust_access_policy` cover them.
 
 ## Inputs
 
@@ -71,12 +71,12 @@ The Access application is set up once per Worker, and the login method once per 
 |---|---|---|---|
 | `cloudflare-api-token` | yes | none | An account-owned Cloudflare API token with Editor on this one Worker, from a repository secret such as `secrets.CLOUDFLARE_API_TOKEN`. It can deploy the Worker but not create one, so a mistyped `worker-name` fails instead of creating a new Worker that nothing gates. The job fails if the token is empty, as it is on runs from forks and by Dependabot. |
 | `cloudflare-account-id` | yes | none | The ID of the Cloudflare account that owns the Worker, from a repository secret such as `secrets.CLOUDFLARE_ACCOUNT_ID`. The job fails if it is empty. |
-| `worker-name` | yes | none | The Worker to deploy to, one per site: lowercase letters, digits and dashes, at most 63 characters. It must already exist, with its `workers.dev` route on, and already be behind Access. |
+| `worker-name` | yes | none | The Worker to deploy to, one per site: lowercase letters, digits and dashes, not starting or ending with a dash, at most 63 characters. It must already exist, with its `workers.dev` route on, and already be behind Access. |
 | `account-subdomain` | yes | none | The account's `workers.dev` subdomain: `my-subdomain` for `*.my-subdomain.workers.dev`, which `my-subdomain.workers.dev` also gives. The URLs are built from it, never read from wrangler's output. |
 | `team-domain` | yes | none | The Access team's login domain, `<team>.cloudflareaccess.com`; a bare `<team>` is accepted too. Every gate check requires an anonymous request to be redirected to exactly this host. |
 | `build-dir` | yes | none | The directory that holds the built site. The job fails if it is missing or holds no files, and warns if it has no `index.html`, since the site's root would then answer 404. |
 | `alias` | no | `''` | Also uploads the same build as a named preview alias, such as `report-2026-08`, for a permanent URL beside the production one, which moves with each deploy. Lowercase letters, digits and dashes, starting with a letter and not ending with a dash, and `<alias>-<worker-name>` must fit in 63 characters. Empty, the default, uploads no alias. |
-| `require-access` | no | `true` | `'true'`, the default, proves the site is gated: before anything is uploaded, after the deploy, on production and on the new version's own preview URL, and on the alias after its upload, an anonymous request must be redirected to `team-domain`. `'false'` skips every check, with a warning: never use it for private content. |
+| `require-access` | no | `true` | `'true'`, the default, proves the site is gated: before anything is uploaded, after the deploy, on production and on the new version's own preview URL, and on the alias after its upload, an anonymous request must be redirected to `team-domain`. `'false'` skips every check, with a warning: never use it for private content. Any other value fails the job. |
 
 <!-- END GENERATED -->
 
@@ -162,8 +162,8 @@ No template uses this action: a private site is a choice made per site, not the 
 4. **The configuration.** It writes a wrangler configuration for this one run, with the Worker's name, a fixed compatibility date, `build-dir` as the assets directory, and `workers_dev` and `preview_urls` both on. It declares no routes.
 5. **The deploy.** `wrangler deploy` publishes `build-dir` to production. Every version also gets its own preview URL, `https://<first 8 characters of the version ID>-<worker-name>.<account-subdomain>.workers.dev`, read from the `Current Version ID` line of wrangler's output.
 6. **The check after the deploy**, on production and on the new version's preview URL. It runs even when `wrangler deploy` fails, because wrangler can fail after the new version is already live.
-7. **The alias**, if given: `wrangler versions upload --preview-alias <alias>` uploads the same build as a preview, then its URL is checked too.
-8. **The job summary** gives each URL and the result of its check, or says why nothing was deployed.
+7. **The alias**, if given, and only once the deploy and the check after it have passed: `wrangler versions upload --preview-alias <alias>` uploads the same build as a preview, then its URL is checked too.
+8. **The job summary** gives each URL and the result of its check, or says why nothing was deployed. Production and the new version's preview URL share one result, that of the check after the deploy.
 
 With `require-access: 'false'`, none of the three checks runs, and a warning says that the site is not checked.
 
@@ -180,13 +180,13 @@ Each check is [`check-access-gate.sh`](https://github.com/QuantEcon/actions/blob
 | `404` | fails: no Worker answers on that hostname, or its `workers.dev` route is off |
 | Anything else, or no answer | fails: the gate could not be verified |
 
-Each check requests the site's root and one file from `build-dir` that is not HTML: the first, in sorted order, with a URL-safe path, skipping dotfiles and the `_headers`, `_redirects` and `_worker.js` control files. A gate that protected only the root would otherwise pass. Access covers every path on a hostname, so a correct gate redirects both.
+Each check requests the site's root and one file from `build-dir` that is not HTML: the first in byte order with a URL-safe path, skipping any path with a part that starts with a dot, and the `_headers`, `_redirects` and `_worker.js` control files. If no file qualifies, only the root is requested. A gate that protected only the root would otherwise pass. Access covers every path on a hostname, so a correct gate redirects both.
 
 ### What the generated configuration means for the Worker
 
 - **Preview URLs are on** after every deploy, even if they were turned off in the dashboard, which is why the check after the deploy covers the new version's preview URL.
 - **The deploy replaces the Worker's code**, such as the placeholder's script, without asking. Other settings changed in the dashboard can be overwritten too.
-- **Custom domains** are a setting on the Worker in the dashboard, and its Access application covers them. The configuration declares no routes, so a deploy leaves them alone, and the action checks only the `workers.dev` URL.
+- **Custom domains** are a setting on the Worker in the dashboard. The configuration declares no routes, so a deploy leaves them alone. The action checks only the `workers.dev` hostname and preview URLs, so check a custom domain yourself with `check-access-gate.sh`, once it is attached and after any change to Access.
 - **Dotfiles** in `build-dir`, such as Sphinx's `.buildinfo`, are uploaded like any other file, unless a `.assetsignore` file in `build-dir` lists them.
 
 ### Limits
@@ -200,13 +200,13 @@ On the free plan a Worker's static assets can hold 20,000 files per version, and
 - `answered 404`: no Worker by that name answers under `account-subdomain`, or its `workers.dev` route is off. Check both, and create the Worker first if it is new.
 - `THE SITE IS PUBLIC`: Access is off for the Worker, or set to *Previews only*. Turn it on with *All traffic*.
 - `the Worker is attached to the wrong Access organisation`: the Worker's Access application belongs to another Zero Trust team, or `team-domain` is wrong.
-- `not to the Access login domain`: the site redirected elsewhere, or sent no `Location`, so Access is not answering for this hostname. Check that Access is on with *All traffic*, and that `team-domain` is right.
+- `not to the Access login domain`: the site redirected elsewhere, sent no `Location`, or sent one whose host is ambiguous, so Access is not answering for this hostname. Check that Access is on with *All traffic*, and that `team-domain` is right.
 - `expected a redirect to the Access login domain`: another status, such as `401`, `403` or a `5xx`. Check the Worker in the dashboard, then re-run the job.
 - `could not be reached`: a network problem between the runner and Cloudflare. Re-run the job.
 
 **`wrangler deploy failed (exit …)`.** wrangler's own error is printed above it. An authentication or permission error usually means the token lacks Editor on this Worker, the account ID is wrong, or the token has expired. wrangler can fail after the new version is live, so the job summary gives the check that ran after the failure.
 
-**`A hostname serving this Worker is NOT behind Access for …`.** The urgent one: the new build is live, or may be, and an anonymous request to production or to the new version's preview URL was not redirected. The `FAIL` line above names the hostname. Turn Access on for the Worker with *All traffic*, which covers production and every preview URL, or turn off its `workers.dev` route. Then re-run the job to confirm.
+**`A hostname serving this Worker is NOT behind Access for …`.** The urgent one: the new build is live, or may be, and an anonymous request to production or to the new version's preview URL was not redirected. The `FAIL` line above names the hostname. Turn Access on for the Worker with *All traffic*, which covers production and every preview URL, then re-run the job to confirm. Until you can, turn off both the Worker's `workers.dev` route and its preview URLs in the dashboard: with the route off, preview URLs stay on, and wrangler itself warns that they may be public. A re-run is then refused, with `answered 404`, until the route is back on.
 
 **`wrangler's output named no 'Current Version ID'`.** The new version's preview URL could not be worked out, so it was not checked, and the check fails rather than pass unseen. wrangler prints the ID only once every step after the upload has succeeded, so this usually follows a failed `wrangler deploy`. After a successful one it means a wrangler update changed its output. Check the preview URL by hand with `check-access-gate.sh`, with the version ID from the dashboard.
 
