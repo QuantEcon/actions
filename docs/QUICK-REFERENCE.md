@@ -165,18 +165,14 @@ Add `restore-jupyter-cache` before `build-lectures` to restore cached execution 
 
 ### Force Cache Rebuild
 
-```yaml
-- uses: quantecon/actions/setup-environment@v0
-  with:
-    cache-version: 'v2'  # Bump from v1
-```
+Bumping `setup-environment`'s `cache-version` does not rebuild the Conda environment: a `restore-keys` fallback restores the previous one, which is then updated. For a fresh environment, delete the repository's `conda-` caches; see [the chapter's troubleshooting](user/actions/setup-environment.md#troubleshooting).
 
 ## 💾 Cache Keys Reference
 
 | Action | Cache Key | Invalidates On |
 |--------|-----------|----------------|
 | `setup-environment` (container) | No caching | N/A |
-| `setup-environment` (standard) | `conda-{OS}-{env-name}-py{python-version}-{hash(env.yml)}-{cache-version}`, path `$CONDA/envs/{env-name}` | env.yml, env name or Python version changes, manual bump |
+| `setup-environment` (standard) | `conda-{OS}-{env-name}-py{python-version}-{hash(env.yml)}-{cache-version}`, path `$CONDA/envs/{env-name}` | env.yml, env name or Python version changes (a `cache-version` bump changes the key, but the fallback still restores the old environment) |
 | `build-jupyter-cache` | `build-{hash(env.yml)}-{hash(env-update.yml)}-{run-id}` | env file changes, each run |
 | `restore-jupyter-cache` | `build-{hash(env.yml)}-{hash(env-update.yml)}-` (prefix) | env file changes |
 
@@ -311,11 +307,7 @@ Conda: Restored from cache ✅ (saved ~5-6 minutes)   # setup-environment, stand
 
 ### Common Issues
 
-**Cache not working?**
-```yaml
-# Bump cache version
-cache-version: 'v2'
-```
+**Cache not working?** See [setup-environment's troubleshooting](user/actions/setup-environment.md#troubleshooting). Bumping `cache-version` does not give a fresh environment.
 
 **Build too slow?**
 ```yaml

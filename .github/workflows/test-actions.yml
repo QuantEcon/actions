@@ -89,6 +89,10 @@ jobs:
       relevant: ${{ steps.decide.outputs.relevant }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The docs checks below run the PR's own scripts, and nothing in this
+          # job needs git credentials: the API calls use GH_TOKEN.
+          persist-credentials: false
 
       - name: Decide whether this event touches anything the harness covers
         id: decide
@@ -109,7 +113,10 @@ jobs:
           # therefore makes the harness RUN. Forgetting to extend this list
           # costs CI minutes (free on a public repo); forgetting to extend a
           # cover list would silently rubber-stamp untested action changes.
-          IGNORED='^(AGENTS|CHANGELOG|README|CONTRIBUTING)\.md$|^LICENSE$|^\.gitignore$|^docs/|^tests/|^templates/|^\.github/(ISSUE_TEMPLATE|PULL_REQUEST_TEMPLATE|dependabot\.yml)|^[A-Za-z0-9_.-]+/README\.md$'
+          #
+          # The docs generator and its requirements file are listed because no
+          # harness job uses them: the gate's own docs checks below are their test.
+          IGNORED='^(AGENTS|CHANGELOG|README|CONTRIBUTING)\.md$|^LICENSE$|^\.gitignore$|^docs/|^tests/|^templates/|^\.github/(ISSUE_TEMPLATE|PULL_REQUEST_TEMPLATE|dependabot\.yml)|^[A-Za-z0-9_.-]+/README\.md$|^scripts/(generate-docs\.py|requirements\.txt)$'
 
           run_everything() { echo "relevant=true" >> "$GITHUB_OUTPUT"; echo "$1"; exit 0; }
 
@@ -136,7 +143,7 @@ jobs:
               echo "::error::gate self-test: IGNORED matches [$p], which must always run the harness"; exit 1
             fi
           done
-          for p in CHANGELOG.md AGENTS.md .gitignore docs/dev/PLAN.md tests/README.md; do
+          for p in CHANGELOG.md AGENTS.md .gitignore docs/dev/PLAN.md tests/README.md scripts/generate-docs.py; do
             if ! grep -Eq "$IGNORED" <<< "$p"; then
               echo "::error::gate self-test: IGNORED no longer matches [$p]"; exit 1
             fi
@@ -251,6 +258,46 @@ jobs:
 
           [ "$drift" -eq 0 ] || exit 1
           echo "✅ templates/ third-party pins match .github/workflows/ ($checked checked)"
+
+      # #178, decision 5: the user manual's Inputs and Outputs tables, its
+      # action table and the signpost READMEs are generated from each
+      # action.yml, and its examples are checked against them. In the gate for
+      # the reason the pin check above is: a docs-only PR matches IGNORED and
+      # skips every other job. PyYAML is the pin in scripts/requirements.txt,
+      # installed into a venv because the runner's Python is externally managed.
+      # actionlint is a pinned release checked against its SHA-256, because
+      # actionlint-py ships only an sdist. No Dependabot ecosystem tracks a
+      # release download, so bump the version and checksum together, by hand,
+      # from the release's actionlint_<version>_checksums.txt.
+      - name: Install the docs tooling (PyYAML, actionlint)
+        env:
+          ACTIONLINT_VERSION: '1.7.12'
+          ACTIONLINT_SHA256: '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8'
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/docs-venv"
+          "$RUNNER_TEMP/docs-venv/bin/pip" install --disable-pip-version-check --quiet -r scripts/requirements.txt
+
+          tarball="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/$tarball" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/$tarball"
+          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$tarball" | sha256sum --check --strict
+          mkdir -p "$RUNNER_TEMP/actionlint"
+          tar -xzf "$RUNNER_TEMP/$tarball" -C "$RUNNER_TEMP/actionlint" actionlint
+          "$RUNNER_TEMP/actionlint/actionlint" -version
+
+      - name: Check the manual's generated tables match each action.yml
+        run: |
+          "$RUNNER_TEMP/docs-venv/bin/python" scripts/generate-docs.py --check
+
+      # Every quantecon/actions step in docs/user and templates/ passes only
+      # inputs its action.yml declares, and every required one; every complete
+      # workflow sets permissions: and passes actionlint (shellcheck, which the
+      # runner image carries, lints its run: scripts).
+      - name: Check the examples in docs/user and templates/
+        run: |
+          "$RUNNER_TEMP/docs-venv/bin/python" scripts/generate-docs.py --check-examples \
+            --actionlint "$RUNNER_TEMP/actionlint/actionlint"
 
   # ==========================================================================
   # restore-jupyter-cache — unit jobs (synthetic fixtures, no conda, seconds)
