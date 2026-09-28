@@ -184,15 +184,40 @@ runs:
       if: steps.detect-container.outputs.container-mode == 'false'
       uses: conda-incubator/setup-miniconda@be893c923ea9cf1cf7cd510fbdde27c7e18cbdcb # v4.1.0
       with:
-        # No environment-file here: the env is restored from cache (hit) or
-        # created by the "Create/update environment" step below (miss), so a
-        # cache hit is not wastefully rebuilt. Uses the runner's pre-installed
-        # conda (kept current by auto-update-conda) so the cached env lives at
-        # a stable ${CONDA}/envs/<environment-name> path.
+        # activate-environment makes later login shells (build-lectures'
+        # `bash -l`) start in the environment. setup-miniconda also creates it
+        # here, with python-version; the next step removes that again (#209),
+        # and the environment is then restored from the cache, or created on a
+        # miss. No environment-file here, so a cache hit is not rebuilt. Uses
+        # the runner's pre-installed conda (kept current by auto-update-conda)
+        # so the cached env lives at a stable ${CONDA}/envs/<environment-name>
+        # path.
         auto-update-conda: true
         auto-activate-base: true
         python-version: ${{ inputs.python-version }}
         activate-environment: ${{ inputs.environment-name }}
+
+    # A restore extracts the cache on top of whatever is there: tar overwrites
+    # the files both hold and keeps the ones only the fresh environment has. A
+    # cache whose packages differ from a fresh `conda create`, as any pinned
+    # stack's do, came back as a mix of both, with two pips' files in one
+    # site-packages and a pip that failed to import (#209). Removing the fresh
+    # environment makes a restore an exact copy of the cache.
+    - name: Remove the environment setup-miniconda created (non-container mode)
+      if: steps.detect-container.outputs.container-mode == 'false'
+      shell: bash
+      env:
+        ENV_NAME: ${{ inputs.environment-name }}
+      run: |
+        # A name, never a path: an empty or dotted name, or one with a slash,
+        # would point rm -rf at envs/ itself or outside it.
+        case "$ENV_NAME" in
+          ''|.|..|*/*)
+            echo "::error::environment-name [$ENV_NAME] is not a conda environment name"
+            exit 1
+            ;;
+        esac
+        rm -rf "${CONDA:?CONDA is not set, so there is no runner Conda to work in}/envs/$ENV_NAME"
 
     # Cache the named env directory, NOT ${CONDA}/envs: the envs parent is
     # root-owned on hosted runners, and tar cannot restore its mode/mtime as
@@ -215,6 +240,20 @@ runs:
         key: conda-${{ runner.os }}-${{ inputs.environment-name }}-${{ inputs.cache-version }}-py${{ inputs.python-version }}-${{ hashFiles(inputs.environment) }}
         restore-keys: |
           conda-${{ runner.os }}-${{ inputs.environment-name }}-${{ inputs.cache-version }}-py${{ inputs.python-version }}-
+
+    # Nothing restored: create the environment the way setup-miniconda did, so
+    # python-version keeps its meaning. After a fallback restore it exists.
+    - name: Create the environment (non-container mode, nothing restored)
+      if: steps.detect-container.outputs.container-mode == 'false' && steps.conda-cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        ENV_NAME: ${{ inputs.environment-name }}
+        PYTHON_VERSION: ${{ inputs.python-version }}
+      run: |
+        : "${CONDA:?CONDA is not set, so there is no runner Conda to work in}"
+        if [ ! -d "$CONDA/envs/$ENV_NAME/conda-meta" ]; then
+          "$CONDA/condabin/conda" create --yes --name "$ENV_NAME" "python=$PYTHON_VERSION"
+        fi
 
     - name: Create/update environment (non-container mode, no exact cache hit)
       if: steps.detect-container.outputs.container-mode == 'false' && steps.conda-cache.outputs.cache-hit != 'true'
