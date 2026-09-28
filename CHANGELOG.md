@@ -33,6 +33,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   under `containers/` still triggers a build: the smoke-test fixture's pages are Markdown. (#178)
 
 ### Documentation
+- **`preview-netlify`, `preview-cloudflare` READMEs**: the Security sections said a notification
+  is logged whenever the deploy is skipped. That holds only for Dependabot and fork PRs. On any
+  event other than `pull_request`, both actions skip change detection, the deploy and the PR
+  comment without saying so, and still succeed with an empty `deploy-url`; the sections now say
+  that. (#143)
+- **`docs/dev/PLAN.md`, `docs/dev/TESTING.md`**: statements the #143 spike disproved are
+  corrected.
+  - A gate can choose the candidate at run time: check it out, then call
+    `uses: ./actions-repo/<action>`, which works in container jobs. PLAN 0b said no such design
+    was possible.
+  - Of the canary's gate-disqualifying properties, only Dependabot is repo-level (PLAN 0a).
+  - A manual dispatch does not exercise the preview deploy.
+  - `build-jupyter-cache`'s sibling chain can be covered before a release, by rewriting its
+    nested `uses:` lines to local paths. TESTING.md and the harness header comment had called
+    that impossible.
+
+  PLAN 0c and the #135 and #143 rows record what the spike means for the plan; the decisions stay
+  open. (#143)
 - **User manual** (#178): `docs/user/` gets its index, `docs/user/README.md`, and its first
   chapter, `docs/user/actions/setup-environment.md`, which absorbs `setup-environment/README.md`;
   that README is now a signpost to it. The chapter's Inputs and Outputs tables, the index's action

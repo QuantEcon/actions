@@ -36,8 +36,12 @@
 # calls setup-environment and build-lectures at the pinned @v0 ref, and
 # GitHub does not allow expressions in `uses:`. The bjc-smoke job below runs
 # the PR's build-jupyter-cache logic, but its internal sibling calls execute
-# @v0 regardless. Pre-release coverage of that chain is impossible in-repo by
-# construction; the post-release canary (stage 2 of #100) owns it.
+# @v0 regardless. Covering that chain pre-release would take rewriting those
+# four `uses:` lines to ./setup-environment and ./build-lectures before the
+# step runs (a nested `./` resolves against the workspace, which the #143
+# spike confirmed), and the job would then test a patched action.yml. This
+# harness does not do that, so the post-release canary (stage 2 of #100) owns
+# the chain.
 
 name: Test Actions
 

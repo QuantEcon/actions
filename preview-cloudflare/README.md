@@ -186,7 +186,12 @@ This action automatically skips deployment for:
 - **Dependabot PRs** - Can't access secrets
 - **Fork PRs** - Can't access secrets
 
-A notification is logged when deployment is skipped.
+For these two, the log says the deployment was skipped.
+
+On any event other than `pull_request` (`push`, `workflow_dispatch`, `schedule`, …) the action
+skips change detection, the deploy and the PR comment, and nothing in the log says so: the step
+still succeeds, with empty `deploy-url` and `deployment-url` outputs. To know whether a preview
+was deployed, check `deploy-url`.
 
 > **Warning:** previews of pull requests from forks are not supported. Do not run this action
 > from `pull_request_target` to get around that. A workflow triggered that way builds and runs
