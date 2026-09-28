@@ -49,6 +49,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `cname:` in six consumers, a permanent `preview-cloudflare` step in the canary). (#187)
 
 ### Fixed
+- **`test-containers-lectures.yml`**: the HTML stage is tried twice. Several lectures fetch a
+  dataset from raw GitHub in a hidden cell at build time, and with the matrix building several
+  repos at once from shared runner IPs that fetch is sometimes refused with HTTP 429,
+  non-deterministically: the same notebook passed on the other container in the same run.
+  Nothing in the stack retried it, so one 429 failed the leg and, off the weekly `workflow_run`
+  trigger, filed a CI-failure issue for a flake. A first attempt that fails is now rebuilt once
+  with `--all`. The repos build with `execute_notebooks: cache` and the jupyter cache survives
+  between steps, so the retry executes only the notebooks that failed; `--all` is what makes it
+  sound, because after a failed `-W --keep-going` build a plain rebuild reads nothing, re-emits
+  no warning and exits 0 with the traceback still in the page, which would have passed every
+  persistent failure. The retry uploads its execution reports as
+  `reports-html-retry-<container>-<repo>`, and a retried leg says so in the job summary. A
+  persistent failure still fails the leg. (#102)
+- **`test-containers-lectures.yml`**: `lecture-python-programming` is back in the matrix. The
+  February 2026 rewrite of the workflow (81e96ff) dropped it without a note, unlike
+  `lecture-jax`, so lecture content from three repos executed on the images while the
+  validation docs described four. Its notebooks fetch from raw GitHub at build time too, which
+  the retry above absorbs. `docs/dev/CONTAINER-VALIDATION.md` and `docs/dev/TESTING.md` list
+  the four-repo matrix under the repo's current name. (#102)
 - **`scripts/check-latex-versions.sh`** runs under `set -euo pipefail` (PLAN item 15). A failed
   `apt-get update` used to be ignored, so the script went on to report versions from a stale
   package index. It now fails the run. The per-package lookup gains an explicit `|| true`: `grep`
