@@ -145,7 +145,7 @@ Set up Node first:
    The token and the site ID reach it through the environment. `--no-build` stops Netlify from running a build of its own, and without `--prod` the deploy is a preview, so the site's production deploy is untouched. Netlify's output is in the "Deployment Output" log group.
 5. **The comment.** The action updates the pull request's comment that starts `## 📖 Netlify Preview Ready!`, or posts one. Each changed lecture links to `<deploy-url>/<path>.html`. `<path>` is the file's path without `.md`, and also without the `lectures-dir/` in front when `_toc.yml` is in `lectures-dir`, because Jupyter Book then builds the pages relative to it.
 
-On any event but `pull_request`, the action installs the CLI and does nothing else.
+On any event but `pull_request`, such as `push`, `workflow_dispatch` or `schedule`, the action installs the CLI and does nothing else, and nothing in the log says so: the step succeeds, with an empty `deploy-url`. To know whether a preview was deployed, check `deploy-url`.
 
 ### What fails the job
 

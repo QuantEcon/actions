@@ -38,7 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `deploy-cloudflare` get theirs in `docs/user/actions/`, and their READMEs become generated
   signposts. What only the READMEs held moves into the chapters: the Netlify and Cloudflare Pages
   setup guides; the comparison of the two, now kept to what the actions do, since provider pricing
-  is not something this repository can keep current; the `publish-gh-pages` migration notes; and
+  is not something this repository can keep current; the preview actions' note, from #143, that they
+  deploy nothing on events other than `pull_request`; the `publish-gh-pages` migration notes; and
   the `deploy-cloudflare` Access checklist, with no account details. The `publish-gh-pages` chapter
   documents the release assets, the archive, its SHA-256 checksum and the manifest, as a contract
   that a release changes only with a CHANGELOG entry (#27). `docs/QUICK-REFERENCE.md` is removed:
@@ -57,6 +58,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     not the broader "Edit Cloudflare Workers" template.
   - `deploy-cloudflare`'s `account-subdomain` example no longer names a real account, and its
     refusal message points at the chapter's setup checklist instead of the README. (#190)
+- **`preview-netlify`, `preview-cloudflare` READMEs**: the Security sections said a notification
+  is logged whenever the deploy is skipped. That holds only for Dependabot and fork PRs. On any
+  event other than `pull_request`, both actions skip change detection, the deploy and the PR
+  comment without saying so, and still succeed with an empty `deploy-url`; the sections now say
+  that. (#143)
+- **`docs/dev/PLAN.md`, `docs/dev/TESTING.md`**: statements the #143 spike disproved are
+  corrected.
+  - A gate can choose the candidate at run time: check it out, then call
+    `uses: ./actions-repo/<action>`, which works in container jobs. PLAN 0b said no such design
+    was possible.
+  - Of the canary's gate-disqualifying properties, only Dependabot is repo-level (PLAN 0a).
+  - A manual dispatch does not exercise the preview deploy.
+  - `build-jupyter-cache`'s sibling chain can be covered before a release, by rewriting its
+    nested `uses:` lines to local paths. TESTING.md and the harness header comment had called
+    that impossible.
+
+  PLAN 0c and the #135 and #143 rows record what the spike means for the plan; the decisions stay
+  open. (#143)
 - **User manual** (#178): `docs/user/` gets its index, `docs/user/README.md`, and its first
   chapter, `docs/user/actions/setup-environment.md`, which absorbs `setup-environment/README.md`;
   that README is now a signpost to it. The chapter's Inputs and Outputs tables, the index's action

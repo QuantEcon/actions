@@ -125,7 +125,7 @@ jobs:
 5. **The URLs.** `deploy-url` is not read from wrangler's output but built from the inputs: `https://pr-<number>.<project-name>.pages.dev` is the alias Cloudflare gives the newest deployment of the branch `pr-<number>`. `deployment-url` is the first other `pages.dev` address in wrangler's output.
 6. **The comment.** The action updates the pull request's comment that starts `## ☁️ Cloudflare Preview Ready!`, or posts one, with the lecture links built as in preview-netlify's.
 
-On any event but `pull_request`, the action installs the CLI and does nothing else.
+On any event but `pull_request`, such as `push`, `workflow_dispatch` or `schedule`, the action installs the CLI and does nothing else, and nothing in the log says so: the step succeeds, with empty `deploy-url` and `deployment-url` outputs. To know whether a preview was deployed, check `deploy-url`.
 
 ### What fails the job
 
