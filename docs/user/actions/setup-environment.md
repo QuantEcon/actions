@@ -36,7 +36,7 @@ Use it in any job that builds lectures, after `actions/checkout` and before [`bu
 | `environment` | no | `environment.yml` | Standard mode: path to the Conda environment file the environment is built from. The job fails if the file does not exist. Its hash is part of the Conda cache key, so editing the file makes the next run update the environment and save it under a new key. Ignored in container mode: use `environment-update` there. |
 | `environment-update` | no | `''` | Container mode: path to a Conda environment file listing only the packages to add to the image's environment. It is applied with `conda env update`, without `--prune`, to the environment whose `python` is on `PATH`; the file's `name:` is ignored. The job fails if the file does not exist. Empty, the default, uses the image's packages as they are. Ignored in standard mode. |
 | `environment-name` | no | `quantecon` | Standard mode: the name of the Conda environment to create and activate, at `$CONDA/envs/<name>`. It takes precedence over any `name:` in `environment`, and is part of the Conda cache key. In container mode it selects nothing: the update goes to the environment on `PATH`, with a warning if that environment has a different name. |
-| `cache-version` | no | `v1` | Standard mode: the last part of the Conda cache key. Changing it (say `v1` to `v2`) makes the exact key miss, so the next run updates the environment from `environment` and saves it under the new key. It does not give a fresh environment: the `restore-keys` fallback still restores the previous cache first. No effect in container mode, which has no Conda cache. |
+| `cache-version` | no | `v1` | Standard mode: part of the Conda cache key and of its `restore-keys` fallback, so a cache is only ever restored within one version. Changing it (say `v1` to `v2`) makes the next run build the environment from scratch. No effect in container mode, which has no Conda cache. |
 | `install-latex` | no | `false` | Standard mode: `'true'` installs the apt packages listed in `latex-requirements-file`, which a `pdflatex` build needs; `'false'`, the default, installs none. Ignored in container mode, which expects LaTeX to be installed already, as it is in the images. |
 | `latex-requirements-file` | no | `latex-requirements.txt` | Standard mode, with `install-latex: 'true'`: path to the list of apt packages to install, separated by spaces or newlines, where `#` starts a comment anywhere on a line. The job fails if the file is missing or names no package. |
 
@@ -51,7 +51,7 @@ Paths are relative to the workspace, which is the repository root after `actions
 | Output | Description |
 |---|---|
 | `container-mode` | `'true'` when `/etc/quantecon-container` exists, as it does in the QuantEcon images and on hosts that carry the same marker file; `'false'` otherwise. Always set. |
-| `conda-cache-hit` | Standard mode: `'true'` when the Conda environment was restored from an exact cache-key match; `'false'` when only a `restore-keys` prefix matched, after which the environment is updated from `environment`; empty on a cache miss. Always empty in container mode, which has no Conda cache. Test it with `== 'true'`. |
+| `conda-cache-hit` | Standard mode: `'true'` when the Conda environment was restored from an exact cache-key match; `'false'` when only the `restore-keys` fallback matched, after which the environment is updated from `environment`; empty on a cache miss. Always empty in container mode, which has no Conda cache. Test it with `== 'true'`. |
 
 <!-- END GENERATED -->
 
@@ -149,11 +149,10 @@ The [workflow templates](https://github.com/QuantEcon/actions/tree/main/template
 
    | Match | Cache key |
    |---|---|
-   | Exact | `conda-<os>-<environment-name>-py<python-version>-<hash of environment>-<cache-version>` |
-   | First fallback | `conda-<os>-<environment-name>-py<python-version>-<hash of environment>-` |
-   | Second fallback | `conda-<os>-<environment-name>-py<python-version>-` |
+   | Exact | `conda-<os>-<environment-name>-<cache-version>-py<python-version>-<hash of environment>` |
+   | Fallback | `conda-<os>-<environment-name>-<cache-version>-py<python-version>-` |
 
-   A fallback restores the most recent cache whose key starts with it.
+   The fallback restores the most recent cache whose key starts with it: the latest environment with the same name, `cache-version` and Python version, whatever environment file it was built from. It never crosses a `cache-version`, so changing that builds the environment from scratch.
 4. Unless the key matched exactly, `conda env update -n <environment-name> -f <environment> --prune` brings the environment in line with the file, removing packages it no longer lists.
 5. With `install-latex: 'true'`, the packages in `latex-requirements-file` are installed with `sudo apt-get install`.
 6. At the end of the job, if the job succeeded and the key did not match exactly, the environment is saved under the key. A failed job saves nothing.
@@ -226,4 +225,4 @@ jobs:
 
 **`conda-cache-hit` is never `'true'`.** The environment is saved only at the end of a job that succeeds, and the key changes with the environment file, `environment-name`, `python-version` and `cache-version`. The cache's post step, near the end of the job log, says whether it saved.
 
-**The restored environment is broken.** Changing `cache-version` does not help: a fallback restores the old environment, and `conda env update` only adjusts it. Delete the repository's `conda-` caches on the Caches page of its Actions tab, and the next run builds the environment from scratch.
+**The restored environment is broken.** Change `cache-version`, say from `v1` to `v2`. No cache from another version is restored, so the next run builds the environment from scratch. Deleting the repository's `conda-` caches, on the Caches page of its Actions tab, does the same.

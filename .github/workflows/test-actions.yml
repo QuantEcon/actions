@@ -821,8 +821,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Ordered after env-seed so the internal setup-environment@v0 can reuse the
-    # conda cache (same key format today). If the formats ever diverge it just
-    # solves fresh — slower, still correct.
+    # conda cache while @v0 and ./setup-environment share a key format. When
+    # they differ, as between a key change (#205) and the release that carries
+    # it, @v0 misses env-seed's cache and solves fresh: slower, still correct.
     needs: env-seed
     steps:
       - uses: actions/checkout@v7
