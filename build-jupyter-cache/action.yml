@@ -1,22 +1,42 @@
 name: 'Build Jupyter Cache'
-description: 'Fresh build of all lecture formats and save to GitHub cache (runs on main branch, typically weekly)'
+description: >-
+  Builds the lectures from scratch in each format you list, and saves the result as the cache that
+  pull requests and publishing start from, but only if every build passes. A failed run keeps the
+  last good cache and files an issue.
 author: 'QuantEcon'
 
+# Each description below is copied verbatim into the user manual
+# (docs/user/actions/build-jupyter-cache.md) by scripts/generate-docs.py, so it
+# is written for a reader. "Container mode" and "standard mode" are
+# setup-environment's.
 inputs:
   builders:
-    description: 'Comma-separated list of builders to run: jupyter, pdflatex, html (whitespace also separates; an unknown name fails the run)'
+    description: >-
+      The formats to build and cache: any of `jupyter`, `pdflatex` and `html`, separated by commas
+      or whitespace, as in `jupyter,pdflatex,html`. They run in that order whatever order they are
+      listed in, and the `html` build copies in the PDF and the notebooks when those are listed
+      too. An unknown name, or none at all, fails the run before anything is built.
     required: false
     default: 'html'
   environment:
-    description: 'Path to environment.yml for full environment (non-container builds)'
+    description: >-
+      Path to the Conda environment file. In standard mode `setup-environment` builds the
+      environment from it, and fails if it does not exist. In either mode its hash is part of the
+      build cache's key, so give `restore-jupyter-cache` the same file.
     required: false
     default: 'environment.yml'
   environment-update:
-    description: 'Path to delta environment.yml for container builds (empty = use pre-installed packages only)'
+    description: >-
+      Container mode: path to a Conda environment file of packages to add to the image's
+      environment, which `setup-environment` installs. Empty, the default, adds none. In either
+      mode its hash is part of the build cache's key, so give `restore-jupyter-cache` the same
+      file.
     required: false
     default: ''
   source-dir:
-    description: 'Source directory containing lectures'
+    description: >-
+      The book to build, as `build-lectures` takes it: the directory that holds its `_config.yml`
+      and `_toc.yml`. The execution cache's key hashes every `.md` file under it.
     required: false
     default: 'lectures'
   # The default repeats setup-environment's own, and must not be '': the runner
@@ -24,67 +44,90 @@ inputs:
   # default, which would fail every standard-mode pdflatex build.
   latex-requirements-file:
     description: >-
-      Path to the latex-requirements.txt listing the apt packages to install,
-      passed through to setup-environment. Used only in standard (non-container)
-      mode when pdflatex is among the builders; the container images ship LaTeX.
+      Standard mode, with `pdflatex` among the builders: path to the list of apt packages that
+      `setup-environment` installs for LaTeX. The job fails if the file is missing or names no
+      package. Ignored in container mode, whose images carry LaTeX.
     required: false
     default: 'latex-requirements.txt'
   upload-artifact:
-    description: 'Upload the _build directory as an artifact when a build fails (for debugging; on success the cache already holds it). Set false to suppress even that.'
+    description: >-
+      `'true'`, the default, uploads the whole `_build` directory as the artifact
+      `build-cache-<run id>` when a build fails, since no cache is saved then. `'false'` uploads
+      nothing. A run whose builds all pass uploads no artifact either way: the cache holds
+      `_build`.
     required: false
     default: 'true'
   artifact-retention-days:
-    description: 'Number of days to retain the build artifact'
+    description: >-
+      How many days to keep the artifact that `upload-artifact` uploads, up to the repository's
+      retention limit.
     required: false
     default: '30'
   create-issue-on-failure:
-    description: 'Create GitHub issue when build fails'
+    description: >-
+      `'true'`, the default, files an issue when the run fails, or comments on the open one that
+      carries the first of `issue-labels`, and fails the job if neither worked. It needs
+      `issues: write`. `'false'` files nothing.
     required: false
     default: 'true'
   issue-assignees:
-    description: 'Comma-separated GitHub usernames to assign to failure issues'
+    description: >-
+      Comma-separated GitHub usernames to assign a new failure issue to. Empty, the default,
+      assigns nobody.
     required: false
     default: ''
   issue-labels:
-    description: 'Comma-separated labels for failure issues'
+    description: >-
+      Comma-separated labels for a new failure issue, created in the repository if they do not
+      exist. The first also finds an open failure issue: a later failure comments on it instead of
+      filing another. Empty files a new issue for every failure.
     required: false
     default: 'build-failure,automated'
   upload-failure-reports:
     description: >-
-      Pass upload-failure-reports through to the inner build-lectures calls, so a
-      failed build uploads its execution-report artifact. Defaults to true here,
-      unlike build-lectures' own default of false: that action is usually driven by
-      a human watching a PR, whereas this one runs unattended (typically weekly),
-      and the auto-filed failure issue tells the maintainer to go read a report.
-      Set to false if re-uploading reports on every failure is too costly.
+      `'true'`, the default, makes each failed build upload its execution reports as
+      `execution-reports-<builder>`, as the `build-lectures` input of the same name does, and the
+      failure issue names them. `'false'` uploads none. The default differs from
+      `build-lectures`' because this action runs unattended.
     required: false
     default: 'true'
 
 outputs:
   cache-saved:
-    description: 'Whether new cache was saved (only true if all builds passed)'
+    description: >-
+      `'true'` when every requested build passed, which is when the build and execution caches
+      are saved; `'false'` otherwise, including a run that stopped before any build. Always set.
     value: ${{ steps.status.outputs.all-passed }}
   build-success:
     description: >-
-      Whether the cache build succeeded. 'true' only if every requested build
-      passed; 'false' for anything else, including a run that aborted during
-      setup before any build started (it used to be empty in that case, which
-      no caller could distinguish from success — see #123).
+      The same value as `cache-saved`: `'true'` only when every requested build passed; `'false'`
+      for anything else, including a run that stopped during setup, before any build. Always
+      set.
     value: ${{ steps.status.outputs.all-passed }}
   cache-key:
-    description: 'The cache key used for saving'
+    description: >-
+      The key the build cache is saved under, `build-<hash of environment>-<hash of
+      environment-update>-<run id>`. Set even when a build fails and nothing is saved.
     value: ${{ steps.cache-key.outputs.key }}
   jupyter-status:
-    description: 'Status of jupyter build (success/failure/skipped)'
+    description: >-
+      `success` or `failure` for a `jupyter` build that ran, `skipped` when `builders` does not
+      list it. Empty when the run stopped before the builds.
     value: ${{ steps.verify-builds.outputs.jupyter-status }}
   pdflatex-status:
-    description: 'Status of pdflatex build (success/failure/skipped)'
+    description: >-
+      `success` or `failure` for a `pdflatex` build that ran, `skipped` when `builders` does not
+      list it. Empty when the run stopped before the builds.
     value: ${{ steps.verify-builds.outputs.pdflatex-status }}
   html-status:
-    description: 'Status of html build (success/failure/skipped)'
+    description: >-
+      `success` or `failure` for an `html` build that ran, `skipped` when `builders` does not list
+      it. Empty when the run stopped before the builds.
     value: ${{ steps.verify-builds.outputs.html-status }}
   failure-issue-url:
-    description: 'URL of the failure issue filed or commented on (empty when no failure, or alerting disabled)'
+    description: >-
+      The URL of the failure issue filed or commented on. Empty when every build passed, or with
+      `create-issue-on-failure: 'false'`.
     value: ${{ steps.create-failure-issue.outputs.issue-url }}
 
 runs:

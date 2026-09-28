@@ -122,12 +122,13 @@ skipped job reports success to a required check). If the harness should ignore a
 extend `IGNORED` in that job; it is an ignore list, so anything unrecognised runs the harness
 rather than silently passing.
 
-The `gate` job also checks the user manual, so a docs-only PR is checked too. The input and output
-tables in `docs/user/actions/`, the action table in `docs/user/README.md` and the README of every
-action with a chapter are generated from each `action.yml` by `scripts/generate-docs.py`, and the
-gate fails when a committed copy no longer matches: run the script and commit what it writes. It
-also checks every example in `docs/user` and `templates/` against the `action.yml` files, for
-`permissions:`, and with actionlint. [docs/dev/CHAPTER-TEMPLATE.md](docs/dev/CHAPTER-TEMPLATE.md)
+The `gate` job also checks the user manual, so a docs-only PR is checked too. Every action has a
+chapter in `docs/user/actions/`. The chapters' input and output tables, the action table in
+`docs/user/README.md` and every action's README are generated from each `action.yml` by
+`scripts/generate-docs.py`, and the gate fails when a committed copy no longer matches, or when an
+action has no chapter: run the script and commit what it writes. It also checks every example in
+`docs/user` and `templates/` against the `action.yml` files, for `permissions:`, and with
+actionlint. [docs/dev/CHAPTER-TEMPLATE.md](docs/dev/CHAPTER-TEMPLATE.md)
 lists the checks and how to run them locally.
 
 ### Breaking Changes
@@ -175,8 +176,8 @@ Update these docs when adding features:
 | Doc | Update When |
 |-----|-------------|
 | The action's `action.yml` descriptions, then run `python3 scripts/generate-docs.py` | Any input or output change |
-| The action's chapter, `docs/user/actions/<action>.md`, or its `README.md` while it has no chapter | A change in what the action does |
-| `docs/QUICK-REFERENCE.md` | New inputs added |
+| The action's chapter, `docs/user/actions/<action>.md` | A change in what the action does |
+| A chapter for it, from `docs/dev/CHAPTER-TEMPLATE.md`, and its place in `ORDER` in `scripts/generate-docs.py` | A new action |
 | `docs/MIGRATION-GUIDE.md` | Workflow patterns change |
 | `docs/dev/PLAN.md` | A backlog item or tracked issue opens, closes or changes scope; a consumer changes the ref it pins |
 

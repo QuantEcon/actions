@@ -11,11 +11,11 @@ The same step works in both modes, so a job can move between a container and a s
 
 ## When to use it
 
-Use it in any job that builds lectures, after `actions/checkout` and before [`build-lectures`](https://github.com/QuantEcon/actions/tree/main/build-lectures).
+Use it in any job that builds lectures, after `actions/checkout` and before [`build-lectures`](build-lectures.md).
 
 - **Prefer a container.** The images already hold the scientific stack, Jupyter Book and LaTeX, which standard mode has to install or restore from its cache. The [containers README](https://github.com/QuantEcon/actions/tree/main/containers) compares the two images.
 - **Keep the step in a container job even with nothing to add.** It then installs nothing, but it records the mode in the log, and it is what lets the job run on a standard runner too.
-- **Do not add it before [`build-jupyter-cache`](https://github.com/QuantEcon/actions/tree/main/build-jupyter-cache).** That action runs `setup-environment` itself, and asks it for LaTeX when `pdflatex` is among its builders.
+- **Do not add it before [`build-jupyter-cache`](build-jupyter-cache.md).** That action runs `setup-environment` itself, and asks it for LaTeX when `pdflatex` is among its builders.
 
 ## Requirements
 

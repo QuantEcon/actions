@@ -19,7 +19,7 @@ This repository provides **reusable GitHub Actions** for building QuantEcon lect
 | **Container usage** | [docs/CONTAINER-GUIDE.md](../docs/CONTAINER-GUIDE.md) |
 | **GPU AMI setup** | [docs/dev/GPU-AMI-SETUP.md](../docs/dev/GPU-AMI-SETUP.md) |
 | **Testing validation** | [docs/dev/TESTING.md](../docs/dev/TESTING.md) |
-| **Quick reference** | [docs/QUICK-REFERENCE.md](../docs/QUICK-REFERENCE.md) |
+| **Using the actions, one chapter each** | [docs/user/README.md](../docs/user/README.md) |
 | **Release process** | [CONTRIBUTING.md](../CONTRIBUTING.md) |
 | **Version history** | [CHANGELOG.md](../CHANGELOG.md) |
 
@@ -60,8 +60,8 @@ Before merging action changes:
 
 ### Documentation Updates
 When changing actions, update:
-- Action's `README.md` (inputs/outputs)
-- `docs/QUICK-REFERENCE.md` (if inputs added)
+- The action's `action.yml` descriptions, then run `python3 scripts/generate-docs.py` (inputs/outputs)
+- The action's chapter, `docs/user/actions/<action>.md` (what it does)
 - `CHANGELOG.md` (user-facing changes)
 - `docs/dev/PLAN.md` (if affects migration status)
 

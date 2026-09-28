@@ -10,12 +10,15 @@ script copies them into the manual, between markers:
 
   inputs, outputs  in each chapter, docs/user/actions/<action>.md
   actions          the action table in docs/user/README.md
-  signpost         the whole of <action>/README.md, once the action has a chapter
+  signpost         the whole of <action>/README.md
+
+Every action must have a chapter, and every chapter an action.
 
 Usage:
 
   python3 scripts/generate-docs.py            rewrite every generated block
-  python3 scripts/generate-docs.py --check    print the diff and fail if a block is out of date
+  python3 scripts/generate-docs.py --check    print the diff and fail if a block is out of date,
+                                              or an action has no chapter
   python3 scripts/generate-docs.py --check-examples [--actionlint PATH]
 
 --check-examples reads every yaml block in docs/user and every workflow in templates/:
@@ -49,7 +52,6 @@ MANUAL = ROOT / "docs" / "user"
 CHAPTERS = MANUAL / "actions"
 INDEX = MANUAL / "README.md"
 TEMPLATES = ROOT / "templates"
-REPO_URL = "https://github.com/QuantEcon/actions"
 
 # The order the manual lists the actions in, which is the order a lecture repo meets them.
 # A new action goes here too; the script refuses to guess where.
@@ -189,11 +191,7 @@ def outputs_table(action):
 def actions_table(actions):
     rows = ["| Action | What it does |", "|---|---|"]
     for action in actions:
-        if action.chapter.is_file():
-            link = f"actions/{action.name}.md"
-        else:
-            # No chapter yet (#190): its README is still the reference.
-            link = f"{REPO_URL}/tree/main/{action.name}"
+        link = f"actions/{action.name}.md"
         rows.append(f"| [`{action.name}`]({link}) | {cell(action.description, action.path, 'description')} |")
     return "\n".join(rows)
 
@@ -274,27 +272,22 @@ def generate(actions):
         if chapter.stem not in names:
             message = f"{rel(CHAPTERS)} holds one chapter per action, and there is no {chapter.stem}/action.yml"
             error(chapter, 0, message)
-    missing = []
     for action in actions:
         source = f"{action.name}/action.yml"
-        if action.chapter.is_file():
-            text = fill(action.chapter, {"inputs": inputs_table(action), "outputs": outputs_table(action)}, source)
-            if text is not None:
-                wanted[action.chapter] = text
-            wanted[action.readme] = "\n".join(wrap("signpost", source, signpost(action))) + "\n"
-        else:
-            missing.append(action.name)
-            if action.readme.is_file() and "BEGIN GENERATED: signpost" in action.readme.read_text(encoding="utf-8"):
-                error(action.readme, 1, f"a generated signpost, but {rel(action.chapter)} does not exist")
+        if not action.chapter.is_file():
+            template = rel(ROOT / "docs" / "dev" / "CHAPTER-TEMPLATE.md")
+            error(action.path, 0, f"{action.name} has no chapter: write {rel(action.chapter)}, starting from {template}")
+            continue
+        text = fill(action.chapter, {"inputs": inputs_table(action), "outputs": outputs_table(action)}, source)
+        if text is not None:
+            wanted[action.chapter] = text
+        wanted[action.readme] = "\n".join(wrap("signpost", source, signpost(action))) + "\n"
     if INDEX.is_file():
         text = fill(INDEX, {"actions": actions_table(actions)}, "each action.yml")
         if text is not None:
             wanted[INDEX] = text
     else:
         error(INDEX, 0, "the manual's index is missing")
-    if missing:
-        # #190 makes this an error, once every action has its chapter.
-        print(f"no chapter yet, so the README is still the reference: {', '.join(missing)}")
     return wanted
 
 

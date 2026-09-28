@@ -15,13 +15,13 @@ A workflow step uses an action as `quantecon/actions/<action>@v0`.
 | Action | What it does |
 |---|---|
 | [`setup-environment`](actions/setup-environment.md) | Sets up the Python environment for a lecture build. Inside a QuantEcon container it uses the image's environment, adding any extra packages you list; on a standard runner it builds a cached Conda environment and can install LaTeX. |
-| [`build-lectures`](https://github.com/QuantEcon/actions/tree/main/build-lectures) | Builds QuantEcon lectures using Jupyter Book |
-| [`build-jupyter-cache`](https://github.com/QuantEcon/actions/tree/main/build-jupyter-cache) | Fresh build of all lecture formats and save to GitHub cache (runs on main branch, typically weekly) |
-| [`restore-jupyter-cache`](https://github.com/QuantEcon/actions/tree/main/restore-jupyter-cache) | Restores Jupyter Book build cache from GitHub Actions cache, with optional save for PR-scoped caching |
-| [`preview-netlify`](https://github.com/QuantEcon/actions/tree/main/preview-netlify) | Deploys lecture builds to Netlify for PR previews with smart comments showing changed pages |
-| [`preview-cloudflare`](https://github.com/QuantEcon/actions/tree/main/preview-cloudflare) | Deploys lecture builds to Cloudflare Pages for PR previews with smart comments showing changed pages |
-| [`publish-gh-pages`](https://github.com/QuantEcon/actions/tree/main/publish-gh-pages) | Publishes lecture builds to GitHub Pages using native GitHub Pages deployment (no gh-pages branch needed) |
-| [`deploy-cloudflare`](https://github.com/QuantEcon/actions/tree/main/deploy-cloudflare) | Publishes a built site to an existing Cloudflare Worker behind Cloudflare Access, and fails unless the site is proven gated before and after the deploy |
+| [`build-lectures`](actions/build-lectures.md) | Builds the lectures with Jupyter Book, as the website, the PDF or notebooks. When the build fails it prints each failing notebook's traceback, and can upload the execution reports. |
+| [`build-jupyter-cache`](actions/build-jupyter-cache.md) | Builds the lectures from scratch in each format you list, and saves the result as the cache that pull requests and publishing start from, but only if every build passes. A failed run keeps the last good cache and files an issue. |
+| [`restore-jupyter-cache`](actions/restore-jupyter-cache.md) | Restores the cache that `build-jupyter-cache` saved, so a pull request or publish build re-executes only the notebooks that changed. It only restores by default, and can also save a cache for the later runs of the same pull request. |
+| [`preview-netlify`](actions/preview-netlify.md) | Deploys a pull request's built site to Netlify as a preview, at a URL that stays the same for every push, and comments on the pull request with it and with links to the lectures it changes. |
+| [`preview-cloudflare`](actions/preview-cloudflare.md) | Deploys a pull request's built site to Cloudflare Pages as a preview, at a URL that stays the same for every push, and comments on the pull request with it and with links to the lectures it changes. |
+| [`publish-gh-pages`](actions/publish-gh-pages.md) | Publishes a built site to GitHub Pages with GitHub's own Pages deploy, so no gh-pages branch is needed. On a tag it can also attach the site to the release, as an archive with its checksum and a manifest. |
+| [`deploy-cloudflare`](actions/deploy-cloudflare.md) | Publishes a built site to an existing Cloudflare Worker behind Cloudflare Access, for a site only members may see, and fails unless the site is proven gated before and after the deploy. |
 
 <!-- END GENERATED -->
 

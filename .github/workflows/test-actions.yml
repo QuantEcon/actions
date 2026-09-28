@@ -259,9 +259,10 @@ jobs:
           [ "$drift" -eq 0 ] || exit 1
           echo "✅ templates/ third-party pins match .github/workflows/ ($checked checked)"
 
-      # #178, decision 5: the user manual's Inputs and Outputs tables, its
-      # action table and the signpost READMEs are generated from each
-      # action.yml, and its examples are checked against them. In the gate for
+      # #178, decision 5: every action has a chapter in the user manual; its
+      # Inputs and Outputs tables, the action table and the signpost READMEs
+      # are generated from each action.yml, and the manual's examples are
+      # checked against them. In the gate for
       # the reason the pin check above is: a docs-only PR matches IGNORED and
       # skips every other job. PyYAML is the pin in scripts/requirements.txt,
       # installed into a venv because the runner's Python is externally managed.
@@ -286,7 +287,7 @@ jobs:
           tar -xzf "$RUNNER_TEMP/$tarball" -C "$RUNNER_TEMP/actionlint" actionlint
           "$RUNNER_TEMP/actionlint/actionlint" -version
 
-      - name: Check the manual's generated tables match each action.yml
+      - name: Check every action has a chapter, and the manual's generated tables match each action.yml
         run: |
           "$RUNNER_TEMP/docs-venv/bin/python" scripts/generate-docs.py --check
 
@@ -1706,7 +1707,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # The Node the READMEs tell hosted-runner callers to set up, and the major
+      # The Node the manual tells hosted-runner callers to set up, and the major
       # the QuantEcon containers ship.
       - uses: actions/setup-node@v7
         with:
