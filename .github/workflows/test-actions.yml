@@ -567,7 +567,7 @@ jobs:
         run: |
           [ "$CONTAINER_MODE" = "false" ] || { echo "::error::container-mode: expected [false], got [$CONTAINER_MODE]"; exit 1; }
           [ "$CONDA_CACHE_HIT" != "true" ] || { echo "::error::conda-cache-hit=true on a salted (never-cached) environment"; exit 1; }
-          echo "✅ cold run: environment created fresh (conda cache saves at job end)"
+          echo "✅ no exact hit on a salted environment file: built fresh, or from another run's cache through the fallback (saved at job end)"
 
   env-hit-build:
     name: 'setup-environment: warm conda cache + build-lectures on the restored env'
@@ -656,6 +656,43 @@ jobs:
           "$CONDA/envs/quantecon/bin/python" -c 'import myst_nb' \
             || { echo "::error::the freshly built environment cannot import myst_nb"; exit 1; }
           echo "✅ a cache-version bump restored nothing and built the environment fresh"
+
+  env-file-edit:
+    # #205, the other half: under the same cache-version, an edited
+    # environment file must still restore the latest environment of that
+    # version through the fallback, and update it, so that an edit does not
+    # cost a full build. env-seed has saved a cache under this version, so
+    # the fallback always has one to find, and conda-cache-hit is 'false'.
+    name: 'setup-environment: an edited environment file restores through the fallback'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: env-seed
+    steps:
+      - uses: actions/checkout@v7
+
+      # env-seed's fixture plus one line, so the file's hash differs from its
+      # cache and only the fallback can match.
+      - name: Recreate salted fixture, then edit its environment file
+        run: |
+          cp -r .github/fixtures/mini-lectures harness
+          printf '\n# harness-salt: %s-book\n' "$SALT" >> harness/environment.yml
+          printf '%% harness salt: %s-book\n' "$SALT" > harness/lectures/salt.md
+          printf '# harness-edit: %s\n' "$SALT" >> harness/environment.yml
+
+      - name: Setup environment
+        id: setup
+        uses: ./setup-environment
+        with:
+          environment: 'harness/environment.yml'
+
+      - name: Assert the fallback restored an environment, and it works
+        env:
+          CONDA_CACHE_HIT: ${{ steps.setup.outputs.conda-cache-hit }}
+        run: |
+          [ "$CONDA_CACHE_HIT" = "false" ] || { echo "::error::conda-cache-hit: expected [false] (restored through the restore-keys fallback) for an edited environment file, got [$CONDA_CACHE_HIT]. Empty means the fallback found nothing under this cache-version although env-seed saved a cache there, so every edit would cost a full build (#205)"; exit 1; }
+          "$CONDA/envs/quantecon/bin/python" -c 'import myst_nb' \
+            || { echo "::error::the restored and updated environment cannot import myst_nb"; exit 1; }
+          echo "✅ an edited environment file restored an earlier environment of its version, then updated it"
 
   build-fail-guard:
     # The negative half of the build-lectures contract. env-hit-build proves a
@@ -1597,6 +1634,7 @@ jobs:
       - env-seed
       - env-hit-build
       - env-version-bump
+      - env-file-edit
       - build-fail-guard
       - env-container-update
       - bjc-smoke
