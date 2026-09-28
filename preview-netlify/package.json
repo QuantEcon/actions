@@ -3,6 +3,6 @@
   "name": "quantecon-actions-preview-netlify",
   "description": "Pins the netlify-cli that the preview-netlify action installs with npm ci from package-lock.json. Bumped by Dependabot; not published.",
   "dependencies": {
-    "netlify-cli": "27.8.1"
+    "netlify-cli": "27.9.0"
   }
 }
