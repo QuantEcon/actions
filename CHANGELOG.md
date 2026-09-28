@@ -45,12 +45,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   file join the gate's ignore list, since the gate's own checks are their test. New chapters start
   from `docs/dev/CHAPTER-TEMPLATE.md`. (#189)
 - **`setup-environment`**: the input and output descriptions in `action.yml`, which the manual now
-  copies verbatim, are rewritten for readers and corrected in three places. `conda-cache-hit` is
-  empty, not `false`, in container mode and on a cache miss. `environment-name` overrides the
-  environment file's `name:` rather than having to match it. And changing `cache-version` does not
-  give a fresh environment, as it claimed: the `restore-keys` fallback restores the previous cache
-  first, which `conda env update` then adjusts. `docs/QUICK-REFERENCE.md`, which gave the same
-  advice, now says so. (#189)
+  copies verbatim, are rewritten for readers and corrected in two places. `conda-cache-hit` is
+  empty, not `false`, in container mode and on a cache miss. And `environment-name` overrides the
+  environment file's `name:` rather than having to match it. The third error found, a
+  `cache-version` bump that did not rebuild, is fixed under Fixed. (#189)
 - Developer docs move to `docs/dev/`, the first step of the user manual (#178): `ARCHITECTURE.md`,
   `GPU-AMI-SETUP.md`, `PLAN.md`, `TESTING.md`, and `containers/VALIDATION.md` as
   `CONTAINER-VALIDATION.md`, with a `docs/dev/README.md` index. `docs/README.md`,
@@ -67,6 +65,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `cname:` in six consumers, a permanent `preview-cloudflare` step in the canary). (#187)
 
 ### Fixed
+- **`setup-environment`**: bumping `cache-version` builds a fresh Conda environment, as it was
+  documented to. It was in the exact cache key but in neither `restore-keys` fallback, and the
+  first fallback matched the same environment file under any version, so a bump restored the
+  previous version's environment and ran `conda env update` on it. `cache-version` now comes
+  before the Python version and the file hash, and the key has one fallback, which includes it:
+  `conda-<os>-<environment-name>-<cache-version>-py<python-version>-`. An edit to the environment
+  file still restores the latest environment of the same version and updates it; a bump restores
+  nothing. The key format changes, so the first standard-mode run after upgrading builds the
+  environment from scratch once. Container mode has no Conda cache and is unaffected, and so is
+  every current consumer: those that use `setup-environment` run it in a container. A new harness
+  job, `env-version-bump`, bumps the version on a cached environment and fails unless nothing is
+  restored. (#205)
 - **`test-containers-lectures.yml`**: the HTML stage is tried twice. Several lectures fetch a
   dataset from raw GitHub in a hidden cell at build time, and with the matrix building several
   repos at once from shared runner IPs that fetch is sometimes refused with HTTP 429,

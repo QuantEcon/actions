@@ -43,10 +43,9 @@ inputs:
     default: 'quantecon'
   cache-version:
     description: >-
-      Standard mode: the last part of the Conda cache key. Changing it (say `v1` to `v2`) makes the
-      exact key miss, so the next run updates the environment from `environment` and saves it
-      under the new key. It does not give a fresh environment: the `restore-keys` fallback still
-      restores the previous cache first. No effect in container mode, which has no Conda cache.
+      Standard mode: part of the Conda cache key and of its `restore-keys` fallback, so a cache is
+      only ever restored within one version. Changing it (say `v1` to `v2`) makes the next run
+      build the environment from scratch. No effect in container mode, which has no Conda cache.
     required: false
     default: 'v1'
   install-latex:
@@ -73,9 +72,9 @@ outputs:
   conda-cache-hit:
     description: >-
       Standard mode: `'true'` when the Conda environment was restored from an exact cache-key
-      match; `'false'` when only a `restore-keys` prefix matched, after which the environment is
-      updated from `environment`; empty on a cache miss. Always empty in container mode, which has
-      no Conda cache. Test it with `== 'true'`.
+      match; `'false'` when only the `restore-keys` fallback matched, after which the environment
+      is updated from `environment`; empty on a cache miss. Always empty in container mode, which
+      has no Conda cache. Test it with `== 'true'`.
     value: ${{ steps.conda-cache.outputs.cache-hit }}
 
 runs:
@@ -201,16 +200,21 @@ runs:
     # not permitted" and actions/cache reports a miss, so a cache rooted at
     # envs/ can be saved but never restored. The env dir itself is created by
     # (and owned by) the runner user, so it round-trips cleanly.
+    #
+    # cache-version comes before the Python version and the file hash so that
+    # the fallback, a prefix, never leaves a version: bumping it matches no
+    # cache, and the environment is built from scratch (#205). Within a
+    # version, the fallback restores the most recent environment whatever file
+    # it was built from, and the update step below reconciles it with this one.
     - name: Cache Conda environment (non-container mode)
       if: steps.detect-container.outputs.container-mode == 'false'
       uses: actions/cache@v6
       id: conda-cache
       with:
         path: ${{ env.CONDA }}/envs/${{ inputs.environment-name }}
-        key: conda-${{ runner.os }}-${{ inputs.environment-name }}-py${{ inputs.python-version }}-${{ hashFiles(inputs.environment) }}-${{ inputs.cache-version }}
+        key: conda-${{ runner.os }}-${{ inputs.environment-name }}-${{ inputs.cache-version }}-py${{ inputs.python-version }}-${{ hashFiles(inputs.environment) }}
         restore-keys: |
-          conda-${{ runner.os }}-${{ inputs.environment-name }}-py${{ inputs.python-version }}-${{ hashFiles(inputs.environment) }}-
-          conda-${{ runner.os }}-${{ inputs.environment-name }}-py${{ inputs.python-version }}-
+          conda-${{ runner.os }}-${{ inputs.environment-name }}-${{ inputs.cache-version }}-py${{ inputs.python-version }}-
 
     - name: Create/update environment (non-container mode, no exact cache hit)
       if: steps.detect-container.outputs.container-mode == 'false' && steps.conda-cache.outputs.cache-hit != 'true'
