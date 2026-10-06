@@ -13,10 +13,12 @@ container images (`containers/*/Dockerfile`, `environment.yml`), the consumer te
 (`templates/`), `CONTRIBUTING.md`, `.github/dependabot.yml` and the developer docs
 (`docs/dev/`).
 
-**Static check:** shellcheck over the 50 `run:` blocks of the composite actions, extracted with
-PyYAML. Its only hits (21, all SC2050/SC2157) are constant comparisons left where a `${{ }}`
-expression is substituted into the script, the sites finding M6 is about. The shell itself is
-clean.
+**Static check:** `shellcheck -S warning` over the 50 `run:` blocks of the composite actions. Each
+block was extracted with PyYAML from `*/action.yml` into its own file, with every `${{ … }}`
+replaced by a placeholder word, and checked as bash. Its only hits (21, all SC2050/SC2157) are
+constant comparisons left where a `${{ }}` expression is substituted into the script, the sites
+finding M6 is about. At that severity the shell is clean. Info- and style-level hits, mostly
+unquoted `$GITHUB_OUTPUT` (SC2086), were not counted.
 
 **Review dimensions:** architecture and consistency; security; reliability and error handling;
 performance and scalability; test coverage.
@@ -42,7 +44,7 @@ The codebase is mature for a 0.x project. Its failure-path engineering, deploy-p
 docs-as-code checks are better than most production Actions repositories. Validation found the
 team already owns most of the material risk. The review's two High findings were both already
 tracked (#142 under #188; #135 under #138), and nine findings extend open issues or a plan row.
-Four gaps had no owner, and they make up the follow-up project:
+Four gaps had no owner and become new work:
 
 - the consumer templates run notebook code in the same job as long-lived deploy credentials;
 - the weekly container rebuild republishes a fully cached image, contradicting the documented
@@ -116,8 +118,9 @@ Four gaps had no owner, and they make up the follow-up project:
     is the tested digest), in a job of the same run so a cancelled newer run cannot promote an
     older candidate;
   - cleanup of candidate tags;
-  - `test-containers-lectures.yml` (2 hours or more, with a known red leg in #159) kept as a
-    check after promotion, not a gate;
+  - `test-containers-lectures.yml` (two hours or more per `lecture-python.myst` leg, and red
+    from mid-September until #159 closed on 2026-10-05) kept as a check after promotion, not a
+    gate;
   - a `:latest` rollback entry in CONTRIBUTING.
 
 ### H2. `build-jupyter-cache` runs its siblings at the floating `@v0` ref
@@ -129,15 +132,15 @@ Four gaps had no owner, and they make up the follow-up project:
   not pin the actions it calls: they follow `v0`. That makes "`@v0.x.y`: maximum
   reproducibility" untrue for this one action, and `docs/user/actions/build-jupyter-cache.md:129`
   already says so, so the documents disagree.
-- **Corrections:** impact today is nil. Every consumer of `build-jupyter-cache` is on `@v0`, and
+- **Corrections:** impact as of 2026-10-06 is nil. Every consumer of `build-jupyter-cache` is on `@v0`, and
   every exact pin is on an action that calls no sibling (`docs/dev/PLAN.md` consumers table). The
   mechanism itself is already documented as a release-process limit (CONTRIBUTING step 5 and
   Known limits; the harness header).
 - **Existing coverage:** #135 (under #138) lists "rewrite sibling refs at release time" as an
   option, and #138's open decisions ask whether the residual is accepted or worth the rewrite.
   The #143 spike showed a gate can test the sibling chain by rewriting the four `uses:` lines at
-  test time. #83 part 1 asked for the same hermeticity and was closed when the refs moved from
-  `@main` to `@v0`, which met only half of it.
+  test time. #83 part 1 asked for the same hermeticity and was marked resolved by the earlier move
+  of the refs from `@main` to `@v0` (#83 closed with #122), which met only half of it.
 - **Disposition: amend #135**, as input to #138's accept-or-rewrite decision:
   - pinning the outer action does not pin its siblings;
   - a rewrite in the released tree (to the release tag or to a commit) makes pins hermetic, and
@@ -225,8 +228,8 @@ Four gaps had no owner, and they make up the follow-up project:
   accessed caches once a repository passes its cache budget (10 GB by default), and a miss
   caused by eviction reads as an ordinary miss.
 - **Corrections:** `save-cache` is opt-in and commented out in `templates/ci.yml:73`. Publish runs
-  refresh main's entry, so it is not the first thing evicted. Only `lecture-dp` and the canary run
-  the cache chain today. The user manual already mentions LRU eviction
+  refresh main's entry, so it is not the first thing evicted. As of 2026-10-06 only `lecture-dp` and
+  the canary run the cache chain. The user manual already mentions LRU eviction
   (`docs/user/actions/restore-jupyter-cache.md:97`). Deleting superseded entries from inside the
   pull-request run, as the review proposed, does not work: a fork's token is read-only.
 - **Existing coverage:** none on storage. #149 (under #92) plans to turn `save-cache` on in
@@ -260,9 +263,10 @@ Four gaps had no owner, and they make up the follow-up project:
 
   The documentation promises weekly security updates, but OS updates arrive only when the base
   image is republished or someone pushes, with gaps of up to about three weeks. When the base
-  does move, the lean image's unpinned Jupyter stack (`jupyter`, `jupyterlab`, `notebook`,
-  `ipykernel`, `plotly`, `mkl`), its `>=` floors and the unpinned `quantecon-book-networks`
-  re-resolve together with no pull request.
+  does move, three things re-resolve together with no pull request: the lean image's unpinned
+  conda packages (19 of them, including `jupyter`, `jupyterlab`, `notebook`, `ipykernel`,
+  `ipywidgets`, `plotly` and `mkl`), its `>=` pip floors, and `quantecon-book-networks`, which is
+  unpinned in both images.
 - **Corrections:** "no TeX updates" barely applies, because Ubuntu 24.04 does not move TeX Live
   within the release; the loss is apt security and bugfix updates. `no-cache-filters` cannot
   isolate the apt step in a single-stage Dockerfile. Turning on `no-cache` for scheduled runs
@@ -311,20 +315,18 @@ Four gaps had no owner, and they make up the follow-up project:
   `setup-environment/action.yml:178-179`, `:264`; `publish-gh-pages/action.yml:64-88`, `:128`,
   `:147`.
 - **Claim, as validated:** several actions substitute caller-supplied inputs, and step outputs
-  that carry them, directly into shell scripts instead of passing them through `env:`. Text that
-  reaches those spots is parsed as shell, and a value containing a line break could add keys to a
-  step's outputs. `restore-jupyter-cache`'s `key` is the input a consumer is most likely to build
-  from workflow context.
-- **Corrections:** no consumer, template or document builds `key` from untrusted context today. A
-  branch name cannot carry a line break. A fork `pull_request` run gets a read-only token and no
-  secrets.
+  that carry them, directly into shell scripts instead of passing them through `env:`. Caller
+  text that reaches those spots is interpreted by the shell rather than passed as data, the
+  pattern the repository otherwise avoids.
+- **Corrections:** as of 2026-10-06, no consumer, template or document passes untrusted context
+  into these inputs. A fork `pull_request` run gets a read-only token and no secrets.
 - **Existing coverage:** `docs/dev/PLAN.md` backlog item 18 names every one of these sites, and
   also covers the preview actions' trusted-actor check. It has no GitHub issue, and #192 plans to
   trim PLAN.
 - **Disposition: already owned.** When item 18 is done:
   - move the step outputs that carry caller text into `env:` as well as the inputs;
   - quote the resulting variables;
-  - reject a `key` or `path` that contains a line break before writing it to `$GITHUB_OUTPUT`.
+  - validate `key` and `path` before writing them to `$GITHUB_OUTPUT`.
 
   If item 18 should be tracked as an issue before #192 trims PLAN, that is one issue for item 18,
   not one for this finding.
@@ -398,10 +400,14 @@ Four gaps had no owner, and they make up the follow-up project:
 - **Where:** `publish-gh-pages/action.yml:152-163`.
 - **Claim, as validated:** the manifest writes the asset name and the tag into JSON strings
   without escaping. `"` is legal in a git tag name, and a tag containing one produced a manifest
-  that does not parse (reproduced). The manifest is documented as a JSON contract
-  (`docs/user/actions/publish-gh-pages.md`).
-- **Corrections:** no tag in use today can trigger it, because QuantEcon's publish tags look like
-  `publish-YYYY-MM-DD`, and one consumer uses release assets.
+  that does not parse. Reproduced by rendering the heredoc with `TAG_NAME='publish-"x'` and
+  piping the result to `jq .`, which reports a parse error. The manifest is documented as a JSON
+  contract (`docs/user/actions/publish-gh-pages.md`).
+- **Corrections:** as of 2026-10-06 no tag in use can trigger it. QuantEcon's publish tags use
+  only letters, digits and dashes, such as `publish-2026sep27`, `publish-2026jan15b` and
+  occasionally `publish-2026-07-17`. The step still runs often: eight consumers pass
+  `create-release-assets: 'true'` (#27), so every tag-triggered publish of those sites writes this
+  manifest.
 - **Existing coverage:** none on escaping. #30 (parent `QuantEcon/meta#321`) plans to rewrite
   this generator into a versioned schema.
 - **Disposition: amend #30.** The rewrite should build the manifest with a JSON encoder
@@ -412,13 +418,13 @@ Four gaps had no owner, and they make up the follow-up project:
 
 - **Where:** `containers/quantecon/Dockerfile` (151 lines) and
   `containers/quantecon-build/Dockerfile` (153 lines).
-- **Validated:** the security-relevant blocks are identical today: the Miniconda version and
+- **Validated:** the security-relevant blocks are identical as of 2026-10-06: the Miniconda version and
   checksum (`quantecon:76-80`, `quantecon-build:72-76`), the Node version and checksum
   (`:108-114` and `:109-115`) and the `safe.directory` line (`:136` and `:138`). Recent changes
   edited both files together. Incidental drift exists: the fontconfig cache is mode `777` in one
   image and `755` in the other. The `==`/`>=` split is in the environment files and is covered by
-  #129. #32 was this kind of drift, when the full image lost the lean image's Miniconda
-  checksum. Merging the files (one Dockerfile with a variant argument) costs more than the risk.
+  #129. #32 was this kind of drift: the full image fetched Miniconda without the checksum the
+  lean image verified. Merging the files (one Dockerfile with a variant argument) costs more than the risk.
 - **Existing coverage:** none. #151 (under #92) will add a third copy and already plans a parity
   assertion for its package pins.
 - **Disposition: amend #151.** Widen its parity check to the security-relevant lines across every
