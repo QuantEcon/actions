@@ -12,6 +12,7 @@ repository's own documentation (`docs/`, `README.md`, `CONTRIBUTING.md`).
 | `README.md` | people | live: this contract |
 | `dev/log/YYYY-MM-DD-<id>.md` | agents, people | raw, append-only: a dated record of one session or review, never edited after it lands |
 | `dev/decisions/D-YYYY-MM-DD-<slug>.md` | people | raw, append-only: one decision per file; superseded by a new record, never rewritten |
+| `dev/cloud/handover-<name>.md` | cloud agents | raw: written once by a cloud session for work it cannot do itself (writes to GitHub that its tools cannot make); the agent that executes it records the outcome in a new `dev/log/` entry instead of editing the handover |
 
 Not present yet: `project.yml`, `NEXT-STEPS.md`, the generated views (`ROADMAP.md`, `DIGEST.md`,
 `snapshot.json`) and the distilled pages under `dev/`. This repository hosts several project
