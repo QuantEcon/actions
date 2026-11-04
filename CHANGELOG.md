@@ -39,7 +39,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   notebooks and needs no GPU runner. A site that publishes no PDF sets `PDF_CHECK: 'false'` in the
   workflow's `env:` block, and the job is reported as skipped. The switch is in the file, not a
   repository variable, because a run for a fork's pull request does not receive repository
-  variables. Two harness jobs run the hand-off on the fixture in the lean image. (#230)
+  variables. Harness jobs run the hand-off on the fixture in the lean image, through the
+  template's switch, and check that `PDF_CHECK: 'false'` skips both the upload and the job.
+  (#230)
 
 ### Documentation
 - **User manual** (#178): every action has its chapter. `build-lectures`, `build-jupyter-cache`,

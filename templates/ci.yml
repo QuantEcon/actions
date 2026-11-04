@@ -146,7 +146,7 @@ jobs:
           name: jupyter-cache
           path: _build/.jupyter_cache
           include-hidden-files: true
-          retention-days: 1
+          retention-days: 1         # Later, re-run all jobs, not pdf-check alone
           overwrite: true           # A re-run of this job replaces it
 
   # ─── PDF Check ───────────────────────────────────────────────────

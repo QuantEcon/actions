@@ -70,6 +70,9 @@ permissions:
 
 env:
   SALT: ${{ github.run_id }}-${{ github.run_attempt }}
+  # templates/ci.yml's pdf-check switch, set where the template sets it, so the
+  # pdf-check-* jobs below run the template's plumbing (see their header).
+  PDF_CHECK: 'true'
 
 jobs:
   # ==========================================================================
@@ -987,6 +990,13 @@ jobs:
   # They also pin actions/download-artifact in a workflow, as the gate's pin
   # check requires of every action a template uses.
   #
+  # They also run the template's switch plumbing, which only a run can
+  # evaluate: PDF_CHECK in the workflow's env:, read into a job output (a
+  # job-level if: cannot read env), the upload step gated on env, and the PDF
+  # job gated on the output. If the output came through empty, pdf-check-build
+  # would be skipped, and harness-summary fails a skipped job. The
+  # pdf-check-switch-* jobs run the 'false' path.
+  #
   # Both jobs write the same fixture, so lecture1 hashes the same in both and
   # its cached outputs match. Its extra cell leaves a marker in /tmp when it
   # executes, outside the workspace, so nothing carries the marker between
@@ -1009,6 +1019,9 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
       options: --user root
+    # As templates/ci.yml's preview job.
+    outputs:
+      pdf-check: ${{ env.PDF_CHECK }}
     steps:
       - uses: actions/checkout@v7
 
@@ -1052,6 +1065,7 @@ jobs:
 
       # As templates/ci.yml's "Upload executed notebooks for pdf-check".
       - name: Upload the execution cache
+        if: env.PDF_CHECK == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: harness-jupyter-cache
@@ -1065,6 +1079,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: pdf-check-handoff
+    # As templates/ci.yml's pdf-check job.
+    if: needs.pdf-check-handoff.outputs.pdf-check == 'true'
     permissions:
       contents: read
       packages: read          # pull the container image
@@ -1160,6 +1176,60 @@ jobs:
           [ ! -e /tmp/harness-lecture1-executed ] \
             || { echo "::error::lecture1 executed in the second PDF build"; exit 1; }
           echo "✅ LaTeX that the HTML build passed fails the PDF build"
+
+  # The 'false' path of the switch, in three small jobs. The first sets
+  # PDF_CHECK 'false' at job level, overriding the workflow's 'true' as a site's
+  # own env: block would, and stands in for the preview job: its output and its
+  # gated upload step. The second stands in for pdf-check and must be skipped,
+  # so it is not in harness-summary's needs:, which fails a skipped job; the
+  # third checks that it was skipped. Each stand-in fails if it runs.
+  pdf-check-switch-off:
+    name: "templates/ci.yml pdf-check: PDF_CHECK 'false' skips the upload step"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    env:
+      PDF_CHECK: 'false'
+    outputs:
+      pdf-check: ${{ env.PDF_CHECK }}
+    steps:
+      - name: Stand-in for the upload step (must be skipped)
+        if: env.PDF_CHECK == 'true'
+        run: |
+          echo "::error::the upload step ran with PDF_CHECK 'false'"
+          exit 1
+
+  pdf-check-switch-off-job:
+    name: "templates/ci.yml pdf-check: stand-in for pdf-check (must be skipped)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: pdf-check-switch-off
+    if: needs.pdf-check-switch-off.outputs.pdf-check == 'true'
+    steps:
+      - name: Fail, because this job ran
+        run: |
+          echo "::error::pdf-check ran with PDF_CHECK 'false'"
+          exit 1
+
+  pdf-check-switch-verify:
+    name: "templates/ci.yml pdf-check: PDF_CHECK 'false' skips the job"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [pdf-check-switch-off, pdf-check-switch-off-job]
+    # Skipped with pdf-check-switch-off, so it skips when the gate does.
+    if: ${{ !cancelled() && needs.pdf-check-switch-off.result == 'success' }}
+    steps:
+      - name: Assert the output said 'false' and the job was skipped
+        env:
+          OUTPUT: ${{ needs.pdf-check-switch-off.outputs.pdf-check }}
+          JOB_RESULT: ${{ needs.pdf-check-switch-off-job.result }}
+        run: |
+          [ "$OUTPUT" = "false" ] \
+            || { echo "::error::the job output carried [$OUTPUT], not the job's PDF_CHECK 'false'"; exit 1; }
+          [ "$JOB_RESULT" = "skipped" ] \
+            || { echo "::error::the stand-in for pdf-check finished as [$JOB_RESULT]; with PDF_CHECK 'false' it must be skipped"; exit 1; }
+          echo "✅ PDF_CHECK 'false' reached the job output, and the dependent job was skipped"
 
   # ==========================================================================
   # build-jupyter-cache — smoke + round-trip into restore-jupyter-cache.
@@ -1955,6 +2025,8 @@ jobs:
       - env-container-update
       - pdf-check-handoff
       - pdf-check-build
+      - pdf-check-switch-off
+      - pdf-check-switch-verify
       - bjc-smoke
       - bjc-fail-guard
       - bjc-abort-guard

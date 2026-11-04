@@ -122,6 +122,8 @@ How it gets the executed notebooks: the preview job uploads `_build/.jupyter_cac
 
 `pdf-check` runs on `ubuntu-latest` even where the preview job needs a GPU runner, and passes the same arguments to `build-lectures` as the PDF builds in `cache.yml` and `publish.yml`, so it fails where they would. On a failure, the LaTeX log is uploaded as the `latex-log` artifact.
 
+To run `pdf-check` again, use **Re-run all jobs** once the hand-off artifact has expired, which is one day after the preview job uploaded it. Re-running `pdf-check` alone needs that artifact, so after it has expired the job fails at the download. **Re-run all jobs** runs the preview job again, which uploads a fresh one.
+
 ### Using a Standard Runner (No Container)
 
 Remove the `container:` block from each workflow and uncomment the standard runner `with:` block under `setup-environment`. See comments in each template.
