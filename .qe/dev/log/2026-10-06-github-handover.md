@@ -430,6 +430,7 @@ Separately, no template sets `persist-credentials: false` on `actions/checkout` 
 
 - #153 plans a pull-request comment job that runs no repository code. The deploy job can host it.
 - #151 bakes the deploy CLI into a preview image. Once the deploy runs in its own job, the build image no longer needs the CLI.
+- #227 (preview deploys outside `pull_request`, on request) and #230 (a PDF check job beside the preview in `templates/ci.yml`) change the same preview path. Whichever lands later keeps the others working.
 ~~~~
 
 ### `T_PUBLISH.md`
@@ -480,6 +481,8 @@ What should a scheduled run of `build-containers.yml` do: refresh the images' OS
 - fully cached, in about 20-40 s: the scheduled runs of 2026-08-31, 2026-09-07, 2026-09-21 and 2026-09-28;
 - rebuilt, in about 7-8 min, because the base digest had moved: 2026-08-24, 2026-09-14 and 2026-10-05.
 
+The pattern held after the review. The scheduled runs of 2026-10-12 and 2026-10-26 took 40 s and 24 s, and those of 2026-10-19 and 2026-11-02 about 8.5 min.
+
 The documentation says something different:
 
 - `README.md:156` promises "Weekly automated builds (Monday 2am UTC) for security updates".
@@ -488,15 +491,17 @@ The documentation says something different:
 
 When the base does move, these re-resolve together, with no pull request:
 
-- the lean image's unpinned conda packages: every entry in `containers/quantecon-build/environment.yml:32-57` except the ten pinned scientific packages, including `jupyter`, `jupyterlab`, `notebook`, `ipykernel`, `ipywidgets`, `plotly` and `mkl`;
+- the lean image's conda packages that carry no version (`xlrd`, `graphviz`, `python-graphviz` and `lxml` since #226), and every transitive dependency the environment file does not name;
 - its `>=` pip floors;
 - `quantecon-book-networks`, which is unpinned in both images.
+
+This is what broke #222. The scheduled rebuild of 2026-10-19 re-resolved the lean image's then-unpinned `plotly` to 7.x, which cannot export images with the image's `kaleido` 0.2, and the lecture matrix's `lecture-python-advanced.myst` leg failed on the lean image every week after that. #226 (2026-11-04) pinned each lean-image conda package that the `anaconda=2026.07` metapackage also pins, at the metapackage's version. That leaves the four above and the pip layer.
 
 ## Options
 
 **(a) Refresh weekly.**
 
-- First pin the lean image's Python layer. The full image already uses `==` for its build tools.
+- First finish pinning the lean image's Python layer: #226 pinned its conda packages, but its pip packages still carry `>=` floors. The full image already uses `==` for its build tools.
 - Then make scheduled runs actually rebuild, with `no-cache` on `schedule` events or a weekly cache-bust build argument on the apt step.
 - OS updates then arrive weekly, and the Python stack moves only through pull requests.
 - Cost: a cold build of about 7-8 min per image every week.
@@ -513,7 +518,7 @@ When the base does move, these re-resolve together, with no pull request:
 
 Either way, the three documents above must say what the images actually do. The task that implements the choice waits on this issue (native dependency).
 
-**The review's recommendation:** (b), with the lean image's Python layer pinned too. Every change to an image then arrives as a pull request. That fits the dependency policy in `docs/dev/PLAN.md`, the reproducibility goal of #129 and the validation plan of #142. Choose (a) if weekly OS patches matter more than reviewing each image change.
+**The review's recommendation:** (b), with the rest of the lean image's Python layer pinned too (#226 did the conda packages). Every change to an image then arrives as a pull request. That fits the dependency policy in `docs/dev/PLAN.md`, the reproducibility goal of #129 and the validation plan of #142. Choose (a) if weekly OS patches matter more than reviewing each image change.
 
 ## Closing
 
@@ -563,7 +568,7 @@ From the 2026-10-06 codebase review (finding L3; record: `.qe/dev/log/2026-10-06
 - A harness job modelled on `bjc-builders-parse` shows that `cache-type: exec` and `save-cache: True` fail the run.
 - Each input's description states its accepted values, and so does the generated manual table.
 
-This can ship with `docs/dev/PLAN.md` backlog item 18, which moves the same inputs into `env:`.
+This can ship with #228 (`docs/dev/PLAN.md` backlog item 18), which moves the same inputs into `env:`.
 ~~~~
 
 ### `T_ALERT.md`
@@ -633,7 +638,7 @@ The review's other new work does not share this goal, so it was filed as standal
 Of the remaining findings:
 
 - eight were recorded as comments on the issues that own them (#142, #135, #153, #149, #100, #215, #30, #151);
-- one is owned by `docs/dev/PLAN.md` backlog item 18;
+- one is owned by #228, filed on 2026-11-04 from `docs/dev/PLAN.md` backlog item 18;
 - two were dropped.
 ~~~~
 
@@ -651,7 +656,7 @@ The review reached this issue's diagnosis independently, and its validation conf
   - Add a promote job in the same run, `needs:` the smoke test, that uses `imagetools create`, so the promoted digest is the tested digest.
   - Keeping the promote job in the same run means a cancelled newer run cannot leave an older candidate to be promoted.
   - Promote each image on its own, unless the two should move together.
-- **What gates.** `test-containers-lectures.yml` takes two hours or more per `lecture-python.myst` leg, and it was red from mid-September until #159 closed on 2026-10-05. It fits better as a check after promotion than as the gate.
+- **What gates.** `test-containers-lectures.yml` takes two hours or more per `lecture-python.myst` leg, it was red from mid-September until #159 closed on 2026-10-05, and it has been red again since 2026-10-12 (#222). It fits better as a check after promotion than as the gate.
 - **Clean-up.** Remove old candidate tags. Once this lands, replace CONTRIBUTING's "Container images do not stage" limit with the rollback procedure.
 
 #150's dispatch tag input for `test-container.yml` overlaps the mechanism.
@@ -662,11 +667,11 @@ The review reached this issue's diagnosis independently, and its validation conf
 ~~~~markdown
 From the 2026-10-06 codebase review (finding H2; record: `.qe/dev/log/2026-10-06-codebase-review.md`, QuantEcon/actions#220).
 
-Input for #138's open decision on whether the `build-jupyter-cache` residual is accepted or worth the ref rewrite. This issue frames the residual as release gating. The review found a consumer-facing side as well:
+Input for #138's open decision on whether the `build-jupyter-cache` residual is accepted or worth the ref rewrite. This issue frames the residual as release gating. Since decision 1 on #143 (2026-11-04), the gate is a `gate.yml` in the canary with no `v0-next` tag, and it can test the candidate's own sibling chain by rewriting the four `uses:` lines at test time, as the #143 spike did. The review found a consumer-facing side that a test-time rewrite does not reach:
 
 - **Pins are not hermetic.** A composite action's nested `uses:` is resolved when the job runs. So pinning `build-jupyter-cache` to an exact tag or a commit does not pin `setup-environment` or `build-lectures` (`build-jupyter-cache/action.yml:216`, `:232`, `:242`, `:252`): they follow `v0`. Because 0.x minor releases may break, an exactly pinned cache build can break when `v0` moves.
 - **The docs disagree.** `CONTRIBUTING.md:36` and `README.md:181` offer exact pins as "maximum reproducibility". `docs/user/actions/build-jupyter-cache.md:129` says this action follows `v0` for its siblings. A one-line caveat in the version tables should land whichever way #138 decides.
-- **A release-time rewrite closes both.** Rewriting the sibling refs in the tagged tree (to the release tag, or to a commit) makes pins hermetic, and lets the staged-release dispatch exercise the candidate's own siblings. The costs:
+- **A release-time rewrite closes both.** Rewriting the sibling refs in the tagged tree (to the release tag, or to a commit) makes pins hermetic, and the gate then tests the tree as released rather than a test-time rewrite of it. The costs:
   - release tags point at commits that are not ancestors of `main`;
   - every release, patches included, repeats the rewrite, so a release check is needed that no `quantecon/actions/…@v0` remains in a tagged tree.
 
