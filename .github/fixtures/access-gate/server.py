@@ -35,7 +35,7 @@ TEAM = "https://quantecon-harness.cloudflareaccess.com"
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path
-        label = self.headers.get("Host", "").split(".", 1)[0]
+        label = self.headers.get("Host", "").split(":", 1)[0].split(".", 1)[0]
         if label.startswith("harness-"):
             path = "/" + label[len("harness-"):] + path
         if path.startswith("/gated"):
@@ -72,6 +72,9 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    # A job that meant TLS must not get plain HTTP from a miscounted call.
+    if len(sys.argv) not in (2, 4):
+        sys.exit("usage: python3 server.py <port> [<certfile> <keyfile>]")
     server = ThreadingHTTPServer(("127.0.0.1", int(sys.argv[1])), Handler)
     if len(sys.argv) == 4:
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
