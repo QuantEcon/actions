@@ -23,11 +23,12 @@ ghcr.io/quantecon/quantecon-build:latest
 
 ### Python Packages (Superset for all QuantEcon lectures)
 
-Core scientific stack (pinned to the Anaconda 2026.07 baseline, matching the
-versions the lecture repos build against):
-- numpy, scipy, pandas, matplotlib, seaborn
-- sympy, numba, networkx, statsmodels
-- jupyter, jupyterlab, ipywidgets
+Pinned to the Anaconda 2026.07 baseline, matching the versions the lecture repos
+build against and the full image (every package here that the `anaconda`
+metapackage also pins):
+- numpy, scipy, pandas, matplotlib, seaborn, plotly
+- sympy, numba, networkx, statsmodels, scikit-learn
+- jupyter, jupyterlab, notebook, ipykernel, ipywidgets
 
 Jupyter Book ecosystem:
 - jupyter-book, quantecon-book-theme
