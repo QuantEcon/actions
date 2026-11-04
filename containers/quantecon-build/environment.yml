@@ -6,17 +6,24 @@ name: quantecon
 channels:
   - defaults
 dependencies:
-  # Python
-  - python=3.13
+  # Every package below that the anaconda=2026.07 metapackage also pins is pinned
+  # to its version there: the Anaconda baseline every QuantEcon lecture repo builds
+  # against (they pin `anaconda=2026.07`), and what the full `quantecon` image gets
+  # from the metapackage. A package left unpinned moves ahead of that baseline
+  # whenever the image is rebuilt, and the drift has broken notebook execution
+  # downstream twice: un_insure.md's fsolve call (#28), and plotly 7, which a
+  # scheduled rebuild picked up and which cannot export images with the kaleido
+  # below (#222).
+  # Versions are the anaconda=2026.07 linux-64 py313 (MKL) pins; bump them as a set
+  # when the lecture repos move to a newer anaconda release, and keep each one in
+  # the conda `ignore` list in .github/dependabot.yml. xlrd, graphviz,
+  # python-graphviz and lxml are not in the metapackage, so they have no baseline
+  # version and stay unpinned.
   
-  # Core scientific stack — pinned to the Anaconda 2026.07 baseline that every
-  # QuantEcon lecture repo builds against (they pin `anaconda=2026.07`), keeping
-  # this lean image reproducible and consistent with the full `quantecon` image
-  # and the source repos. Left unpinned, the stack drifted ahead of that baseline
-  # and produced non-reproducible images that broke notebook execution downstream
-  # (e.g. un_insure.md's fsolve call; see #28).
-  # Versions are the anaconda=2026.07 linux-64 py313 (MKL) pins; bump as a set
-  # when the lecture repos move to a newer anaconda release.
+  # Python
+  - python=3.13.14
+  
+  # Core scientific stack
   - numpy=2.4.6
   - scipy=1.18.0
   - pandas=3.0.3
@@ -29,34 +36,34 @@ dependencies:
   - scikit-learn=1.9.0
   
   # CPU acceleration (Intel MKL for optimized linear algebra)
-  - mkl
-  - mkl-service
+  - mkl=2025.0.0
+  - mkl-service=2.7.2
   
   # Jupyter ecosystem
-  - jupyter
-  - jupyterlab
-  - ipywidgets
-  - ipykernel
-  - notebook
+  - jupyter=1.1.1
+  - jupyterlab=4.5.9
+  - ipywidgets=8.1.7
+  - ipykernel=6.31.0
+  - notebook=7.5.7
   
   # Data handling
   - xlrd
-  - openpyxl
-  - pytables
-  - h5py
+  - openpyxl=3.1.5
+  - pytables=3.11.1
+  - h5py=3.16.0
   
   # Visualization
-  - plotly
+  - plotly=6.7.0
   - graphviz
   - python-graphviz
   
   # Utilities
-  - requests
-  - beautifulsoup4
+  - requests=2.34.2
+  - beautifulsoup4=4.15.0
   - lxml
-  - pyyaml
+  - pyyaml=6.0.3
   
-  - pip
+  - pip=26.1.2
   - pip:
     # Jupyter Book build tools
     - jupyter-book>=1.0.4post1,<2.0
@@ -74,6 +81,7 @@ dependencies:
     # Pinned <1.0: kaleido v1 dropped the bundled chromium and needs a separately
     # provisioned Chrome, which isn't found at runtime in CI (container jobs set
     # HOME=/github/home, not the build-time /root). v0.2.x bundles its own
-    # chromium (location-independent) and still works with current plotly. (#28-class)
+    # chromium (location-independent) and works with plotly 6, not 7: plotly 7
+    # exports images only with kaleido>=1, which is why plotly is pinned above (#222).
     - kaleido<1.0  # Plotly static image export
     - prettytable

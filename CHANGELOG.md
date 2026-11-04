@@ -174,6 +174,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   package index. It now fails the run. The per-package lookup gains an explicit `|| true`: `grep`
   exits 1 for a package apt does not know, which under `pipefail` would abort the script before it
   could print `NOT FOUND`. (#187)
+- **Containers**: the lean image (`quantecon-build`) exports plotly figures again. Its
+  `environment.yml` pinned only ten packages to the Anaconda 2026.07 baseline, so everything else
+  re-resolved whenever the image was rebuilt. The scheduled rebuild on 2026-10-19 moved plotly to
+  7.x, which exports images only with kaleido 1.x, while both images ship kaleido 0.2 on purpose
+  (it bundles its own chromium). Since then every `to_image` and `write_image` in the lean image
+  has failed: the smoke test on `quantecon-build` has been red, with no alert, because
+  `test-container.yml` files none; and so has the lecture-validation matrix's
+  `lecture-python-advanced.myst` leg, whose lectures also pass `engine="kaleido"`, an argument
+  plotly 7 removed. The full image takes plotly 6.7.0 from the metapackage and was unaffected.
+  The lean image now pins every package in its file that the `anaconda=2026.07` metapackage
+  also pins, at the metapackage's version, so its conda layer matches the full image's. Against
+  a solve of the old file on 2026-11-04, eight versions move: plotly 7.1.0 → 6.7.0, ipykernel
+  7.3.0 → 6.31.0, jupyterlab 4.6.4 → 4.5.9, notebook 7.6.3 → 7.5.7, ipywidgets 8.1.9 → 8.1.7,
+  mkl-service 2.9.0 → 2.7.2, pip 26.2.2 → 26.1.2 and Python 3.13.18 → 3.13.14. mkl, jupyter,
+  openpyxl, pytables, h5py, requests, beautifulsoup4 and pyyaml are pinned at the versions they
+  already resolved to. xlrd, graphviz, python-graphviz and lxml are not in the metapackage, so
+  they stay unpinned. The new pins join the conda `ignore` list in `.github/dependabot.yml`, so
+  Dependabot does not propose moving them past the baseline. (#222)
 
 ## [0.12.0] - 2026-09-24
 

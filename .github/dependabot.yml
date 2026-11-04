@@ -63,6 +63,24 @@ updates:
       - dependency-name: "statsmodels"
       - dependency-name: "scikit-learn"
       - dependency-name: "anaconda"
+      # The rest of the lean image's conda packages that the anaconda metapackage
+      # pins, held at its versions for the same reason: plotly drifting to 7 broke
+      # every image export in the lean image (#222).
+      - dependency-name: "mkl"
+      - dependency-name: "mkl-service"
+      - dependency-name: "jupyter"
+      - dependency-name: "jupyterlab"
+      - dependency-name: "ipywidgets"
+      - dependency-name: "ipykernel"
+      - dependency-name: "notebook"
+      - dependency-name: "openpyxl"
+      - dependency-name: "pytables"
+      - dependency-name: "h5py"
+      - dependency-name: "plotly"
+      - dependency-name: "requests"
+      - dependency-name: "beautifulsoup4"
+      - dependency-name: "pyyaml"
+      - dependency-name: "pip"
       # jupyter-book 2.x is a major rewrite — stay on 1.x until we opt in.
       - dependency-name: "jupyter-book"
         update-types: ["version-update:semver-major"]
