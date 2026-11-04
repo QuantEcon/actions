@@ -138,8 +138,10 @@ jobs:
           # action would quietly enlarge the must-run set. That direction is
           # harmless but it makes the self-test assert something other than what
           # it appears to, which is the failure mode this whole job exists to
-          # avoid. Only real step invocations count.
-          DIRS=$(grep -oE '^[[:space:]]*uses: \./[A-Za-z0-9_.-]+' .github/workflows/test-actions.yml | sed 's|.*\./||' | sort -u)
+          # avoid. Only real step invocations count; a name cannot start with a
+          # dot, so the container-images job's `uses: ./.github/workflows/...`
+          # is not taken for an action.
+          DIRS=$(grep -oE '^[[:space:]]*uses: \./[A-Za-z0-9_-][A-Za-z0-9_.-]*' .github/workflows/test-actions.yml | sed 's|.*\./||' | sort -u)
           [ -n "$DIRS" ] || { echo "::error::gate self-test: no 'uses: ./<action>' found in the harness — refusing to decide"; exit 1; }
           # Listed by hand, since the loop below adds only each action's
           # action.yml: the lockfiles, which preview-cli-install tests, and the
@@ -147,6 +149,10 @@ jobs:
           # and preview-decide run on their own.
           MUST_RUN=".github/workflows/test-actions.yml .github/fixtures/mini-lectures/environment.yml preview-cloudflare/package-lock.json preview-netlify/package-lock.json scripts/detect-changed-lectures.sh scripts/preview-decide.sh"
           for d in $DIRS; do MUST_RUN="$MUST_RUN $d/action.yml"; done
+          # The container-images job decides for itself which images to build,
+          # but runs only when this gate says relevant: an IGNORED that matched
+          # an image's files would pass a containers-only pull request unbuilt.
+          for f in containers/*/Dockerfile containers/*/environment.yml containers/quantecon/tests/smoke-test.sh .github/workflows/validate-containers.yml .github/workflows/test-container.yml scripts/detect-changed-images.sh; do MUST_RUN="$MUST_RUN $f"; done
           for p in $MUST_RUN; do
             if grep -Eq "$IGNORED" <<< "$p"; then
               echo "::error::gate self-test: IGNORED matches [$p], which must always run the harness"; exit 1
@@ -1232,6 +1238,36 @@ jobs:
           [ "$JOB_RESULT" = "skipped" ] \
             || { echo "::error::the stand-in for pdf-check finished as [$JOB_RESULT]; with PDF_CHECK 'false' it must be skipped"; exit 1; }
           echo "✅ PDF_CHECK 'false' reached the job output, and the dependent job was skipped"
+
+  # ==========================================================================
+  # Container images — a pull request's candidates, built and smoke-tested (#142)
+  # ==========================================================================
+
+  # Not an action test. It is here so that the one required check covers the
+  # images: before it, a pull request that changed only containers/** ran
+  # every job in this file, none of which builds or pulls the changed image,
+  # and reported `Action harness: all checks` green. validate-containers.yml
+  # works out which images the pull request changes, pushes each as a pr-<N>
+  # candidate (never :latest) and runs test-container.yml's smoke test on it.
+  # On a push or a dispatch, or a pull request that changes no image, its plan
+  # job finds nothing to build and it passes having pushed nothing; a fork's
+  # pull request that changes an image fails it, since it cannot push one.
+  container-images:
+    name: 'Container images'
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    # A ceiling for the called workflows, not a grant: each of their jobs sets
+    # its own permissions. Of the jobs that run from here, only the candidate
+    # builds get packages: write; issues and actions are for notify-failure
+    # jobs, which run only on unattended events, never on these. A fork's pull
+    # request gets a read-only token regardless.
+    permissions:
+      contents: read
+      pull-requests: read
+      packages: write
+      issues: write
+      actions: read
+    uses: ./.github/workflows/validate-containers.yml
 
   # ==========================================================================
   # build-jupyter-cache — smoke + round-trip into restore-jupyter-cache.
@@ -2815,6 +2851,7 @@ jobs:
       - pdf-check-build
       - pdf-check-switch-off
       - pdf-check-switch-verify
+      - container-images
       - bjc-smoke
       - bjc-fail-guard
       - bjc-abort-guard

@@ -165,9 +165,13 @@ docker run --rm ghcr.io/quantecon/quantecon:latest \
 ### Updating Dependencies
 
 1. Edit `environment.yml` to add/update packages
-2. Commit and push to `main` branch
-3. GitHub Actions will automatically build and push new images
-4. Images are tagged with both `:latest` and `:main-<sha>`
+2. Open a pull request. CI builds each image it changes, pushes it as a candidate tagged
+   `:pr-<N>` (never `:latest`), and smoke-tests it; that result is part of the required check.
+   The candidates are deleted when the pull request closes.
+3. On merge, GitHub Actions builds and pushes new images
+4. Images are tagged `:latest`, `:main-<sha>` and `:main-<YYYYMMDD>-<HHMMSS>-<sha>`. The last is
+   unique to each build, and each build's step summary records the digest it pushed and the one
+   `:latest` held before it, which is what to roll back to.
 
 ## Automated Builds
 
@@ -222,10 +226,13 @@ The container includes a test suite to verify LaTeX and Jupyter Book functionali
 
 CI runs `tests/smoke-test.sh` inside each image, in a real `container:` job, through the
 **Test Container** workflow (`.github/workflows/test-container.yml`) after every image
-build. To test a branch's fixture against the published `:latest` images:
+build, and on every pull request that changes an image or this fixture, against the pull
+request's candidate (`.github/workflows/validate-containers.yml`). To test a branch's
+fixture against the published `:latest` images, or any other tag:
 
 ```bash
 gh workflow run test-container.yml --ref <your-branch>
+gh workflow run test-container.yml --ref <your-branch> -f tag=pr-<N> -f images='["quantecon-build"]'
 ```
 
 The smoke test:
@@ -299,7 +306,7 @@ All tests should complete successfully with:
 
 ### GitHub Actions Testing
 
-The container is automatically tested after each successful build via the `test-container.yml` workflow. Tests can also be triggered manually from the Actions tab.
+The container is automatically tested after each successful build via the `test-container.yml` workflow, and before that, on the pull request that changes it, as a `:pr-<N>` candidate. Tests can also be triggered manually from the Actions tab.
 
 ## Troubleshooting
 

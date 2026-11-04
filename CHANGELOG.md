@@ -135,6 +135,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pushes both `:latest` images, or re-runs the container test workflows that follow the build.
   The Dockerfiles copy only `environment.yml`, so a README cannot change an image. Other Markdown
   under `containers/` still triggers a build: the smoke-test fixture's pages are Markdown. (#178)
+- **Container images**: a pull request that changes an image now builds and tests it before it
+  merges. Until now the merge that first built a changed image was also the push that moved
+  `:latest`, and the smoke test ran only after that. The action harness now calls the new
+  `validate-containers.yml`, which builds each image the pull request changes (cached from
+  `:latest`), pushes it as a candidate tagged `pr-<N>` and `pr-<N>-<date>-<time>-<sha>`, never
+  `:latest`, and runs `test-container.yml`'s smoke test and size report on it in a real
+  `container:` job. Its result is part of `Action harness: all checks`, so a pull request that
+  changes only `containers/**` can no longer pass the required check without its image being built.
+  A fork's pull request that changes an image fails the check, since its token cannot push a
+  candidate. Candidates are deleted when the pull request closes. `test-container.yml` takes
+  `images` and `tag` inputs, on dispatch as well as on a call (#150), and opens a tracking issue
+  when its run after a build fails: without one, #222 went unseen for three weeks. Each
+  `build-containers.yml` run writes the digest it pushed, and the one `:latest` held before it, to
+  its step summary as the rollback handle, and adds a tag unique to the build,
+  `main-<date>-<time>-<sha>`. Main's own builds still move `:latest` before any test; that is
+  phase 2. (#142)
 
 ### Documentation
 - **`docs/dev/PLAN.md`, `CONTRIBUTING.md`**: caught up with the v0.12.0 follow-ups, which have
