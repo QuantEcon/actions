@@ -24,7 +24,7 @@ Also here: [latex-requirements.txt](latex-requirements.txt), an example LaTeX pa
 
 Runs on every pull request to `main`. Restores the build cache, runs an incremental HTML build (only changed notebooks re-execute), and deploys a Netlify preview with links to changed pages.
 
-A second job, `pdf-check`, then builds the PDF and fails the pull request's checks when the LaTeX build fails. Malformed LaTeX can pass the HTML build and still break the PDF build, and with it the publish. The preview never waits for it: `pdf-check` starts when the preview job has finished, and builds from the execution cache that job uploads, so it executes no notebook and needs no GPU. See [The PDF check](#the-pdf-check).
+A second job, `pdf-check`, then builds the PDF and fails the pull request's checks when the LaTeX build fails. Malformed LaTeX can pass the HTML build and still break the PDF build, and with it the publish. The preview never waits for it: `pdf-check` starts when the preview job has finished, and builds from the execution cache that job uploads, so it executes no notebooks and needs no GPU. See [The PDF check](#the-pdf-check).
 
 **Key features:**
 - Container-based (fast startup, pre-installed packages)
