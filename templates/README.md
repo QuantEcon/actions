@@ -14,7 +14,7 @@ Reference GitHub Actions workflows for QuantEcon lecture repositories. Copy thes
 
 | Template | Trigger | Purpose |
 |----------|---------|---------|
-| [ci.yml](ci.yml) | Pull requests | Restore cache → incremental build → Netlify preview |
+| [ci.yml](ci.yml) | Pull requests | Restore cache → incremental build → Netlify preview, then a PDF check |
 | [cache.yml](cache.yml) | Weekly / manual / env change | Full build → save cache for CI and publish |
 | [publish.yml](publish.yml) | Push to main | Restore cache → build → deploy to GitHub Pages |
 
@@ -24,10 +24,13 @@ Also here: [latex-requirements.txt](latex-requirements.txt), an example LaTeX pa
 
 Runs on every pull request to `main`. Restores the build cache, runs an incremental HTML build (only changed notebooks re-execute), and deploys a Netlify preview with links to changed pages.
 
+A second job, `pdf-check`, then builds the PDF and fails the pull request's checks when the LaTeX build fails. Malformed LaTeX can pass the HTML build and still break the PDF build, and with it the publish. The preview never waits for it: `pdf-check` starts when the preview job has finished, and builds from the execution cache that job uploads, so it executes no notebook and needs no GPU. See [The PDF check](#the-pdf-check).
+
 **Key features:**
 - Container-based (fast startup, pre-installed packages)
 - Build cache restore for incremental builds
 - Netlify PR preview with changed-page links
+- A PDF check beside the preview, which a site can switch off
 - Failure report artifacts for debugging
 - Cloudflare Pages alternative included as comments
 
@@ -73,6 +76,9 @@ Runs on push to `main`. Restores the build cache, builds HTML, and deploys to Gi
 │  restore cache      │ │  restore cache                   │
 │  build HTML         │ │  build HTML                      │
 │  Netlify preview    │ │  deploy to GitHub Pages          │
+│  upload exec cache  │ │                                  │
+│   └─ pdf-check:     │ │                                  │
+│      build PDF      │ │                                  │
 └─────────────────────┘ └─────────────────────────────────┘
 ```
 
@@ -105,6 +111,16 @@ To enable PDF and notebook download links on the built site:
    ```
 
 3. **ci.yml** — same as publish.yml if you want downloads in PR previews.
+
+### The PDF Check
+
+`ci.yml`'s `pdf-check` job is on by default. A site that publishes no PDF switches it off by setting `PDF_CHECK` to `'false'` in the workflow's top-level `env:` block. The job is then reported as skipped, not failed, and the preview job uploads nothing for it. The switch is in the workflow file rather than in a repository variable because a workflow run for a pull request from a fork does not receive repository variables, so a variable could not switch the check off for those pull requests.
+
+A failed `pdf-check` marks the pull request's checks red but does not block a merge. To make a broken PDF block merges, make `pdf-check` a required status check, under **Settings → Branches** or in a ruleset. Require `preview` as well: `pdf-check` is skipped whenever the preview job fails, and GitHub counts a skipped required check as passed.
+
+How it gets the executed notebooks: the preview job uploads `_build/.jupyter_cache` as an artifact once it has deployed. That cache holds every lecture's outputs, the ones restored from the build cache and the ones the pull request's build executed. `pdf-check` downloads it and builds the PDF without executing anything. The other way to get them, restoring the build cache from `main` in a job that runs alongside the preview, would execute every lecture the pull request changed a second time, which on a GPU site needs a second GPU runner. The cost of the hand-off is that `pdf-check` starts only when the preview job has finished. It relies on `execute_notebooks: cache` in `_config.yml`, which the build cache needs anyway.
+
+`pdf-check` runs on `ubuntu-latest` even where the preview job needs a GPU runner, and passes the same arguments to `build-lectures` as the PDF builds in `cache.yml` and `publish.yml`, so it fails where they would. On a failure, the LaTeX log is uploaded as the `latex-log` artifact.
 
 ### Using a Standard Runner (No Container)
 

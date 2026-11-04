@@ -1,7 +1,10 @@
-# CI Workflow Template (Pull Request Preview)
+# CI Workflow Template (Pull Request Preview + PDF Check)
 #
 # Provides fast PR feedback: restores cached builds, runs incremental HTML
-# build, and deploys a Netlify preview with links to changed pages.
+# build, and deploys a Netlify preview with links to changed pages. A second
+# job, pdf-check, then builds the PDF from the notebooks the preview job
+# executed, because malformed LaTeX can pass the HTML build and still break
+# the PDF build, and with it the publish. The preview never waits for it.
 #
 # Copy to your repository as .github/workflows/ci.yml
 #
@@ -9,6 +12,13 @@
 #   1. cache.yml workflow running on schedule/main (generates the build cache)
 #   2. Netlify site created for PR previews
 #   3. Repository secrets: NETLIFY_AUTH_TOKEN, NETLIFY_SITE_ID
+#
+# PDF check: on by default. A site that publishes no PDF sets PDF_CHECK to
+# 'false' in the env: block below, and pdf-check is then reported as skipped.
+# To let a broken PDF block merges, make pdf-check a required status check
+# (Settings → Branches, or a ruleset), and make preview one too: GitHub
+# counts a skipped required check as passed, and pdf-check is skipped
+# whenever the preview job fails.
 #
 # Action versions: @v0 = latest 0.x release (floating); pin @v0.x.y for reproducibility. Latest at:
 #   https://github.com/quantecon/actions/releases
@@ -24,6 +34,16 @@ on:
 concurrency:
   group: ci-${{ github.event.pull_request.number }}
   cancel-in-progress: true
+
+# ─── PDF Check Switch ──────────────────────────────────────────────
+#   'true'  — pdf-check builds the PDF on every pull request (default).
+#   'false' — for a site that publishes no PDF: pdf-check is skipped, and
+#             the preview job uploads nothing for it.
+# It is set here, not as a repository variable, because a workflow run for
+# a pull request from a fork does not receive repository variables, so a
+# variable could not switch the check off for those.
+env:
+  PDF_CHECK: 'true'
 
 jobs:
   preview:
@@ -41,6 +61,10 @@ jobs:
       contents: read
       pull-requests: write      # Required for PR preview comments
       packages: read            # Required for container image pull
+
+    # Tells pdf-check whether to run (job-level if: cannot read env).
+    outputs:
+      pdf-check: ${{ env.PDF_CHECK }}
 
     steps:
       - name: Checkout
@@ -107,3 +131,83 @@ jobs:
       #     project-name: 'my-lecture-site'      # Cloudflare Pages project name
       #     build-dir: '_build/html'
       #     lectures-dir: 'lectures'
+
+      # ─── Hand-off to pdf-check ───────────────────────────────────
+      # The execution cache now holds every lecture's outputs: those the
+      # restored build cache had, and those this build executed. pdf-check
+      # builds the PDF from it, so it executes nothing. This runs after the
+      # deploy, so it does not delay the preview link. .jupyter_cache is a
+      # hidden directory, which upload-artifact skips without
+      # include-hidden-files.
+      - name: Upload executed notebooks for pdf-check
+        if: env.PDF_CHECK == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: jupyter-cache
+          path: _build/.jupyter_cache
+          include-hidden-files: true
+          retention-days: 1
+          overwrite: true           # A re-run of this job replaces it
+
+  # ─── PDF Check ───────────────────────────────────────────────────
+  # Builds the PDF and fails the PR's checks when the LaTeX build fails.
+  #
+  # It starts once the preview job has finished, so the preview never waits
+  # for it, and it takes the preview job's execution cache instead of
+  # executing the notebooks again. Executing them here would double the cost,
+  # and on a GPU site need a second GPU runner; this job needs no GPU, so it
+  # stays on ubuntu-latest wherever the preview job runs. That relies on
+  # `execute_notebooks: cache` in _config.yml, which the build cache needs
+  # too. It is skipped when PDF_CHECK is 'false', or when the preview job
+  # fails.
+  pdf-check:
+    needs: preview
+    if: needs.preview.outputs.pdf-check == 'true'
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/quantecon/quantecon:latest
+      # Standard runner: remove the 'container' block, as for the preview job.
+
+    permissions:
+      contents: read
+      packages: read            # Required for container image pull
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # Give it the preview job's 'with' block, so the PDF is built with
+      # the same packages.
+      - name: Setup environment
+        uses: quantecon/actions/setup-environment@v0
+        # ─── Standard Runner (non-container) ──────────────────────
+        # with:
+        #   environment: 'environment.yml'    # Full conda environment
+        #   python-version: '3.13'
+        #   install-latex: 'true'             # Reads latex-requirements.txt
+
+      - name: Download executed notebooks
+        uses: actions/download-artifact@v8
+        with:
+          name: jupyter-cache
+          path: _build/.jupyter_cache
+
+      # The same arguments as the PDF build in cache.yml and publish.yml,
+      # so this fails where they would.
+      - name: Build lectures (PDF)
+        uses: quantecon/actions/build-lectures@v0
+        with:
+          builder: 'pdflatex'
+          source-dir: 'lectures'
+          extra-args: '-W --keep-going'
+
+      # The build log above shows the LaTeX error; the .log file has the
+      # context around it.
+      - name: Upload LaTeX log on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: latex-log
+          path: _build/latex/*.log
+          if-no-files-found: ignore
+          retention-days: 7

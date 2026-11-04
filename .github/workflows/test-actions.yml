@@ -974,6 +974,193 @@ jobs:
           echo "✅ the delta landed in $PREFIX, the environment on PATH, and the image's packages survived"
 
   # ==========================================================================
+  # templates/ci.yml pdf-check (#230) — the hand-off, in the real lean image
+  # ==========================================================================
+  #
+  # The template's pdf-check job builds the PDF from the execution cache the
+  # preview job uploads, so it executes no notebook and needs no GPU. These two
+  # jobs run that hand-off on the fixture and check what the template promises:
+  # the HTML build passes LaTeX that the PDF build rejects; the cache arrives
+  # (it is a hidden directory, which upload-artifact skips unless told to
+  # include it); the PDF build then executes nothing; and it fails on that
+  # LaTeX. Keep the upload and download steps in step with templates/ci.yml.
+  # They also pin actions/download-artifact in a workflow, as the gate's pin
+  # check requires of every action a template uses.
+  #
+  # Both jobs write the same fixture, so lecture1 hashes the same in both and
+  # its cached outputs match. Its extra cell leaves a marker in /tmp when it
+  # executes, outside the workspace, so nothing carries the marker between
+  # jobs. badmath.md is math that MathJax renders and pdflatex rejects: an
+  # undefined control sequence. It is written into the source directory in
+  # both jobs, and built only once a job adds it to the toc.
+
+  pdf-check-handoff:
+    name: 'templates/ci.yml pdf-check: the HTML build passes LaTeX-only breakage and hands over its cache'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    permissions:
+      contents: read
+      packages: read          # pull the container image
+    container:
+      image: ghcr.io/quantecon/quantecon-build:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user root
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Write the fixture with an execution marker and a LaTeX-only error
+        run: |
+          cp -r .github/fixtures/mini-lectures harness
+          cat >> harness/lectures/lecture1.md <<'EOF'
+
+          ```{code-cell} python3
+          import pathlib
+          pathlib.Path("/tmp/harness-lecture1-executed").touch()
+          ```
+          EOF
+          cat > harness/lectures/badmath.md <<'EOF'
+          # LaTeX the HTML Build Accepts
+
+          ```{math}
+          \harnessundefinedmacro{x}
+          ```
+          EOF
+          printf '  - file: badmath\n' >> harness/lectures/_toc.yml
+
+      - name: Setup environment
+        uses: ./setup-environment
+
+      - name: Build lectures (HTML)
+        uses: ./build-lectures
+        with:
+          builder: 'html'
+          source-dir: 'harness/lectures'
+
+      - name: Assert the HTML build passed the bad math and executed lecture1
+        run: |
+          grep -q 'harnessundefinedmacro' _build/html/badmath.html \
+            || { echo "::error::_build/html/badmath.html is missing or lacks the bad math, so the HTML build did not pass it through"; exit 1; }
+          [ -e /tmp/harness-lecture1-executed ] \
+            || { echo "::error::lecture1 executed but left no marker, so pdf-check-build's 'no marker' assertion would prove nothing"; exit 1; }
+          [ -f _build/.jupyter_cache/global.db ] \
+            || { echo "::error::the HTML build left no _build/.jupyter_cache/global.db to hand over"; exit 1; }
+          echo "✅ the HTML build passed LaTeX that pdflatex rejects, and executed lecture1 into the cache"
+
+      # As templates/ci.yml's "Upload executed notebooks for pdf-check".
+      - name: Upload the execution cache
+        uses: actions/upload-artifact@v7
+        with:
+          name: harness-jupyter-cache
+          path: _build/.jupyter_cache
+          include-hidden-files: true
+          retention-days: 1
+          overwrite: true
+
+  pdf-check-build:
+    name: 'templates/ci.yml pdf-check: the PDF builds from the handed-over cache, executes nothing, and fails on LaTeX-only breakage'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: pdf-check-handoff
+    permissions:
+      contents: read
+      packages: read          # pull the container image
+    container:
+      image: ghcr.io/quantecon/quantecon-build:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user root
+    steps:
+      - uses: actions/checkout@v7
+
+      # The same fixture as pdf-check-handoff writes, but badmath stays out of
+      # the toc until the last build.
+      - name: Write the fixture with an execution marker and a LaTeX-only error
+        run: |
+          cp -r .github/fixtures/mini-lectures harness
+          cat >> harness/lectures/lecture1.md <<'EOF'
+
+          ```{code-cell} python3
+          import pathlib
+          pathlib.Path("/tmp/harness-lecture1-executed").touch()
+          ```
+          EOF
+          cat > harness/lectures/badmath.md <<'EOF'
+          # LaTeX the HTML Build Accepts
+
+          ```{math}
+          \harnessundefinedmacro{x}
+          ```
+          EOF
+
+      - name: Setup environment
+        uses: ./setup-environment
+
+      # As templates/ci.yml's "Download executed notebooks".
+      - name: Download the execution cache
+        uses: actions/download-artifact@v8
+        with:
+          name: harness-jupyter-cache
+          path: _build/.jupyter_cache
+
+      - name: Assert the cache arrived
+        run: |
+          [ -f _build/.jupyter_cache/global.db ] \
+            || { echo "::error::_build/.jupyter_cache/global.db did not arrive: the upload left out the hidden directory, or the download put it elsewhere"; ls -la _build _build/.jupyter_cache || true; exit 1; }
+          echo "✅ the execution cache arrived in _build/.jupyter_cache"
+
+      - name: Build lectures (PDF)
+        uses: ./build-lectures
+        with:
+          builder: 'pdflatex'
+          source-dir: 'harness/lectures'
+
+      - name: Assert the PDF was built from the cache, executing nothing
+        run: |
+          compgen -G '_build/latex/*.pdf' > /dev/null \
+            || { echo "::error::the pdflatex build passed but left no PDF in _build/latex"; ls -la _build/latex || true; exit 1; }
+          [ ! -e /tmp/harness-lecture1-executed ] \
+            || { echo "::error::lecture1 executed in the PDF build: the handed-over cache did not match, so pdf-check would re-execute every notebook"; exit 1; }
+          grep -q 'sum of squares: 285' _build/latex/*.tex \
+            || { echo "::error::lecture1's cached output is not in the LaTeX source"; exit 1; }
+          echo "✅ the PDF was built from the handed-over cache, with no notebook executed"
+
+      - name: Add the bad math to the toc
+        run: |
+          printf '  - file: badmath\n' >> harness/lectures/_toc.yml
+
+      # Expect ::error:: annotations from build-lectures' failure reporter and
+      # LaTeX's own error in this job's log: they are the check working.
+      - name: Build lectures (PDF, expected to fail)
+        id: broken
+        continue-on-error: true
+        uses: ./build-lectures
+        with:
+          builder: 'pdflatex'
+          source-dir: 'harness/lectures'
+
+      - name: Assert the LaTeX error failed the build
+        env:
+          OUTCOME: ${{ steps.broken.outcome }}
+        run: |
+          [ "$OUTCOME" = "failure" ] \
+            || { echo "::error::the PDF build reported [$OUTCOME] over math that pdflatex rejects: pdf-check would pass a PDF that breaks the publish"; exit 1; }
+          # Attribute the red, as build-fail-guard does: a failure from some
+          # other cause would leave this job green while the check was broken.
+          if ! grep -q 'Undefined control sequence' _build/latex/*.log || ! grep -q 'harnessundefinedmacro' _build/latex/*.log; then
+            echo "::error::the PDF build failed, but no LaTeX log in _build/latex reports the undefined harnessundefinedmacro, so the red is not the staged error"
+            tail -n 40 _build/latex/*.log || true
+            exit 1
+          fi
+          [ ! -e /tmp/harness-lecture1-executed ] \
+            || { echo "::error::lecture1 executed in the second PDF build"; exit 1; }
+          echo "✅ LaTeX that the HTML build passed fails the PDF build"
+
+  # ==========================================================================
   # build-jupyter-cache — smoke + round-trip into restore-jupyter-cache.
   # Its internal setup-environment/build-lectures calls run @v0 (see header).
   # ==========================================================================
@@ -1765,6 +1952,8 @@ jobs:
       - env-pinned-edit
       - build-fail-guard
       - env-container-update
+      - pdf-check-handoff
+      - pdf-check-build
       - bjc-smoke
       - bjc-fail-guard
       - bjc-abort-guard

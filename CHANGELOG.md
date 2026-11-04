@@ -31,6 +31,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pushes both `:latest` images, or re-runs the container test workflows that follow the build.
   The Dockerfiles copy only `environment.yml`, so a README cannot change an image. Other Markdown
   under `containers/` still triggers a build: the smoke-test fixture's pages are Markdown. (#178)
+- **`templates/ci.yml`**: a new `pdf-check` job builds the PDF on every pull request and fails
+  its checks when the LaTeX build fails. Malformed LaTeX can pass the HTML build and still break
+  the PDF build, and with it the publish, and previews are moving to HTML only (#148). The job
+  starts when the preview job has finished, so the preview link never waits for it, and builds
+  from the `_build/.jupyter_cache` the preview job uploads as an artifact, so it executes no
+  notebook and needs no GPU runner. A site that publishes no PDF sets `PDF_CHECK: 'false'` in the
+  workflow's `env:` block, and the job is reported as skipped. The switch is in the file, not a
+  repository variable, because a run for a fork's pull request does not receive repository
+  variables. Two harness jobs run the hand-off on the fixture in the lean image. (#230)
 
 ### Documentation
 - **User manual** (#178): every action has its chapter. `build-lectures`, `build-jupyter-cache`,
