@@ -1119,9 +1119,10 @@ jobs:
           builder: 'pdflatex'
           source-dir: 'harness/lectures'
 
+      # A container job's default shell is sh, not bash: keep these POSIX.
       - name: Assert the PDF was built from the cache, executing nothing
         run: |
-          compgen -G '_build/latex/*.pdf' > /dev/null \
+          ls _build/latex/*.pdf > /dev/null 2>&1 \
             || { echo "::error::the pdflatex build passed but left no PDF in _build/latex"; ls -la _build/latex || true; exit 1; }
           [ ! -e /tmp/harness-lecture1-executed ] \
             || { echo "::error::lecture1 executed in the PDF build: the handed-over cache did not match, so pdf-check would re-execute every notebook"; exit 1; }
