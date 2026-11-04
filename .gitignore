@@ -10,6 +10,9 @@
 *.swo
 *~
 
+# Claude Code: `claude --worktree` creates its git worktrees here
+.claude/worktrees/
+
 # Local scratch space for test infrastructure (see tests/README.md).
 # Everything under tests/ is committed EXCEPT tests/local/, which is where
 # throwaway clones of real lecture repos go. Keeping them under a directory

@@ -33,6 +33,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   under `containers/` still triggers a build: the smoke-test fixture's pages are Markdown. (#178)
 
 ### Documentation
+- **`docs/dev/PLAN.md`, `CONTRIBUTING.md`**: caught up with the v0.12.0 follow-ups, which have
+  landed. The canary runs `preview-cloudflare` (QuantEcon/test-actions-lecture-intro#67), so
+  Staged Releases loses its known limit about it, and step 2 says the canary PR deploys to both
+  preview providers. The six consumers that passed `cname` have dropped it, so PLAN's follow-up
+  list is gone. PLAN also records the 2026-11-04 decisions: the release gate is a `gate.yml` in
+  the canary that tests a candidate checkout, with its fixture in its own folder there and no
+  `v0-next` tag (#135, #136, #143); the preview actions deploy outside a pull request only when
+  asked (#227); HTML-only previews keep a parallel PDF check (#146, #230); and scheduled image
+  rebuilds give way to a digest-pinned base that Dependabot moves. Stale facts are corrected:
+  every exact pin is on `v0.12.0`, branch hygiene (item 16) is done, the container smoke fixture
+  does exercise plotly export, and items 6, 15 and 18 point at #153, #229 and #228. (#202)
 - **User manual** (#178): every action has its chapter. `build-lectures`, `build-jupyter-cache`,
   `restore-jupyter-cache`, `preview-netlify`, `preview-cloudflare`, `publish-gh-pages` and
   `deploy-cloudflare` get theirs in `docs/user/actions/`, and their READMEs become generated

@@ -85,8 +85,8 @@ pins `@v0` too, so on its own it only meets a release after it ships. Automating
 1. Do steps 1, 2 and 4: the `vX.Y.Z` tag and its Release exist, and `v0` has not moved.
 2. In the canary, open a PR from a branch of the canary repository itself (the preview actions
    skip fork PRs) with every `quantecon/actions/...@v0` in its `ci.yml` changed to `@vX.Y.Z`.
-   That runs `restore-jupyter-cache`, `build-lectures` and a real `preview-netlify` deploy with
-   `pull_request` semantics.
+   That runs `restore-jupyter-cache`, `build-lectures`, and real `preview-netlify` and
+   `preview-cloudflare` deploys with `pull_request` semantics.
 3. From a canary branch whose `cache.yml` points at `build-jupyter-cache@vX.Y.Z`, dispatch
    `cache.yml`. That runs `build-jupyter-cache`'s own steps.
 4. Move `v0` (step 3 above) only when both are green.
@@ -96,8 +96,6 @@ Known limits:
 - `build-jupyter-cache` calls `setup-environment@v0` and `build-lectures@v0`, so the dispatch
   runs the candidate against the previous release's siblings. A fix to either sibling reaches
   that chain untested until `v0` moves.
-- `preview-cloudflare` is not yet in the canary's `ci.yml`. Its Pages project exists (`qe-preview-canary`, with the org
-  secrets scoped to the canary, see #110), so adding that step is the follow-up once v0.12.0 has moved `v0`.
 - Steps 2-3 never run `publish-gh-pages` (the canary's `publish.yml` fires only on a `publish*`
   tag) or `setup-environment` at the candidate ref.
 - Repositories pinned to an exact tag get a Dependabot bump PR as soon as the tag exists;
