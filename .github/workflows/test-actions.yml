@@ -1846,6 +1846,8 @@ jobs:
     # Nothing leaves the runner but wrangler's calls in the two controls,
     # which fail on the fake token.
     name: 'deploy-cloudflare: refuses before installing anything when the Worker contradicts visibility'
+    # A GitHub-hosted runner only: the stand-in edits the runner's CA store,
+    # /etc/hosts and a sysctl, which a self-hosted runner would keep.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: gate
