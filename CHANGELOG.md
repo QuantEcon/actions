@@ -236,16 +236,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     commits behind each, and deepens, doubling, until it finds the merge base. If it has not
     found it 1,024 commits behind each, it warns and compares from the base branch's tip, as
     before. `--depth` is used only for a commit the checkout lacks: on one it has, it cuts the
-    history behind it to that depth.
+    history behind it to that depth. The fetches skip git's automatic maintenance, which runs in
+    the background and can rewrite `.git/shallow` during the next deepen, making git abort it.
   - A git failure is a warning carrying git's own message. Every git call ended in
     `2>/dev/null || true` or `|| echo ""`, so a failure listed no lectures without a word. It
     still never fails the step: the deploy is worth more than the links.
 
   A second, per-file `git diff`, which repeated the first comparison, is gone. A new harness job,
   `preview-change-detection`, runs the script against a scratch repository checked out as
-  `actions/checkout` checks out a pull request: in full, and 1 and 50 commits deep, with a
-  rename, a merge base past the cap, a remote that cannot be fetched from, and no repository at
-  all. (#215)
+  `actions/checkout` checks out a pull request: in full, and 1, 2 and 50 commits deep, with a
+  rename, a merge base just inside the cap and one past it, a remote that cannot be fetched from,
+  and no repository at all. (#215)
 
 ## [0.12.0] - 2026-09-24
 

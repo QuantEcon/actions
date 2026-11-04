@@ -61,8 +61,11 @@ base_refspec="+${BASE_SHA}:refs/remotes/origin/pr-base"
 head_refspec="+${HEAD_SHA}:refs/remotes/origin/pr-head"
 
 # fetch [--depth=N|--deepen=N] REFSPEC...
+# --no-auto-gc: a fetch otherwise starts maintenance in the background, which
+# can rewrite .git/shallow while the next --deepen runs, and git then aborts
+# that fetch with "shallow file has changed since we read it".
 fetch() {
-  local opts=(--quiet --no-tags --no-recurse-submodules)
+  local opts=(--quiet --no-tags --no-recurse-submodules --no-auto-gc)
   case "$1" in --*) opts+=("$1"); shift ;; esac
   git fetch "${opts[@]}" origin "$@" 2>"$git_err"
 }
@@ -87,22 +90,27 @@ else
         warn "Could not fetch the pull request's base and head commits"
       fi
     else
-      depth=$first_depth
+      # How many commits behind each end the history reaches, at least. A
+      # commit already here counts as reaching nothing, since its depth is
+      # not known.
+      reach=0
       # --depth only for commits not here yet: on one already here it cuts
       # the history behind it to the depth given.
-      if [ "${#missing[@]}" -gt 0 ] && ! fetch --depth="$depth" "${missing[@]}"; then
+      if [ "${#missing[@]}" -gt 0 ] && ! fetch --depth="$first_depth" "${missing[@]}"; then
         warn "Could not fetch the pull request's base and head commits"
       else
+        [ "${#missing[@]}" -lt 2 ] || reach=$first_depth
         while ! find_merge_base; do
-          if [ "$depth" -ge "$max_depth" ]; then
+          if [ "$reach" -ge "$max_depth" ]; then
             searched=" within ${max_depth} commits"
             break
           fi
-          if ! fetch --deepen="$depth" "$base_refspec" "$head_refspec"; then
+          step=$(( reach > 0 ? reach : first_depth ))
+          if ! fetch --deepen="$step" "$base_refspec" "$head_refspec"; then
             warn "Could not fetch more history to find where the pull request branched off"
             break
           fi
-          depth=$((depth * 2))
+          reach=$((reach + step))
         done
       fi
     fi

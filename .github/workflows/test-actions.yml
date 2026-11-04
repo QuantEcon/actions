@@ -2009,7 +2009,8 @@ jobs:
     #   - a renamed lecture listed under its new path (--no-renames);
     #   - a bounded fetch: no fetch at all when the merge base is already
     #     here, and in a shallow checkout a history deepened only as far as
-    #     the merge base, to at most 1,024 commits behind each end (#147);
+    #     the merge base, to 1,024 commits behind each end and no further
+    #     (#147), whether or not the two commits had to be fetched first;
     #   - history already in the checkout is never cut;
     #   - every git failure a ::warning:: with git's own message, and never a
     #     failed step (finding L4 of the 2026-10-06 review).
@@ -2063,8 +2064,11 @@ jobs:
           git checkout -qb long
           filler 1000
           # GitHub's test merge commits, refs/pull/N/merge: base tip + head.
-          for n in 1 2; do
-            base=$([ "$n" = 1 ] && echo main || echo long)
+          # long~100 puts the merge base 1,001 commits behind the base, just
+          # inside the cap.
+          n=0
+          for base in main long long~100; do
+            n=$((n + 1))
             git checkout -q --detach "$base"
             git merge -q --no-ff -m "merge pr into $base" pr
             git update-ref "refs/pull/$n/merge" HEAD
@@ -2119,6 +2123,7 @@ jobs:
 
           MAIN=$(git -C srv rev-parse main)
           LONG=$(git -C srv rev-parse long)
+          FAR=$(git -C srv rev-parse long~100)
 
           echo "::group::full: fetch-depth 0, the consumers' checkout today"
           checkout full 1 0
@@ -2162,6 +2167,15 @@ jobs:
           got=$(git -C stale rev-list --count --all)
           echo "fetched $got of the server's $TOTAL commits"
           [ "$got" -le 2100 ] || fail "stale: fetched $got of $TOTAL commits; the fetch is not bounded"
+          echo "::endgroup::"
+
+          echo "::group::far: depth 2, both commits here, the merge base 1,001 commits behind"
+          # With no commit to fetch first, the search must still reach the
+          # full 1,024 commits behind each end before it gives up.
+          checkout far 3 2
+          detect far "$FAR"
+          expect_files far lectures/a.md lectures/b2.md
+          expect_no_warning far
           echo "::endgroup::"
 
           echo "::group::nofetch: depth 1, and origin cannot be fetched from"
