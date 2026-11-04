@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-05
+
 ### Changed
+- **`preview-netlify`, `preview-cloudflare`, `deploy-cloudflare`**: the pinned deploy CLIs move
+  from v0.12.0's wrangler 4.136.3 and netlify-cli 27.8.1 to wrangler 4.156.0 and netlify-cli
+  27.16.1, through Dependabot's lockfile bumps. The harness installs both from their lockfiles
+  and runs them. (#207, #219)
 - **Containers**: both images move to the **Anaconda 2026.07** baseline, which every lecture repo
   in the validation matrix already pins (#188). The full image's metapackage goes to
   `anaconda=2026.07`. The lean image's pin set is re-derived from the 2026.07 linux-64 py313 MKL
