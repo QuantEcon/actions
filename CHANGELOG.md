@@ -165,6 +165,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   moves (#234, #235). Stale facts are corrected: every exact pin is on `v0.12.0`, branch hygiene
   (item 16) is done, the container smoke fixture does exercise plotly export, and items 6, 15
   and 18 point at #153, #229 and #228. (#202)
+- **`CONTRIBUTING.md`**: Staged Releases says how to roll back a container image: retag `:latest`
+  to the digest it held before, which each `build-containers.yml` run now records in its step
+  summary, with `docker buildx imagetools create`. Its known limit on container images now says
+  that they stage on pull requests only: the merge's own build and scheduled rebuilds still push
+  `:latest` untested. (#142)
 - **User manual** (#178): every action has its chapter. `build-lectures`, `build-jupyter-cache`,
   `restore-jupyter-cache`, `preview-netlify`, `preview-cloudflare`, `publish-gh-pages` and
   `deploy-cloudflare` get theirs in `docs/user/actions/`, and their READMEs become generated
