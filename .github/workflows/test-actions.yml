@@ -143,7 +143,9 @@ jobs:
           [ -n "$DIRS" ] || { echo "::error::gate self-test: no 'uses: ./<action>' found in the harness — refusing to decide"; exit 1; }
                     # The lockfiles are listed by hand: preview-cli-install tests them
           # without a `uses: ./` line, because the actions need deploy secrets.
-          MUST_RUN=".github/workflows/test-actions.yml .github/fixtures/mini-lectures/environment.yml preview-cloudflare/package-lock.json preview-netlify/package-lock.json"
+          # So is the change-detection script, which preview-change-detection
+          # runs on its own for the same reason.
+          MUST_RUN=".github/workflows/test-actions.yml .github/fixtures/mini-lectures/environment.yml preview-cloudflare/package-lock.json preview-netlify/package-lock.json scripts/detect-changed-lectures.sh"
           for d in $DIRS; do MUST_RUN="$MUST_RUN $d/action.yml"; done
           for p in $MUST_RUN; do
             if grep -Eq "$IGNORED" <<< "$p"; then
@@ -1996,6 +1998,192 @@ jobs:
           done
           echo "✅ both pinned CLIs install from their lockfiles and run"
 
+  preview-change-detection:
+    # scripts/detect-changed-lectures.sh, which both preview actions run to
+    # list a pull request's lectures. It needs only git, so unlike the rest of
+    # those actions it can run here, against a scratch repository served over
+    # file:// and checked out the way actions/checkout checks out a pull
+    # request. Each case is one of the script's promises:
+    #   - only what the pull request changed: three dots, from the merge
+    #     base, so a lecture changed only on main is not listed (#215);
+    #   - a renamed lecture listed under its new path (--no-renames);
+    #   - a bounded fetch: no fetch at all when the merge base is already
+    #     here, and in a shallow checkout a history deepened only as far as
+    #     the merge base, to at most 1,024 commits behind each end (#147);
+    #   - history already in the checkout is never cut;
+    #   - every git failure a ::warning:: with git's own message, and never a
+    #     failed step (finding L4 of the 2026-10-06 review).
+    name: 'preview-*: change detection lists only what the pull request changed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Run the script against a scratch pull request
+        run: |
+          set -euo pipefail
+          script="$PWD/scripts/detect-changed-lectures.sh"
+          work="$RUNNER_TEMP/detect"
+          rm -rf "$work"; mkdir -p "$work"; cd "$work"
+          # So that norepo/ below cannot find a repository above it.
+          export GIT_CEILING_DIRECTORIES="$work"
+          export GIT_AUTHOR_NAME=harness GIT_AUTHOR_EMAIL=harness@example.com
+          export GIT_COMMITTER_NAME=harness GIT_COMMITTER_EMAIL=harness@example.com
+
+          # The server. main: 1,500 commits, then the pull request branches
+          # off and edits lectures/a.md and renames lectures/b.md to b2.md.
+          # main then gets 100 commits and edits lectures/d.md. `long`
+          # continues main for 1,000 more commits, past the script's 1,024
+          # cap. The filler commits change nothing, so only the lecture edits
+          # show in a diff. Fetching by SHA is allowed, as GitHub allows it.
+          git init -q -b main srv
+          cd srv
+          git config uploadpack.allowReachableSHA1InWant true
+          mkdir lectures
+          for f in a b c d; do echo "# $f" > "lectures/$f.md"; done
+          echo "root: intro" > lectures/_toc.yml
+          git add -A && git commit -qm init
+          filler() {  # filler N: N commits that change nothing, on HEAD
+            local c tree i
+            c=$(git rev-parse HEAD); tree=$(git rev-parse 'HEAD^{tree}')
+            for i in $(seq "$1"); do c=$(git commit-tree "$tree" -p "$c" -m "filler $i"); done
+            git reset -q --hard "$c"
+          }
+          filler 1500
+          git checkout -qb pr
+          echo "pr edit" >> lectures/a.md && git commit -qam "pr: edit a"
+          git mv lectures/b.md lectures/b2.md && git commit -qm "pr: rename b"
+          git checkout -q main
+          filler 100
+          echo "main edit" >> lectures/d.md && git commit -qam "main: edit d"
+          git checkout -qb long
+          filler 1000
+          # GitHub's test merge commits, refs/pull/N/merge: base tip + head.
+          for n in 1 2; do
+            base=$([ "$n" = 1 ] && echo main || echo long)
+            git checkout -q --detach "$base"
+            git merge -q --no-ff -m "merge pr into $base" pr
+            git update-ref "refs/pull/$n/merge" HEAD
+          done
+          git checkout -q main
+          TOTAL=$(git rev-list --count --all)
+          HEAD_SHA=$(git rev-parse pr)
+          cd "$work"
+          echo "server: $TOTAL commits"
+
+          # checkout DIR N DEPTH: what actions/checkout does for a pull
+          # request: the test merge commit refs/pull/N/merge, DEPTH commits
+          # deep, or with every branch when DEPTH is 0 (fetch-depth: 0).
+          checkout() {
+            local merge
+            merge=$(git -C srv rev-parse "refs/pull/$2/merge")
+            git init -q "$1"
+            git -C "$1" remote add origin "file://$work/srv"
+            if [ "$3" = 0 ]; then
+              git -C "$1" fetch -q --no-tags origin '+refs/heads/*:refs/remotes/origin/*' "+$merge:refs/remotes/pull/$2/merge"
+            else
+              git -C "$1" fetch -q --no-tags --depth="$3" origin "+$merge:refs/remotes/pull/$2/merge"
+            fi
+            git -C "$1" checkout -q --detach "$merge"
+          }
+
+          # detect DIR BASE: run the script in DIR, as the actions do. Its
+          # stdout goes to DIR.log, its changed-files output to DIR.files.
+          # The log is echoed between stop-commands, so the warnings these
+          # cases expect are not raised as annotations on this job.
+          detect() {
+            local status=0 token="detect-$RANDOM$RANDOM$RANDOM"
+            ( cd "$1" && GITHUB_OUTPUT="$work/$1.out" BASE_SHA="$2" HEAD_SHA="$HEAD_SHA" LECTURES_DIR=lectures bash "$script" ) \
+              > "$1.log" 2>&1 || status=$?
+            echo "::stop-commands::$token"
+            sed 's/^/    /' "$1.log"
+            echo "::$token::"
+            [ "$status" -eq 0 ] || fail "$1: the script exited $status"
+            awk '/^changed-files<<EOF$/ { on = 1; next } /^EOF$/ { on = 0 } on' "$1.out" | sort > "$1.files"
+            grep -qx 'strip-lectures-dir=true' "$1.out" || fail "$1: no strip-lectures-dir=true output"
+          }
+
+          bad=0
+          fail() { echo "::error::$*"; bad=1; }
+          expect_files() {  # expect_files DIR FILE...
+            local want
+            want=$(printf '%s\n' "${@:2}" | sort)
+            [ "$(cat "$1.files")" = "$want" ] \
+              || fail "$1: changed-files is [$(paste -sd' ' "$1.files")], expected [$(paste -sd' ' - <<< "$want")]"
+          }
+          expect_no_warning() { ! grep -q '::warning::' "$1.log" || fail "$1: unexpected warning"; }
+
+          MAIN=$(git -C srv rev-parse main)
+          LONG=$(git -C srv rev-parse long)
+
+          echo "::group::full: fetch-depth 0, the consumers' checkout today"
+          checkout full 1 0
+          detect full "$MAIN"
+          expect_files full lectures/a.md lectures/b2.md
+          expect_no_warning full
+          # The merge base was already here, so nothing was fetched.
+          ! git -C full rev-parse -q --verify refs/remotes/origin/pr-base >/dev/null \
+            || fail "full: fetched although the checkout had the merge base"
+          echo "::endgroup::"
+
+          echo "::group::shallow: depth 1, as #148 plans and templates/ci.yml has"
+          checkout shallow 1 1
+          detect shallow "$MAIN"
+          expect_files shallow lectures/a.md lectures/b2.md
+          expect_no_warning shallow
+          got=$(git -C shallow rev-list --count --all)
+          echo "fetched $got of the server's $TOTAL commits"
+          [ "$got" -lt 500 ] || fail "shallow: fetched $got of $TOTAL commits; the fetch is not bounded"
+          echo "::endgroup::"
+
+          echo "::group::deeper: depth 50, so both commits are here but not the merge base"
+          checkout deeper 1 50
+          before=$(git -C deeper rev-list --count HEAD)
+          detect deeper "$MAIN"
+          expect_files deeper lectures/a.md lectures/b2.md
+          expect_no_warning deeper
+          after=$(git -C deeper rev-list --count HEAD)
+          # --depth on a commit already here would cut the history behind it.
+          [ "$after" -ge "$before" ] || fail "deeper: the checkout's history went from $before to $after commits"
+          echo "::endgroup::"
+
+          echo "::group::stale: depth 1, merge base past the 1,024-commit cap"
+          checkout stale 2 1
+          detect stale "$LONG"
+          grep -q '::warning::Found no merge base within 1024 commits' stale.log \
+            || fail "stale: no warning naming the cap"
+          # The fallback compares from the base tip, so d.md is listed too.
+          expect_files stale lectures/a.md lectures/b2.md lectures/d.md
+          # 1,024 commits behind each end, plus the merge commit, and slack.
+          got=$(git -C stale rev-list --count --all)
+          echo "fetched $got of the server's $TOTAL commits"
+          [ "$got" -le 2100 ] || fail "stale: fetched $got of $TOTAL commits; the fetch is not bounded"
+          echo "::endgroup::"
+
+          echo "::group::nofetch: depth 1, and origin cannot be fetched from"
+          checkout nofetch 1 1
+          git -C nofetch remote set-url origin "file://$work/missing"
+          detect nofetch "$MAIN"
+          grep -q "::warning::Could not fetch the pull request's base and head commits: .*missing" nofetch.log \
+            || fail "nofetch: no warning carrying git's message"
+          expect_files nofetch
+          echo "::endgroup::"
+
+          echo "::group::norepo: no git repository at all"
+          mkdir -p norepo/lectures && echo "root: intro" > norepo/lectures/_toc.yml
+          detect norepo "$MAIN"
+          grep -q '::warning::git cannot read the checkout, so no changed lectures are listed: .*not a git repository' norepo.log \
+            || fail "norepo: no warning carrying git's message"
+          expect_files norepo
+          echo "::endgroup::"
+
+          [ "$bad" -eq 0 ] || exit 1
+          echo "✅ change detection lists what the pull request changed, fetches a bounded history, and warns when git fails"
+
   # ==========================================================================
   # Single anchor for branch protection
   # ==========================================================================
@@ -2038,6 +2226,7 @@ jobs:
       - dc-inputs
       - dc-wrangler-config
       - preview-cli-install
+      - preview-change-detection
     steps:
       # This is the job intended to be the single required status check, so it
       # has to be correct in BOTH shapes the gate can produce, and must never be
