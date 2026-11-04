@@ -12,12 +12,13 @@
 # its name is the package name under ghcr.io/quantecon.
 #
 # A changed path selects:
-#   - containers/**/README.md            nothing. The Dockerfiles COPY only
-#                                        environment.yml, and build-containers.yml
-#                                        does not rebuild for a README either.
 #   - containers/<any>/tests/**          every image. test-container.yml runs
 #                                        containers/quantecon/tests/smoke-test.sh
-#                                        in each of them.
+#                                        in each of them. A README there counts:
+#                                        it can be part of the fixture's book.
+#   - any other containers/**/README.md  nothing. The Dockerfiles COPY only
+#                                        environment.yml, and build-containers.yml
+#                                        does not rebuild for a README either.
 #   - containers/<name>/**               <name>, if it has a Dockerfile.
 #   - any other path under containers/   every image: build rather than skip what
 #                                        this script does not recognise.
@@ -44,12 +45,10 @@ all_images() {
 select_images() {
   local path name
   while IFS= read -r path; do
-    if [[ $path =~ $WHOLE_SET ]]; then
+    if [[ $path =~ $WHOLE_SET || $path =~ ^containers/[^/]+/tests/ ]]; then
       all_images
     elif [[ $path != containers/* || $path == */README.md ]]; then
       continue
-    elif [[ $path =~ ^containers/[^/]+/tests/ ]]; then
-      all_images
     else
       name=${path#containers/}
       name=${name%%/*}
@@ -80,6 +79,7 @@ self_test() {
   check '["quantecon","quantecon-build"]' containers/quantecon/Dockerfile containers/quantecon-build/environment.yml
   check "$all" containers/quantecon/tests/smoke-test.sh
   check "$all" containers/quantecon/tests/minimal-jupyter-book/intro.md
+  check "$all" containers/quantecon/tests/minimal-jupyter-book/README.md
   check "$all" .github/workflows/validate-containers.yml
   check "$all" containers/unrecognised.txt
   check '[]' containers/quantecon/README.md containers/quantecon-build/README.md containers/README.md
