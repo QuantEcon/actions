@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`deploy-cloudflare`**: a `visibility` input, `private` or `public`, so the action publishes
+  public sites as well as private ones, and checks either kind against what the workflow declares
+  (#177). `private` is what the action did before: before the upload, after the deploy (production
+  and the new version's preview URL) and on the alias, an anonymous request must be redirected to
+  `team-domain`'s Access login. `public` inverts the same three checks: an anonymous request must
+  be served the site, and a redirect to any `*.cloudflareaccess.com` fails. A Worker declared
+  public but in fact gated is therefore refused before anything is uploaded, as a public Worker
+  declared private already was. `team-domain` is required for `private` and an error for `public`,
+  so a workflow copied from one kind of site to the other fails rather than check the wrong thing;
+  it is no longer a required input. The first line of the log and the job summary's heading name
+  the mode, and a new `visibility` output gives it. `scripts/check-access-gate.sh` gains
+  `--public`, and `--allow-404` for the check before the deploy, when the live version need not
+  hold this build's files yet. A public build with no `index.html` answers 404 at its root, so
+  after the deploy it is checked on its non-HTML probe file alone; one with neither fails
+  validation. In CI, `dc-gate-probe` covers every public verdict, `dc-inputs` every rejected
+  combination, and `dc-refuses-ungated` the deprecated forms. A new job, `dc-refuses-mismatch`,
+  runs the action against a gated and a public Worker stood in for on the runner (the access-gate
+  fixture over TLS, behind `/etc/hosts`), and asserts that both mix-ups are refused before wrangler
+  is installed, while matching ones reach it.
+
 ### Changed
 - **`templates/ci.yml`**: a new `pdf-check` job builds the PDF on every pull request and fails
   its checks when the LaTeX build fails. Malformed LaTeX can pass the HTML build and still break
@@ -19,6 +40,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   variables. Harness jobs run the hand-off on the fixture in the lean image, through the
   template's switch, and check that `PDF_CHECK: 'false'` skips both the upload and the job.
   (#230)
+
+### Deprecated
+- **`deploy-cloudflare`**: `require-access`, and leaving out both it and `visibility`, which relied
+  on its default (#177). Both still work in this release, with a warning on every run:
+  `require-access: 'true'`, and neither input, check the site as `visibility: private`, as
+  v0.12.0's default did, and `require-access: 'false'` still skips every check. Setting both
+  inputs fails the job. In the minor release after this one, both forms become errors and
+  `visibility` becomes required, so add it now. The chapter's "Moving from `require-access`" table
+  gives the change for each form; note that `visibility: public` checks the site rather than skip
+  the checks.
 
 ### Fixed
 - **`preview-netlify`, `preview-cloudflare`**: the comment's changed lectures, and the

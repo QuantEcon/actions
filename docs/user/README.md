@@ -21,7 +21,7 @@ A workflow step uses an action as `quantecon/actions/<action>@v0`.
 | [`preview-netlify`](actions/preview-netlify.md) | Deploys a pull request's built site to Netlify as a preview, at a URL that stays the same for every push, and comments on the pull request with it and with links to the lectures it changes. |
 | [`preview-cloudflare`](actions/preview-cloudflare.md) | Deploys a pull request's built site to Cloudflare Pages as a preview, at a URL that stays the same for every push, and comments on the pull request with it and with links to the lectures it changes. |
 | [`publish-gh-pages`](actions/publish-gh-pages.md) | Publishes a built site to GitHub Pages with GitHub's own Pages deploy, so no gh-pages branch is needed. On a tag it can also attach the site to the release, as an archive with its checksum and a manifest. |
-| [`deploy-cloudflare`](actions/deploy-cloudflare.md) | Publishes a built site to an existing Cloudflare Worker behind Cloudflare Access, for a site only members may see, and fails unless the site is proven gated before and after the deploy. |
+| [`deploy-cloudflare`](actions/deploy-cloudflare.md) | Publishes a built site to an existing Cloudflare Worker, and proves who can see it before and after the deploy: a private site must be behind Cloudflare Access, a public one served to anyone. |
 
 <!-- END GENERATED -->
 

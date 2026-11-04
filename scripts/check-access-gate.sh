@@ -1,19 +1,22 @@
 #!/usr/bin/env bash
 #
-# Prove that a site is behind Cloudflare Access: an unauthenticated request
-# must be redirected to the team's own login domain, never answered with the
-# content. Used by the deploy-cloudflare action before and after every deploy
-# (#163).
+# Prove who a site is served to: that it is behind Cloudflare Access, or, with
+# --public, that it is not. Used by the deploy-cloudflare action before and
+# after every deploy (#163, #177).
 #
 #   check-access-gate.sh <team-domain> <url> [<url> ...]
+#   check-access-gate.sh --public [--allow-404] <url> [<url> ...]
+#
 #   check-access-gate.sh <team>.cloudflareaccess.com \
 #     https://<worker>.<account-subdomain>.workers.dev/ \
 #     https://<worker>.<account-subdomain>.workers.dev/data/latest.json
 #
-# Every URL must pass. Exit 0 = all gated, 1 = at least one is not, 2 = usage.
+# Every URL must pass. Exit 0 = all pass, 1 = at least one does not, 2 = usage.
 #
-# Taken from the probe verified in the QuantEcon/status-projects#35 pilot
-# (recorded on #163). What matters in it:
+# Gated, the first form: an unauthenticated request must be redirected to the
+# team's own login domain, never answered with the content. Taken from the
+# probe verified in the QuantEcon/status-projects#35 pilot (recorded on #163).
+# What matters in it:
 #
 #   - The Location host must EQUAL the team domain. Matching any
 #     *.cloudflareaccess.com would pass a Worker attached to the wrong Access
@@ -24,22 +27,62 @@
 #     which would make the alarm case and the success case look the same.
 #   - Anything else fails. A 404 or a redirect back to the site proves nothing
 #     about the gate, so it is never treated as a pass.
+#
+# Public, with --public: the inverse. An unauthenticated request must be served
+# the content, a 2xx, with no redirect; still no -L, or a redirect to the
+# login page would pass. A redirect to ANY *.cloudflareaccess.com gets its own
+# loud branch, since the site is then behind someone's Access. Anything else
+# fails, a 404 included, unless --allow-404 is given: then a 404 passes too, as
+# "not behind Access". The action's check before a deploy uses it, because the
+# version live then need not hold the files of the build about to replace it.
 
 set -uo pipefail
 
-if [ "$#" -lt 2 ]; then
+usage() {
   echo "usage: check-access-gate.sh <team-domain> <url> [<url> ...]" >&2
+  echo "       check-access-gate.sh --public [--allow-404] <url> [<url> ...]" >&2
   exit 2
+}
+
+public=0
+allow_404=0
+while [[ "${1:-}" == --* ]]; do
+  case "$1" in
+    --public) public=1 ;;
+    --allow-404) allow_404=1 ;;
+    *) echo "usage: unknown option [$1]" >&2; usage ;;
+  esac
+  shift
+done
+
+if [ "$public" -eq 1 ]; then
+  [ "$#" -ge 1 ] || usage
+else
+  # A 404 proves nothing about a gate.
+  [ "$allow_404" -eq 0 ] || { echo "usage: --allow-404 needs --public" >&2; usage; }
+  [ "$#" -ge 2 ] || usage
+  raw_team=$1
+  team=$(printf '%s' "$raw_team" | tr '[:upper:]' '[:lower:]')
+  shift
+  # An empty team would equal the empty host of a redirect with no Location.
+  if ! [[ "$team" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?\.cloudflareaccess\.com$ ]]; then
+    echo "usage: team-domain must be <team>.cloudflareaccess.com, got [$raw_team]" >&2
+    exit 2
+  fi
 fi
 
-raw_team=$1
-team=$(printf '%s' "$raw_team" | tr '[:upper:]' '[:lower:]')
-shift
-# An empty team would equal the empty host of a redirect with no Location.
-if ! [[ "$team" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?\.cloudflareaccess\.com$ ]]; then
-  echo "usage: team-domain must be <team>.cloudflareaccess.com, got [$raw_team]" >&2
-  exit 2
-fi
+# The lowercased host of a redirect's target. Userinfo or a backslash makes
+# the real host ambiguous (browsers read `\` as `/`, so
+# https://x.com\@team... goes to x.com). Access never sends either, so refuse
+# rather than guess.
+redirect_host() {
+  local authority=${1#*://}
+  authority=$(printf '%s' "${authority%%[/?#]*}" | tr '[:upper:]' '[:lower:]')
+  case "$authority" in
+    *@*|*\\*) printf '%s' "<ambiguous Location authority: $authority>" ;;
+    *) printf '%s' "${authority%%:*}" ;;
+  esac
+}
 
 failed=0
 for url in "$@"; do
@@ -48,24 +91,50 @@ for url in "$@"; do
   if ! out=$(curl -sS -o /dev/null --max-time 20 \
       --retry 2 --retry-delay 2 --retry-connrefused \
       -w '%{http_code} %{redirect_url}' "$url"); then
-    echo "::error::FAIL  $url — could not be reached, so the gate could not be verified"
+    if [ "$public" -eq 1 ]; then
+      echo "::error::FAIL  $url — could not be reached, so it could not be shown to be served anonymously"
+    else
+      echo "::error::FAIL  $url — could not be reached, so the gate could not be verified"
+    fi
     failed=1
     continue
   fi
   code=${out%% *}
   location=${out#* }
 
+  if [ "$public" -eq 1 ]; then
+    case "$code" in
+      2??)
+        echo "PASS  $code served anonymously  $url"
+        ;;
+      301|302|303|307|308)
+        host=$(redirect_host "$location")
+        if [[ "$host" == *.cloudflareaccess.com ]]; then
+          echo "::error::FAIL  $url redirected to the Access login '$host' — THE SITE IS BEHIND ACCESS, not public"
+        else
+          echo "::error::FAIL  $url answered $code to '${host:-<no Location>}' instead of serving the site"
+        fi
+        failed=1
+        ;;
+      404)
+        if [ "$allow_404" -eq 1 ]; then
+          echo "PASS  404 not behind Access, nothing served at this path  $url"
+        else
+          echo "::error::FAIL  $url answered 404 — the site is not served here (no such Worker, its workers.dev route is off, or the file is missing)"
+          failed=1
+        fi
+        ;;
+      *)
+        echo "::error::FAIL  $url answered $code, expected the site to be served (2xx) without authentication"
+        failed=1
+        ;;
+    esac
+    continue
+  fi
+
   case "$code" in
     301|302|303|307|308)
-      authority=${location#*://}
-      authority=$(printf '%s' "${authority%%[/?#]*}" | tr '[:upper:]' '[:lower:]')
-      # Userinfo or a backslash makes the real host ambiguous (browsers read
-      # `\` as `/`, so https://x.com\@team... goes to x.com). Access never
-      # sends either, so refuse rather than guess.
-      case "$authority" in
-        *@*|*\\*) host="<ambiguous Location authority: $authority>" ;;
-        *) host=${authority%%:*} ;;
-      esac
+      host=$(redirect_host "$location")
       if [ "$host" = "$team" ]; then
         echo "PASS  $code -> $host  $url"
       elif [[ "$host" == *.cloudflareaccess.com ]]; then
