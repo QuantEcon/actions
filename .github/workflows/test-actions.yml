@@ -938,6 +938,160 @@ jobs:
             || { echo "::error::the failure artifact has no .jupyter_cache/global.db: upload-failure-reports promises the execution cache, and upload-artifact leaves out hidden paths unless include-hidden-files is set (#243)"; find "$DIR" -maxdepth 3 | sort; exit 1; }
           echo "✅ the failure artifact holds the staged err.log and the execution cache"
 
+  build-display-error-guard:
+    # #247: the failure -W misses. build-fail-guard stages a cell that raises,
+    # which -W catches. This stages one whose exception is raised while IPython
+    # displays the result. The kernel reports that cell as successful, so
+    # nbclient does not raise, myst-nb renders the traceback without a warning,
+    # jb build exits 0, and the page is published with the traceback on it.
+    # build-lectures' error-outputs check is what fails it.
+    #
+    # One fixture, four builds: fail, warn, ignore, and an invalid value. Only
+    # the first executes anything. The later ones find every page up to date and
+    # read nothing, but the check reads _build/jupyter_execute, which the first
+    # build wrote, so each sees the same notebooks. raises.md is the control: a
+    # cell tagged raises-exception, whose error output must not be counted, so
+    # error-output-count is 1, not 2.
+    name: 'build-lectures: an error raised while displaying a result fails the step'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: env-seed
+    steps:
+      # Full history, as in build-fail-guard.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # Same salt as env-seed, so the conda env restores from its cache. Both
+      # pages are derived from lecture1.md, as build-fail-guard's is, so their
+      # frontmatter and kernelspec stay valid.
+      - name: Recreate salted fixture with a display-time error and an allowed one
+        run: |
+          cp -r .github/fixtures/mini-lectures harness
+          printf '\n# harness-salt: %s-book\n' "$SALT" >> harness/environment.yml
+          printf '%% harness salt: %s-book\n' "$SALT" > harness/lectures/salt.md
+          sed -e 's/^# An Executed Lecture$/# A Lecture Whose Display Fails/' \
+              harness/lectures/lecture1.md > harness/lectures/display_error.md
+          cat >> harness/lectures/display_error.md <<'EOF'
+
+          The cell below runs without error. IPython then raises while it
+          displays the result, which it prints as a traceback.
+
+          ```{code-cell} python3
+          class DisplayFails:
+              def _repr_html_(self):
+                  raise ValueError("harness: deliberate display-time error")
+
+          DisplayFails()
+          ```
+
+          ```{code-cell} python3
+          print("harness: the next cell ran")
+          ```
+          EOF
+          sed -e 's/^# An Executed Lecture$/# A Lecture That Raises on Purpose/' \
+              harness/lectures/lecture1.md > harness/lectures/raises.md
+          cat >> harness/lectures/raises.md <<'EOF'
+
+          ```{code-cell} python3
+          :tags: [raises-exception]
+          raise RuntimeError("harness: an error the lecture means to show")
+          ```
+          EOF
+          printf '  - file: display_error\n  - file: raises\n' >> harness/lectures/_toc.yml
+          grep -q 'def _repr_html_' harness/lectures/display_error.md \
+            || { echo "::error::fixture setup failed — display_error.md has no failing display"; exit 1; }
+          grep -q 'raises-exception' harness/lectures/raises.md \
+            || { echo "::error::fixture setup failed — raises.md has no tagged cell"; exit 1; }
+
+      - name: Setup environment
+        uses: ./setup-environment
+        with:
+          environment: 'harness/environment.yml'
+
+      # Expect an ::error:: annotation for display_error.md in this job's log:
+      # it is the check working.
+      - name: Build lectures with error-outputs fail (expected to fail)
+        id: fail
+        continue-on-error: true
+        uses: ./build-lectures
+        with:
+          builder: 'html'
+          source-dir: 'harness/lectures'
+          output-dir: 'harness'
+          error-outputs: 'fail'
+
+      - name: Assert the display-time error failed the step, and only it
+        env:
+          OUTCOME: ${{ steps.fail.outcome }}
+          COUNT: ${{ steps.fail.outputs.error-output-count }}
+        run: |
+          [ "$OUTCOME" = "failure" ] || { echo "::error::build-lectures reported [$OUTCOME] for a page whose display raised — error-outputs: fail must fail the step (#247)"; exit 1; }
+          # Attribute the red, as build-fail-guard does. The count is set only by
+          # the check, so a failure with a count of 1 is the check's, on one cell.
+          [ "$COUNT" = "1" ] || { echo "::error::error-output-count: expected [1], the display_error cell alone (raises.md's tagged cell is allowed), got [$COUNT]"; exit 1; }
+          # The premise: -W saw nothing, so no report was written, and the page
+          # shows the traceback while the next cell still ran.
+          [ ! -e harness/_build/html/reports/display_error.err.log ] \
+            || { echo "::error::harness/_build/html/reports/display_error.err.log exists: myst-nb reported this failure itself, so the fixture no longer stages the case -W misses"; exit 1; }
+          # "output traceback" is the class myst-nb gives a rendered error output.
+          grep -q 'output traceback' harness/_build/html/display_error.html \
+            || { echo "::error::display_error.html does not show a traceback, so the fixture no longer stages a display-time error"; exit 1; }
+          grep -q 'harness: the next cell ran' harness/_build/html/display_error.html \
+            || { echo "::error::display_error.html lacks the next cell's output: the kernel stopped at the display error"; exit 1; }
+          # The control is real: its notebook holds an error output.
+          grep -q '"output_type": "error"' harness/_build/jupyter_execute/raises.ipynb \
+            || { echo "::error::raises.ipynb holds no error output, so the raises-exception control tests nothing"; exit 1; }
+          echo "✅ error-outputs: fail failed the step on the display-time error, and allowed the tagged cell"
+
+      - name: Build lectures with error-outputs warn
+        id: warn
+        continue-on-error: true
+        uses: ./build-lectures
+        with:
+          builder: 'html'
+          source-dir: 'harness/lectures'
+          output-dir: 'harness'
+          error-outputs: 'warn'
+
+      - name: Build lectures with error-outputs ignore
+        id: ignore
+        continue-on-error: true
+        uses: ./build-lectures
+        with:
+          builder: 'html'
+          source-dir: 'harness/lectures'
+          output-dir: 'harness'
+          error-outputs: 'ignore'
+
+      # Fails before the build, in seconds.
+      - name: Build lectures with an invalid error-outputs (expected to fail)
+        id: invalid
+        continue-on-error: true
+        uses: ./build-lectures
+        with:
+          builder: 'html'
+          source-dir: 'harness/lectures'
+          output-dir: 'harness'
+          error-outputs: 'loud'
+
+      - name: Assert warn passes and reports, ignore passes silently, and an invalid value builds nothing
+        env:
+          WARN_OUTCOME: ${{ steps.warn.outcome }}
+          WARN_COUNT: ${{ steps.warn.outputs.error-output-count }}
+          IGNORE_OUTCOME: ${{ steps.ignore.outcome }}
+          IGNORE_COUNT: ${{ steps.ignore.outputs.error-output-count }}
+          INVALID_OUTCOME: ${{ steps.invalid.outcome }}
+          INVALID_BUILD_PATH: ${{ steps.invalid.outputs.build-path }}
+        run: |
+          [ "$WARN_OUTCOME" = "success" ] || { echo "::error::error-outputs: warn reported [$WARN_OUTCOME]: it must pass"; exit 1; }
+          [ "$WARN_COUNT" = "1" ] || { echo "::error::error-outputs: warn gave error-output-count [$WARN_COUNT], expected [1]: it must still report the error"; exit 1; }
+          [ "$IGNORE_OUTCOME" = "success" ] || { echo "::error::error-outputs: ignore reported [$IGNORE_OUTCOME]: it must pass"; exit 1; }
+          [ -z "$IGNORE_COUNT" ] || { echo "::error::error-outputs: ignore gave error-output-count [$IGNORE_COUNT]: the check must not run"; exit 1; }
+          [ "$INVALID_OUTCOME" = "failure" ] || { echo "::error::error-outputs: 'loud' reported [$INVALID_OUTCOME]: an invalid value must fail the step"; exit 1; }
+          [ -z "$INVALID_BUILD_PATH" ] || { echo "::error::error-outputs: 'loud' set build-path [$INVALID_BUILD_PATH]: an invalid value must fail before the build"; exit 1; }
+          echo "✅ warn passed with the error reported, ignore passed without checking, and an invalid value failed before building"
+
   # ==========================================================================
   # setup-environment — container mode, in the real lean image
   # ==========================================================================
@@ -3094,6 +3248,7 @@ jobs:
       - env-pinned-hit
       - env-pinned-edit
       - build-fail-guard
+      - build-display-error-guard
       - env-container-update
       - pdf-check-handoff
       - pdf-check-build
