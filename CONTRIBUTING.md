@@ -201,6 +201,8 @@ Update these docs when adding features:
 | `docs/user/versioning.md` | The release process, or how a release reaches the repositories that use it |
 | `docs/user/security.md` | What a job or an action can reach: its permissions, its secrets, the events it runs on |
 | `docs/dev/PLAN.md` | A backlog item or tracked issue opens, closes or changes scope; a consumer changes the ref it pins |
+| `docs/dev/TESTING.md` | A harness job is added or removed, or a test workflow changes what it covers |
+| `docs/dev/ARCHITECTURE.md` | A design decision changes: how the actions compose, cache, pin, isolate credentials or alert |
 
 ## Questions?
 

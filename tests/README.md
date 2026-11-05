@@ -10,11 +10,11 @@ Test assets are currently spread across the repo, each next to what it tests. Th
 
 | Location | What | Committed? |
 |---|---|---|
-| `.github/workflows/test-actions.yml` | The PR harness — a relevance `gate`, 14 jobs exercising the cache, environment and build actions via `uses: ./` local paths, and a `harness-summary` certification job (#100 stage 1) | yes |
-| `.github/fixtures/mini-lectures/` | Fixture for the harness: a two-page book with a real executed code cell, so builds populate a genuine `_build/.jupyter_cache` | yes |
+| `.github/workflows/test-actions.yml` | The PR harness — a relevance `gate`, a job or more for every action and for the templates' hand-offs, all via `uses: ./` local paths, and a `harness-summary` certification job (#100 stage 1) | yes |
+| `.github/fixtures/` | Fixtures for the harness: `mini-lectures/`, a two-page book with a real executed code cell, so builds populate a genuine `_build/.jupyter_cache`; `access-gate/`, a stand-in for a Cloudflare Access gate; `preview-comment/`, the preview comments' expected bodies and an API stand-in | yes |
 | `containers/quantecon/tests/` | Container smoke tests and their minimal book | yes |
 | `tests/local/` | Throwaway clones of real lecture repos, for manual testing | **no** — git-ignored |
-| [`QuantEcon/test-actions-lecture-intro`](https://github.com/QuantEcon/test-actions-lecture-intro) | The canary repo (#100 stage 2). Pinned `@v0`, so it exercises `publish-gh-pages` and `preview-netlify` — neither is testable in this repo | separate repo |
+| [`QuantEcon/test-actions-lecture-intro`](https://github.com/QuantEcon/test-actions-lecture-intro) | The canary repo (#100 stage 2). Pinned `@v0`, it runs the real deploys this repo's harness cannot: both preview actions on its pull requests, and `publish-gh-pages` on a tag | separate repo |
 
 ## `tests/local/`
 

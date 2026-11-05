@@ -1,367 +1,84 @@
-# Testing Strategy
+# Testing
 
-## Current Status (2026-02-05)
+How a change to this repository is tested: the action harness on every pull request, the container checks, the canary lecture repository, and what you can run locally. The last section says what none of them covers.
 
-**✅ Container infrastructure validated.** All 4 lecture repositories build successfully on both containers.
+| Where | What it tests | When it runs |
+|---|---|---|
+| [`test-actions.yml`](../../.github/workflows/test-actions.yml), the action harness | Each action at the pull request's commit, the templates' hand-offs between jobs, and the user manual | Every pull request, every push to `main`, and by hand |
+| [`validate-containers.yml`](../../.github/workflows/validate-containers.yml), called by the harness | Each image a pull request changes, built as a `pr-<N>` candidate and smoke-tested | Within the harness, on a pull request that changes an image |
+| [`test-container.yml`](../../.github/workflows/test-container.yml) | The smoke test and size report, on both `:latest` images | After each image build, and by hand for any tag |
+| [`test-containers-lectures.yml`](../../.github/workflows/test-containers-lectures.yml) | Four lecture repositories built in both images | After each image build, weekly on Monday at 02:00 UTC, and by hand |
+| [QuantEcon/test-actions-lecture-intro](https://github.com/QuantEcon/test-actions-lecture-intro), the canary | A release, in a real lecture repository, with real deploys | On its own pull requests and weekly cache build, and in every staged release |
 
-### Validation Results
+## The action harness
 
-| Repository | quantecon-build | quantecon | Status |
-|------------|-----------------|-----------|--------|
-| lecture-python-programming | 4.6 min | 5.4 min | ✅ Pass |
-| lecture-python-intro | 11.5 min | 13.4 min | ✅ Pass |
-| lecture-python-advanced.myst | 33.6 min | 35.9 min | ✅ Pass |
-| lecture-python.myst | 60.0 min | 60.0 min | ✅ Pass |
+`test-actions.yml` calls each action as `uses: ./<action>`, so it tests the code on the pull request, not a released tag. Its required check is `Action harness: all checks`.
 
-**Key Findings:**
-- Lean container (`quantecon-build`) performs equal or better than full container
-- No Jupyter Book warnings (builds pass with `-W` warnings-as-errors)
-- Container pulls + setup: ~2-3 min (vs 7-8 min for ubuntu-latest)
+### The gate
 
----
+The workflow has no `paths:` filter: a filtered-out workflow publishes no check run, and a required check would then wait forever. Instead its first job, `gate`, decides whether the change can affect the actions:
 
-## Action-Level PR Harness (`test-actions.yml`)
+- **`IGNORED`** is a list of paths that cannot, such as the root docs, `docs/`, `tests/` and `templates/`. It is an ignore list, not a cover list, so a path it does not recognise runs the whole harness: forgetting to extend it costs CI minutes, never a green check earned by running nothing.
+- **A self-test** fails the gate if `IGNORED` would match any file the harness must run for: each action's `action.yml`, which it reads from the workflow's own `uses: ./<action>` lines, the shared scripts and lockfiles, and the container files. It also checks that `IGNORED` still matches the paths it is meant to.
+- **The checks a docs-only change still needs** run in the gate itself, because such a change skips every other job: the templates pin the same third-party actions as `.github/workflows/`, and `scripts/generate-docs.py --check --check-examples --actionlint` finds the manual's generated tables current, a chapter for every action, and every example valid. [CHAPTER-TEMPLATE.md](CHAPTER-TEMPLATE.md) lists those checks.
 
-`.github/workflows/test-actions.yml` tests the composite actions themselves — via `uses: ./<action>` local paths, so it exercises **the code on the PR**, not a released ref. The workflow runs on **every** PR, on pushes to `main`, and on manual dispatch; a `gate` job then decides whether the jobs themselves apply, skipping them for changes that cannot affect the actions. It works that way because a workflow suppressed by a `paths:` filter never publishes a check run at all, which would leave a required `Action harness: all checks` pending forever. This is stage 1 of the two-part design in issue #100; it is the permanent form of the throwaway harness that verified the #104 fix. The gate also runs the checks a docs-only PR must still pass, since it skips every other job: `templates/` pins the same third-party actions as `.github/workflows/` (#109), and the user manual has a chapter for every action and matches each `action.yml`, with its examples passing the input, `permissions:` and actionlint checks of `scripts/generate-docs.py` (#178). One job is not an action test: `container-images` calls `validate-containers.yml`, which builds each container image a pull request changes as a `:pr-<N>` candidate and smoke-tests it, so that a pull request changing only `containers/**` cannot pass the required check without its image being built (#142).
+`harness-summary`, the job behind `Action harness: all checks`, passes only if the gate succeeded and either every job succeeded, when the gate found the change relevant, or every job was skipped, when it did not. Any other mix fails it.
 
-Fixtures are salted with `run_id`-`run_attempt` so cache keys are unique per run and miss assertions cannot be polluted by earlier runs. The committed fixture (`.github/fixtures/mini-lectures/`) executes a real code cell, so builds populate a genuine `_build/.jupyter_cache`.
+### Fixtures
 
-The container fixture at `containers/quantecon/tests/minimal-jupyter-book/` also executes cells, but with `force` + `raise_on_error` and against the image's own stack. It tests the image; this one tests the action logic (#108).
+- **`.github/fixtures/mini-lectures/`**: a two-page book with a code cell that really executes, so a build writes a genuine `_build/.jupyter_cache`. Cache keys are salted with the run's id and attempt, so one run's caches cannot satisfy another's miss assertions.
+- **`.github/fixtures/access-gate/server.py`**: a local stand-in for a Cloudflare Access gate, which answers in every shape the `deploy-cloudflare` gate probe has to tell apart, over TLS when a job needs it.
+- **`.github/fixtures/preview-comment/`**: the comment bodies the preview actions must render for given inputs, and a stand-in for GitHub's API that the comment script runs against.
 
-| Action | Coverage |
-|---|---|
-| `restore-jupyter-cache` | Both cache types × both modes: seed/miss, read-only restore, save-mode restore (the #104 scenario), `fail-on-miss` firing and staying quiet, payload round-trip |
-| `setup-environment` | Standard-mode conda cache, two-run miss→hit chain (the #33/#78 path, previously never confirmed by CI), a `cache-version` bump on the cached environment, which must restore nothing, and an edited environment file under the same version, which must restore through the fallback (#205); with pip pinned below a fresh install's, an exact hit and a fallback restore that must each hold a single working pip (#209) |
-| `build-lectures` | Real HTML build of the fixture on the cache-restored conda env, executed-cell output asserted; plus the negative direction — a page whose code cell raises must fail the step, so a regression that swallows the build status cannot pass silently |
-| `build-jupyter-cache` | Smoke build + outputs, then a full round-trip into `restore-jupyter-cache` for both cache types. ⚠️ Its internal `setup-environment`/`build-lectures` calls run `@v0`, not the PR, because GitHub forbids expressions in `uses:` (see #100). Rewriting those four `uses:` lines to local paths before the step runs would put the PR's siblings in the chain, since a nested `./` resolves against the workspace (the #143 spike did this in the canary). But that tests a patched `action.yml`, and the harness does not do it |
-| `deploy-cloudflare` | Everything short of a real deploy: the Access gate probe against a local stand-in for every response shape (exact team domain passes; wrong org, public `2xx`, same-host redirect, missing `Location`, a `Location` hiding its host behind userinfo, `404`, `5xx`, unreachable, an empty team domain, and a public asset behind a gated root all fail); the action refusing an ungated Worker **before wrangler is even installed**, asserted on the filesystem, with a positive control proving the same inputs reach wrangler once the gate is off; every invalid input failing in validation, with the gate off so a dropped rule cannot hide behind it; and the pinned wrangler accepting the generated config (`--dry-run` deploy and alias upload, with no `Unexpected fields` warning), which is what a Dependabot bump of the lockfile runs against. ❌ A real deploy needs a gated Worker and a token, so the first consumer deploy is its only proof |
-| `preview-netlify`, `preview-cloudflare` | CLI install only: `npm ci` from each action's lockfile on Node 24, then the CLI must start and report the pinned version, so a Dependabot CLI bump gets some signal (#105). The actions themselves, deploys included, are ❌ not covered — they need real deploy targets and secrets; owned by the post-release canary repo (stage 2+ of #100) |
-| `publish-gh-pages` | ❌ Not covered — needs real deploy targets and secrets; owned by the post-release canary repo (stage 2+ of #100) |
+The container smoke fixture in `containers/quantecon/tests/` is separate: it tests an image, not the actions. See [CONTAINERS.md](CONTAINERS.md#the-smoke-test).
 
----
+### What each action's jobs cover
 
-## Local Test Fixtures
+| Action | Jobs | What they assert |
+|---|---|---|
+| `restore-jupyter-cache` | `unit-build-*`, `unit-exec-*` | For both cache types: a genuine miss, a read-only restore that stays quiet, a restore in save mode (#104), and `fail-on-miss` firing on a miss |
+| `setup-environment` | `env-*` | In standard mode, a cold Conda cache and then a warm one with a build on the restored environment; a `cache-version` bump that restores nothing, and an edited environment file that restores through the fallback (#205); for a pinned stack, an exact hit and a fallback restore that each hold one working pip (#209). In container mode, that the delta lands in the environment on `PATH` |
+| `build-lectures` | `env-hit-build`, `build-fail-guard`, `build-display-error-guard` | A real build of the fixture, with its executed output; that a cell that raises fails the step; and that an error raised while IPython displays a result fails it too (#247) |
+| `build-jupyter-cache` | `bjc-*` | A build that saves both caches, which the round-trip jobs then restore; a failing build that saves nothing; an abort before the builds that still reports failure; `builders` parsed by exact token |
+| `preview-netlify`, `preview-cloudflare` | `preview-*` | The pinned CLIs install from their lockfiles and run; the deploy decision for each combination of event, actor, fork and `dispatch-alias`; change detection against a scratch repository, shallow and full; the comment, rendered against the API stand-in, finding only its own; and each action installing its CLI only for a deploy, refusing a bad input first |
+| `publish-gh-pages` | `publish-release-packaging`, `publish-modes` | The release assets' names, layout, checksum and manifest; `mode: upload` working with read access alone, and a mode the inputs cannot carry out failing before anything is uploaded |
+| `deploy-cloudflare` | `dc-*` | The Access gate probe telling every response apart, gated and public; the action refusing an ungated Worker, or one that contradicts `visibility`, before it installs anything; every invalid input failing in validation; and the pinned wrangler accepting the generated configuration |
 
-### `tests/local/` (git-ignored)
+The templates have jobs of their own: `pdf-check-*` runs `ci.yml`'s PDF check hand-off and its `PDF_CHECK: 'false'` switch, and `preview-site-handoff` and `preview-deploy-job` its build-to-deploy hand-off, with change detection fetching no stored credentials. `container-images` is the call to `validate-containers.yml`.
 
-Scratch space for local clones of real lecture repos, used to test workflows on your own machine against something larger than the committed fixture. Ignored via `tests/local/` in `.gitignore`, so it exists only in your working tree — never committed, and read by no workflow. See [tests/README.md](../../tests/README.md) for the wider layout.
+`build-jupyter-cache` runs `setup-environment` and `build-lectures` at `@v0`, because GitHub does not allow an expression in `uses:`. So in the harness, as for consumers, those two run as the latest release, not as the pull request has them.
 
-> **Not to be confused with [`QuantEcon/test-actions-lecture-intro`](https://github.com/QuantEcon/test-actions-lecture-intro)**, the canary repo that runs the actions in real CI (#100 stage 2). This is a throwaway directory; that is a live repo.
->
-> Local clones used to be documented at the repo root as `test-lecture-python-intro/`, one character away from the canary's old name — close enough that the two were repeatedly confused. A path under `tests/local/` cannot collide with a repo name. The old `test-*/` ignore pattern is retained, so existing local clones stay ignored where they are.
+### Adding a job
 
-**Purpose:**
-- Test container builds locally
-- Validate action changes before pushing
-- Debug workflow issues
+- Put it beside the related jobs, and add it to `harness-summary`'s `needs:`. A job that must be skipped stays out of `needs:`, since the summary fails a skipped job; check its skip from another job, as the `pdf-check-switch-*` jobs do.
+- Show that it can fail: run it once against the bug it guards, or with the assertion inverted, and say so in the pull request.
+- If the job needs a file the gate would ignore, check the gate's self-test still passes.
 
-**Setup:**
-```bash
-# from the repo root
-git clone https://github.com/QuantEcon/lecture-python-intro.git tests/local/lecture-python-intro
-```
+## Containers
 
-**Usage with local scripts:**
-```bash
-# Test container builds
-cd containers/quantecon/tests
-./run-local-tests.sh
-```
+A pull request that changes an image builds and smoke-tests it before it can merge; the merge then rebuilds the images, moves `:latest`, and runs `test-container.yml` and the lecture matrix against them. [CONTAINERS.md](CONTAINERS.md) describes that path and the smoke test, and [CONTAINER-VALIDATION.md](CONTAINER-VALIDATION.md) the lecture matrix and its results.
 
----
+## The canary
 
-## Approach
+[QuantEcon/test-actions-lecture-intro](https://github.com/QuantEcon/test-actions-lecture-intro) is a lecture repository kept for testing the actions. It pins `@v0` and runs the full chain:
 
-**Test in isolation** using test fixtures before production rollout.
+- `ci.yml`, on its pull requests and by hand: `restore-jupyter-cache`, `build-lectures`, and real deploys with both `preview-netlify` and `preview-cloudflare`;
+- `cache.yml`, weekly on Sunday at 03:00 UTC and by hand: `build-jupyter-cache`;
+- `publish.yml`, on a `publish*` tag: `publish-gh-pages`.
 
-### Testing Principles
+In a staged release, a branch of the canary points these at the candidate tag before `v0` moves: see [Staged Releases](../../CONTRIBUTING.md#staged-releases).
 
-1. **Isolated testing** - Use test directories, not production repos
-2. **Compare outputs** - Build artifacts must match current approach
-3. **Measure performance** - Document actual vs expected timing
-4. **Validate deployment** - Test Netlify and build artifacts
-5. **Staged rollout** - One repository at a time after validation
+## Locally
 
----
+- **The manual's checks**: `python3 scripts/generate-docs.py --check --check-examples --actionlint "$(command -v actionlint)"`, with the actionlint release the gate pins.
+- **A larger book**: clone a real lecture repository into `tests/local/`, which git ignores; see [tests/README.md](../../tests/README.md).
+- **The images**: build them as [CONTAINERS.md](CONTAINERS.md#building-locally) shows, and run the smoke test on macOS with `containers/quantecon/tests/run-local-tests.sh`.
+- **An action from a branch**: in a lecture repository, point a step at `quantecon/actions/<action>@<branch>`.
 
-## Testing Workflow
+## What is not covered
 
-## Phase 1: Container Validation
-
-### 1.1 Build Container
-
-Trigger container build workflow:
-
-```bash
-# Manual trigger
-gh workflow run build-containers.yml
-
-# Or push to main (auto-triggers)
-git push origin main
-```
-
-### 1.2 Verify Container Image
-
-```bash
-# Pull and inspect
-docker pull ghcr.io/quantecon/quantecon:latest
-docker run --rm ghcr.io/quantecon/quantecon:latest python --version
-docker run --rm ghcr.io/quantecon/quantecon:latest conda list
-docker run --rm ghcr.io/quantecon/quantecon:latest pdflatex --version
-```
-
-**Verify:**
-- Python 3.13 installed
-- Anaconda base packages available (numpy, scipy, pandas, matplotlib)
-- Jupyter Book tools installed
-- LaTeX commands work
-
-## Phase 2: Test Repository Workflow
-
-### 2.1 Update test-actions-lecture-intro
-
-Create container-based workflow:
-
-```yaml
-name: Build with Container
-on:
-  workflow_dispatch:
-  push:
-    branches: [test-container]
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/quantecon/quantecon:latest
-    steps:
-      - uses: actions/checkout@v7
-      
-      # Install lecture-specific packages
-      - name: Install dependencies
-        run: conda env update -f environment.yml
-      
-      - name: Build lectures
-        run: jupyter-book build lectures/
-      
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: html
-          path: lectures/_build/html/
-```
-
-### 2.2 Compare Builds
-
-Run both container and ubuntu-latest workflows:
-
-1. **Timing** - Measure setup time, build time, total time
-2. **Artifacts** - Download and diff HTML outputs
-3. **Errors** - Check for differences in warnings/errors
-4. **Performance** - Verify 60-70% faster setup time
-
-## Phase 3: Validation Checklist
-
-Before production rollout:
-
-- [ ] Container builds successfully via GitHub Actions
-- [ ] Container image accessible from `ghcr.io/quantecon/quantecon:latest`
-- [ ] Python 3.13 and Anaconda packages available in container
-- [ ] LaTeX commands work in container
-- [ ] Lecture-specific packages install successfully
-- [ ] Build completes successfully
-- [ ] HTML output matches current production
-- [ ] Setup time reduced by 60-70% (target: 2-3 min vs 7-8 min)
-- [ ] No new errors or warnings
-- [ ] Deployment to Netlify works
-
----
-
-## Validation Tests
-
-### Test 1: Container Pull Performance
-
-**Goal:** Verify container pulls quickly from GHCR
-
-**Check workflow logs:**
-- First pull: ~1-2 min (downloads 3.33 GB compressed for the full image, 2.93 GB for the lean one)
-- Subsequent pulls: ~10-20 sec (runner cache)
-
-### Test 2: Environment Validation
-
-**Goal:** Verify all required packages available
-
-```bash
-# In workflow, add diagnostic step:
-- name: Validate environment
-  run: |
-    python --version
-    conda list | grep -E "(numpy|scipy|pandas|matplotlib|jupyter)"
-    jupyter-book --version
-    pdflatex --version
-```
-
-### Test 3: Lecture Package Installation
-
-**Goal:** Verify lecture-specific packages install correctly
-
-**Check workflow logs:**
-- `conda env update -f environment.yml` completes
-- Packages like `quantecon`, `cvxpy` installed
-- Installation time: ~1-2 min
-
-### Test 4: Build Output Comparison
-
-**Goal:** Verify builds produce identical output
-
-**Steps:**
-1. Build with container workflow
-2. Build with current ubuntu-latest workflow
-3. Download both HTML artifacts
-4. Compare:
-   ```bash
-   diff -r container-html/ ubuntu-html/
-   ```
-
-**Expected:** No differences (or only timestamp differences)
-
-### Test 5: Performance Measurement
-
-**Goal:** Document actual performance improvements
-
-**Measure:**
-- Setup time (container pull + package install)
-- Build time (jupyter-book build)
-- Total workflow time
-
-**Compare to baseline:**
-- ubuntu-latest setup: 7-8 min
-- Container setup target: 2-3 min
-- Improvement: 60-70%
-
----
-
-## Rollout Plan
-
-### Stage 1: Test Repository
-
-Pick a test repository or create a fork:
-
-```bash
-# Option 1: Use lecture-python-programming (lower traffic)
-# Option 2: Create a fork for testing
-```
-
-1. Merge test workflow into `main`
-2. Monitor for 1 week
-3. Collect metrics (build times, success rate)
-
-Complete testing with `QuantEcon/test-actions-lecture-intro`, validate all metrics.
-
-### Stage 2: CPU Lecture Repositories
-
-After successful testing, migrate CPU-based lecture repositories:
-
-1. **lecture-python-intro** (Netlify, similar to test repo)
-2. **lecture-python-programming** (GitHub Pages)
-3. **lecture-python-advanced.myst** (GitHub Pages)
-4. **lecture-python.myst** - CPU builds only (defer GPU workflows)
-
-### Stage 3: Production Validation
-
-For each repository:
-1. Create migration PR with container workflow
-2. Test in PR (manual trigger)
-3. Compare outputs with current workflow
-4. Merge after validation
-5. Monitor first production build
-
-**Rollback:** Revert workflow commit if issues occur.
-
----
-
-## Success Metrics
-
-Track before/after migration:
-
-| Metric | Current (ubuntu-latest) | Target (Container) |
-|--------|-------------------------|-------------------|
-| Setup time | 7-8 min | 2-3 min |
-| Build time | 8-10 min | 8-10 min (same) |
-| Total time | 15-18 min | 10-13 min |
-| LaTeX install | 2-3 min | 0 min (pre-installed) |
-| Base packages | 3-4 min | 0 min (pre-installed) |
-
-**Success criteria:**
-- Build output matches current production (100%)
-- Setup time reduced by 60-70%
-- No new errors or warnings
-
----
-
-## Troubleshooting
-
-### Container not found
-
-**Issue:** `Error: failed to pull image`
-
-**Solution:** 
-- Verify image name: `ghcr.io/quantecon/quantecon:latest`
-- Check container build workflow ran successfully
-- Ensure image is public (no auth required)
-
-### Package conflicts
-
-**Issue:** Conda solve fails or package conflicts
-
-**Debug:** the log of `setup-environment`'s "Cache Conda environment" step prints the key and `restore-keys` it looked up, and names the cache it restored, if any. The key format is under Standard mode in the [setup-environment chapter](../user/actions/setup-environment.md#standard-mode).
-
-**Solution:** Check cache key format, verify paths
-
-#### Issue: Build output differs
-
-**Symptom:** HTML/PDF differs from production
-
-**Debug:**
-1. Download both artifacts
-2. Compare with `diff -r`
-3. Check for version differences in packages
-
-**Solution:** Pin package versions in environment.yml
-
-#### Issue: Workflow timeout
-
-**Symptom:** Workflow exceeds time limit
-
-**Debug:** Check if cache is working, verify runner specs
-
-**Solution:** Increase timeout or investigate slow steps
-
-```yaml
-- name: Debug environment
-  run: |
-    conda list
-    python -c "import quantecon; print(quantecon.__version__)"
-```
-
-**Check:**
-- Verify lecture's `environment.yml` doesn't conflict with container base
-- Try updating conda: `conda update -n base conda`
-
-### Build differences
-
-**Issue:** Container build differs from ubuntu-latest
-
-**Debug:**
-- Compare Python versions
-- Check package versions: `conda list > versions.txt`
-- Diff HTML outputs to identify specific differences
-- Look for timestamp-only changes vs content changes
-
----
-
-## See Also
-
-- [Containers](../user/containers.md) - Container usage
-- [Getting started](../user/getting-started.md) - Setting up and migrating a lecture repository
-- [containers/quantecon/README.md](../../containers/quantecon/README.md) - Container details
+- **Real deploys.** No harness job deploys anywhere: that needs real sites and secrets. The canary's pull requests deploy real previews, and its tag runs publish to GitHub Pages; a `deploy-cloudflare` deploy is proven only by the first consumer run after a release.
+- **A filed failure issue.** The harness checks the issue's text and the guards that lead to it, but filing one needs `issues: write` and would open real issues on every run, so only an unattended consumer or canary run files one.
+- **`build-jupyter-cache`'s siblings at the candidate.** They run at `@v0`, here and in a staged release, so a change to either reaches that chain untested until `v0` moves.
+- **A release before `v0` moves, automatically.** Staged releases are run by hand. A `gate.yml` in the canary that tests a candidate is #135, with its fixture #136.
+- **The lecture repositories' own content**, beyond the four the lecture matrix builds.
