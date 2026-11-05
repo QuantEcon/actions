@@ -129,8 +129,10 @@ async function findComments({ github, owner, repo, issueNumber, provider }) {
 // has no checkout: from the REST API's list of the pull request's files, which
 // compares from the merge base as scripts/detect-changed-lectures.sh does, and
 // by that script's rules. A renamed lecture counts as added, under its new
-// path; a removed one is not listed; nor are <lectures-dir>/intro.md and
-// paths within lectures-dir that start with `_`. `strip` says whether
+// path; a removed one is not listed; nor is <lectures-dir>/intro.md, nor a
+// path whose first part under lectures-dir starts with `_`, such as
+// <lectures-dir>/_static/notes.md. Only that first part counts, as in the
+// script: <lectures-dir>/sub/_draft.md is listed. `strip` says whether
 // _toc.yml is in lectures-dir at the pull request's head, as the script's
 // strip-lectures-dir does. A failure is a warning, with no lectures listed,
 // since the links are worth less than the comment.
