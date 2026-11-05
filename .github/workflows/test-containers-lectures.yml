@@ -24,6 +24,13 @@ on:
     workflows: ["Build QuantEcon Containers"]
     types:
       - completed
+  # Weekly against the published :latest, with no image change behind it. The
+  # image builds no longer run on a schedule (#235), and without this the matrix
+  # would run only when an image changes, which can be weeks apart (none from
+  # 2026-09-25 to 2026-11-04). This run is what catches the lecture repos, or
+  # the actions they build with, drifting against an unchanged image.
+  schedule:
+    - cron: '0 2 * * 1'   # Monday 02:00 UTC
   workflow_dispatch:
 
 concurrency:
@@ -33,7 +40,7 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     # Per repo: an entry may set its own ceiling, otherwise 120. lecture-python.myst
     # needs more: on CPU its HTML build alone takes 72-118 min depending on the
     # runner, so at 120 a leg's result depended on which host it landed on (#141,
@@ -101,7 +108,8 @@ jobs:
         with:
           # Use the composite actions from the commit that built the container
           # under test. workflow_run checks out the default branch by default;
-          # fall back to github.sha for manual workflow_dispatch runs.
+          # fall back to github.sha, the default branch's head, for scheduled
+          # and manual workflow_dispatch runs.
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           path: actions-repo
 
@@ -226,8 +234,8 @@ jobs:
     name: Report failure
     runs-on: ubuntu-latest
     needs: [test]
-    # This workflow runs unattended off the weekly container build. Manual
-    # dispatches have someone watching them.
+    # This workflow runs unattended on its weekly schedule and after each
+    # container build. Manual dispatches have someone watching them.
     #
     # `cancelled` must alert as well as `failure`. A leg killed by
     # `timeout-minutes` concludes *cancelled*, not failed, so a bare `failure()`
@@ -241,7 +249,8 @@ jobs:
     # `always()` is required because `failure()` is false once a needed job is
     # cancelled. The cost is that a run superseded by the workflow-level
     # `cancel-in-progress` also reaches here — accepted deliberately: supersedes
-    # are rare on a weekly `workflow_run` trigger, the filed issue is
+    # are rare (a container build landing while the weekly run is going, or
+    # the reverse), the filed issue is
     # deduplicated rather than duplicated, and a spare issue is much cheaper
     # than another three-week silence.
     if: ${{ always() && github.event_name != 'workflow_dispatch' && (needs.test.result == 'failure' || needs.test.result == 'cancelled') }}

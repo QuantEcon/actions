@@ -9,7 +9,8 @@ name: Validate Container Images
 # images too:
 #   plan   which images the pull request changes (scripts/detect-changed-images.sh).
 #          On a push or a dispatch, or a pull request that changes none,
-#          nothing more runs.
+#          nothing more runs. Every event first checks that each image pins
+#          its base by digest (scripts/check-base-pins.sh, #235).
 #   build  each changed image, pushed to GHCR as a candidate tagged pr-<N>
 #          (moves with the pull request) and pr-<N>-<YYYYMMDD>-<HHMMSS>-<sha7>
 #          (one per run: what this run tests). Never :latest.
@@ -53,6 +54,17 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+
+      # On every event, not only when an image changes: the base pin is what
+      # keeps a base move a pull request (#235), so dropping it, or moving one
+      # image's base without the other's, fails here before it can merge.
+      - name: Check each image pins its base by digest, and both pin the same
+        run: |
+          set -euo pipefail
+          scripts/check-base-pins.sh --self-test
+          # Assigned first: under set -e this fails the step on a bad pin.
+          pins=$(scripts/check-base-pins.sh)
+          while IFS= read -r pin; do echo "Base image: $pin"; done <<< "$pins" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Decide which images to build
         id: plan

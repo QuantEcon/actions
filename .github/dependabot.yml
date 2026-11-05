@@ -3,8 +3,8 @@
 # Dependabot PRs run as `dependabot[bot]`, which the preview-* actions already
 # skip (no secret access), so these PRs won't trigger preview deploys.
 #
-# Each ecosystem uses two groups so updates land as at most two PRs (no
-# per-directory duplicates):
+# Each ecosystem but docker (see its entry) uses two groups so updates land as
+# at most two PRs (no per-directory duplicates):
 #   - "<eco>"        — minor/patch updates (low risk; safe to merge together)
 #   - "<eco>-major"  — major updates (review carefully before merging)
 # Specific updates we're not ready for are blocked outright via `ignore`.
@@ -188,8 +188,16 @@ updates:
           - "major"
 
   # ── Container base image ───────────────────────────────────────────────────
-  # Tracks the `FROM ubuntu:24.04` base in each Dockerfile (not the Miniconda
-  # installer, which is pinned + checksummed in the RUN step).
+  # Tracks the `FROM ubuntu:24.04@sha256:…` base in each Dockerfile (not the
+  # Miniconda installer or Node, which are pinned + checksummed in RUN steps).
+  # The digest pin is how OS updates reach the images (#235): Canonical
+  # republishes 24.04 every few weeks, Dependabot proposes the new digest, and
+  # that pull request builds and smoke-tests both images before :latest moves.
+  #
+  # One group, without `update-types`, unlike the ecosystems above. A new digest
+  # under an unchanged tag has no semver level, and Dependabot keeps such an
+  # update out of any group that sets `update-types`, so with the usual two
+  # groups it would arrive as one PR per directory and move the images apart.
   - package-ecosystem: "docker"
     directories:
       - "/containers/quantecon"
@@ -205,14 +213,13 @@ updates:
       docker:
         patterns:
           - "*"
-        update-types:
-          - "minor"
-          - "patch"
-      docker-major:
-        patterns:
-          - "*"
-        update-types:
-          - "major"
     ignore:
-      # Stay on the 24.04 LTS base; bump deliberately when moving to the next LTS.
+      # Stay on the 24.04 LTS, and move to the next one deliberately, by hand.
+      # Ignoring major and minor holds the tag (26.04 is a major, an interim
+      # 24.10 a minor), while a new digest for 24.04 changes no version, so it
+      # is not matched here and still arrives. Ignoring `ubuntu` outright would
+      # stop the digest updates too.
       - dependency-name: "ubuntu"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"

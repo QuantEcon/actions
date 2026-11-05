@@ -153,7 +153,7 @@ jobs:
           # The container-images job decides for itself which images to build,
           # but runs only when this gate says relevant: an IGNORED that matched
           # an image's files would pass a containers-only pull request unbuilt.
-          for f in containers/*/Dockerfile containers/*/environment.yml containers/quantecon/tests/smoke-test.sh .github/workflows/validate-containers.yml .github/workflows/test-container.yml scripts/detect-changed-images.sh scripts/delete-pr-images.sh; do MUST_RUN="$MUST_RUN $f"; done
+          for f in containers/*/Dockerfile containers/*/environment.yml containers/quantecon/tests/smoke-test.sh .github/workflows/validate-containers.yml .github/workflows/test-container.yml scripts/detect-changed-images.sh scripts/delete-pr-images.sh scripts/check-base-pins.sh; do MUST_RUN="$MUST_RUN $f"; done
           for p in $MUST_RUN; do
             if grep -Eq "$IGNORED" <<< "$p"; then
               echo "::error::gate self-test: IGNORED matches [$p], which must always run the harness"; exit 1

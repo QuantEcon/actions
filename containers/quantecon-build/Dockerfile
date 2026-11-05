@@ -1,4 +1,11 @@
-FROM ubuntu:24.04
+# Ubuntu 24.04 LTS, pinned by digest so that the base changes only through a
+# pull request (#235). Unpinned, a rebuild took whatever `ubuntu:24.04` had
+# become, and when that had moved, the floating packages in the later layers
+# re-resolved with it, unreviewed (#222). Dependabot proposes each new 24.04
+# digest (never 26.04: see .github/dependabot.yml), and that pull request builds
+# and smoke-tests the images before :latest moves. Both Dockerfiles pin the same
+# digest, which scripts/check-base-pins.sh enforces.
+FROM ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852
 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive

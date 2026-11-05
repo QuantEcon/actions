@@ -9,7 +9,7 @@ Two container images (see [ARCHITECTURE.md](./dev/ARCHITECTURE.md) for the ratio
 - **`ghcr.io/quantecon/quantecon:latest`** — full image (8.60 GB on disk, 3.33 GB compressed pull): Ubuntu 24.04 LTS + TexLive + Miniconda/Python 3.13 + Anaconda 2026.07 (numpy, scipy, pandas, matplotlib, jupyter) + Jupyter Book 1.0.4post1 and extensions.
 - **`ghcr.io/quantecon/quantecon-build:latest`** — lean image (7.32 GB on disk, 2.93 GB compressed pull): the build toolchain (LaTeX for PDF builds + Jupyter Book) without the full Anaconda metapackage; repos install their own packages from `environment.yml`. (LaTeX dominates, so it's only modestly smaller than the full image.)
 
-**Updates:** Weekly automated builds (Monday 2am UTC)
+**Updates:** Only through reviewed pull requests; nothing rebuilds the images on a schedule. The Ubuntu 24.04 base is pinned by digest, so OS updates arrive when Dependabot proposes a new base digest and that pull request merges.
 
 ## Usage
 
@@ -138,7 +138,6 @@ docker run --rm ghcr.io/quantecon/quantecon:latest python --version
 
 Containers build automatically via `.github/workflows/build-containers.yml`:
 - Push to `main` (when container files change)
-- Weekly schedule (Monday 2am UTC)
 - Manual: Workflow dispatch
 
 **Manual trigger:**

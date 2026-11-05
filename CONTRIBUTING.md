@@ -102,8 +102,9 @@ Known limits:
   merging it stays a human decision.
 - Container images stage only on pull requests. A pull request that changes an image builds it
   as a `:pr-<N>` candidate and smoke-tests it before merge (#142, phase 1). The merge's own
-  build, a scheduled rebuild and any dispatch of `build-containers.yml` still push `:latest`
-  before any test runs (phase 2).
+  build and any dispatch of `build-containers.yml` still push `:latest` before any test runs
+  (phase 2). The workflow has no schedule since #235: a move of the pinned `ubuntu:24.04` base
+  arrives as a Dependabot pull request and is tested like any other image change.
 
 **Rollback:** point `v0` back at the previous release and force-push it.
 
@@ -125,8 +126,8 @@ docker buildx imagetools create --tag ghcr.io/quantecon/<image>:latest \
 
 This moves the tag without rebuilding, so consumers get back the exact image they had. Check it
 with `docker buildx imagetools inspect ghcr.io/quantecon/<image>:latest`. The next build moves
-`:latest` again, whether from a merge touching `containers/**` or a scheduled rebuild (until
-#235 drops the schedule), so revert or fix the change before then.
+`:latest` again, from a merge touching `containers/**` or `build-containers.yml`, or a
+dispatch, so revert or fix the change before then.
 
 ## CI
 
