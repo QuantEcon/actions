@@ -153,7 +153,7 @@ jobs:
 - `ghcr.io/quantecon/quantecon:latest` - Full image (8.60 GB on disk, 3.33 GB compressed pull)
 - `ghcr.io/quantecon/quantecon-build:latest` - Lean image (7.32 GB on disk, 2.93 GB compressed pull); drops the full Anaconda metapackage, so it's only modestly smaller
 - Setup time: ~2-3 minutes (container pull + lecture-specific packages)
-- Weekly automated builds (Monday 2am UTC) for security updates
+- No scheduled rebuilds: an image changes only through a reviewed pull request, which builds and tests it before `:latest` moves. The Ubuntu 24.04 base is pinned by digest, so OS updates arrive when that pin moves, through a Dependabot pull request each time Canonical republishes the base (every few weeks). What this leaves unpinned for an exact rebuild is [#129](https://github.com/QuantEcon/actions/issues/129)
 
 ### Jupyter Book Execution Caching
 Use `build-jupyter-cache` and `restore-jupyter-cache` actions for execution caching:

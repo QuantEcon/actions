@@ -10,7 +10,7 @@ Our next-generation CI/CD system combines three complementary elements:
 
 - **Images:** `ghcr.io/quantecon/quantecon:latest` (full) and `ghcr.io/quantecon/quantecon-build:latest` (lean) — CPU only
 - **Contents:** Ubuntu 24.04 LTS + TexLive (latest) + Miniconda + Anaconda 2026.07 base (lean: an explicit package list pinned to that baseline) + Jupyter Book tools
-- **Build:** Weekly automated builds via GitHub Actions (Monday 2am UTC)
+- **Build:** GitHub Actions, when a change to an image merges; no scheduled rebuilds. The Ubuntu base is pinned by digest, and OS updates arrive when Dependabot moves that pin in a pull request
 - **Registry:** GitHub Container Registry (GHCR) - free for public repos
 - **Size:** full 8.60 GB / lean 7.32 GB on disk (3.33 / 2.93 GB compressed pull, fetched each run on GitHub-hosted runners)
 
@@ -52,7 +52,7 @@ publish-gh-pages/     → Deploy to GitHub Pages
 - What: Python + LaTeX + all dependencies
 - Where: GitHub Container Registry
 - Size: 7.32 GB (lean) / 8.60 GB (full) on disk; 2.93 / 3.33 GB compressed pull
-- Lifespan: Weekly rebuilds
+- Lifespan: until the next change to the image, a move of its pinned base included, each arriving as a reviewed pull request; no scheduled rebuilds (what this leaves unpinned for an exact rebuild: [#129](https://github.com/QuantEcon/actions/issues/129))
 - Pull time: ~1-2 min on GitHub-hosted runners (2.9–3.3 GB compressed, fetched each run); near-instant on self-hosted runners with the image pre-cached
 
 **Layer 2: Build Cache (GitHub Actions Cache)**
@@ -176,7 +176,7 @@ jobs:
 - Required for PDF generation and some Jupyter Book features
 
 **Solution:** Pre-install in container
-- LaTeX installed once during weekly container build
+- LaTeX installed once, when the container image is built
 - All lecture builds reuse same pre-built environment
 - Only solution that eliminates this bottleneck
 
@@ -323,7 +323,7 @@ quantecon/actions/
 │   └── README.md
 │
 ├── .github/workflows/
-│   └── build-containers.yml       # Weekly automated builds
+│   └── build-containers.yml       # Image builds on merge
 │
 └── docs/
     ├── CONTAINER-GUIDE.md         # Container build and usage guide
@@ -366,7 +366,7 @@ lecture-python-intro/
 
 **Simplified maintenance:**
 - ✅ One centralized `environment.yml` to update
-- ✅ Weekly automated container rebuilds
+- ✅ Container images change only through reviewed pull requests, base image updates included
 - ✅ Update action once, affects all lectures
 - ✅ Clear logs (know which action failed)
 - ✅ Easy to add new lectures (copy template)

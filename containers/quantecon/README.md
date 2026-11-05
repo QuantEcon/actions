@@ -132,7 +132,11 @@ TexLive (latest from Ubuntu 24.04 LTS repositories):
 - texlive-luatex
 - Build tools: latexmk, xindy, dvipng, ghostscript, cm-super
 
-**Note:** Version automatically stays current with Ubuntu 24.04 security updates
+**Note:** These are the versions in the Ubuntu 24.04 archive when the image's apt layer was last
+built, which happens when the pinned base image moves or the apt step changes. Nothing rebuilds
+the images on a schedule: Dependabot proposes each new `ubuntu:24.04` digest as a pull request,
+which rebuilds and tests both images before `:latest` moves. What the pin does not make
+reproducible is [#129](https://github.com/QuantEcon/actions/issues/129).
 
 ## Development
 
@@ -177,7 +181,9 @@ docker run --rm ghcr.io/quantecon/quantecon:latest \
 
 Images are automatically built via GitHub Actions:
 
-- **Trigger:** Push to `main` branch or weekly schedule (Monday 2am UTC)
+- **Trigger:** Push to `main` that changes an image or the build workflow, or a manual dispatch.
+  No schedule: the base image is pinned by digest, and a move of that pin arrives as a Dependabot
+  pull request
 - **Workflow:** `.github/workflows/build-containers.yml`
 - **Registry:** GitHub Container Registry (ghcr.io)
 - **Visibility:** Public (free for public repositories)

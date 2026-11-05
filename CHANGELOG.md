@@ -48,6 +48,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `preview-deploy-job`, run the hand-off: the site must arrive whole, hidden files included, and
   from a shallow checkout with no stored credentials, change detection must list the files GitHub
   lists for the pull request. (#232)
+- **Container images**: the Ubuntu base is pinned by digest, and nothing rebuilds the images on
+  a schedule any more, as decided on #234. Until now `build-containers.yml` rebuilt both images
+  every Monday. When `ubuntu:24.04` had not moved, BuildKit replayed every layer from the cache
+  and republished the same image (four of the seven Mondays from 2026-08-24 to 2026-10-05), while
+  the READMEs, `docs/CONTAINER-GUIDE.md` and `docs/dev/ARCHITECTURE.md` promised weekly security
+  updates. When it had moved, the images' floating packages re-resolved with no pull request,
+  which is how plotly 7 reached the lean image (#222). Both Dockerfiles now pin
+  `ubuntu:24.04@sha256:fe81560…`, the digest the current `:latest` images were built on, so the
+  pin changes neither image. Dependabot proposes each new 24.04 digest as one pull request for
+  both images, which builds and smoke-tests them before `:latest` moves, and ignores 26.04 and
+  any other release. OS updates therefore arrive whenever Canonical republishes the base, every
+  few weeks, reviewed. Those docs and `CONTRIBUTING.md` now say so, and point to #129 for what
+  the pin does not make reproducible. On every harness run, `validate-containers.yml` checks that
+  each image pins its base by digest and that both pin the same one
+  (`scripts/check-base-pins.sh`). The lecture matrix, `test-containers-lectures.yml`, which the
+  weekly build used to trigger, now runs weekly on a schedule of its own against `:latest`
+  (Monday 02:00 UTC), so drift in the lecture repos against an unchanged image is still caught.
+  (#235)
 
 ### Documentation
 - **`docs/dev/PLAN.md`**: caught up with wave 1 of #246 and the v0.13.0 and v0.14.0 releases.
