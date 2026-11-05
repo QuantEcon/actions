@@ -3334,17 +3334,23 @@ jobs:
 
   preview-comment:
     # #153, and finding M2 of the 2026-10-06 review: both preview actions post
-    # their comment with scripts/preview-comment.cjs. The comment step runs
-    # only after a real deploy, so preview-wiring below never reaches it.
-    # This job reads each action's own comment steps from its action.yml and
-    # runs them against a stand-in for the GitHub API, with no token:
+    # their comment with scripts/preview-comment.cjs, after a deploy and, with
+    # placeholder: 'true', before one. The comment step runs only after a real
+    # deploy or in a job with pull-requests: write, so preview-wiring below
+    # never reaches it. This job reads each action's own steps from its
+    # action.yml and runs them against a stand-in for the GitHub API, with no
+    # token:
+    #   - the input check, for every mode and missing input;
     #   - the bash step that finds the script, from the action's directory;
     #   - the github-script body, called as actions/github-script calls it,
     #     with the step's env.
-    # It asserts that each comment renders as v0.14.0's inline scripts
-    # rendered it, after one hidden marker line (the fixtures are their
-    # bodies), and that the action updates its own comment however many come
-    # before it, and never anyone else's. test.cjs lists the cases.
+    # It asserts that each deploy's comment renders as v0.14.0's inline
+    # scripts rendered it, after one hidden marker line (those fixtures are
+    # their bodies); that the placeholder's comment lists the lectures by
+    # change detection's rules, and that the deploy's comment then replaces
+    # it, never the other way round for one commit; and that the action
+    # updates its own comment however many come before it, and never anyone
+    # else's. test.cjs lists the cases.
     name: 'preview-*: each action renders its comment as before, and updates only its own'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -3372,11 +3378,14 @@ jobs:
           for d in sys.argv[1:]:
               with open(os.path.join(d, 'action.yml')) as f:
                   by_id = {s['id']: s for s in yaml.safe_load(f)['runs']['steps'] if 'id' in s}
-              resolve, comment = by_id['comment-script'], by_id['comment']
+              check, resolve, comment = by_id['check-inputs'], by_id['comment-script'], by_id['comment']
               steps[d] = {
                   'dir': os.path.abspath(d),
+                  'check': {'shell': check['shell'], 'env': check['env'], 'run': check['run']},
                   'resolve': {'shell': resolve['shell'], 'run': resolve['run']},
                   'comment': {'uses': comment['uses'], 'env': comment['env'], 'with': comment['with']},
+                  # Each step's condition, by id, '' for none.
+                  'if': {k: str(s.get('if', '')) for k, s in by_id.items()},
               }
           json.dump(steps, sys.stdout)
           PY
@@ -3386,14 +3395,19 @@ jobs:
 
   preview-wiring:
     # What preview-decide above cannot see: that each action follows the
-    # decision. An invalid dispatch-alias must stop it before its CLI is
-    # installed, on any event; the CLI must be installed exactly when a deploy
-    # will run (#193); and `deployed` must always be set. The credentials are
-    # fake, so a run the decision lets through installs the CLI and then fails
-    # at the provider, while a run it stops passes having installed nothing.
-    # Which of the two to expect depends on this workflow's own event, so the
-    # assertions work it out from the same context the actions read.
-    name: 'preview-*: each action installs its CLI only for a deploy, and refuses a bad dispatch-alias first'
+    # decision. An invalid dispatch-alias or placeholder input must stop it
+    # before its CLI is installed, on any event, and so must a missing token
+    # or build-dir wherever a deploy would run (#153); the CLI must be
+    # installed exactly when a deploy will run (#193); and `deployed` must
+    # always be set. The credentials are fake, so a run the decision lets
+    # through installs the CLI and then fails at the provider, while a run it
+    # stops passes having installed nothing. Which of the two to expect
+    # depends on this workflow's own event, so the assertions work it out
+    # from the same context the actions read. The last pair of steps is an
+    # existing caller's, with every input it passes today. The placeholder's
+    # comment needs pull-requests: write, which no harness job has: the
+    # preview-comment job runs its steps against a stand-in instead.
+    name: 'preview-*: each action installs its CLI only for a deploy, and refuses a bad input first'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: gate
@@ -3433,11 +3447,32 @@ jobs:
           lectures-dir: ''
           dispatch-alias: 'dispatch-Harness'
 
-      - name: Assert an invalid dispatch-alias failed before any install
+      # #153: the placeholder's inputs are checked on every event too. Neither
+      # step has a secret, as a placeholder's job has none.
+      - name: 'preview-netlify: placeholder without netlify-site-name'
+        id: netlify-bad-placeholder
+        continue-on-error: true
+        uses: ./preview-netlify
+        with:
+          placeholder: 'true'
+          lectures-dir: ''
+
+      - name: "preview-cloudflare: placeholder neither 'true' nor 'false'"
+        id: cloudflare-bad-placeholder
+        continue-on-error: true
+        uses: ./preview-cloudflare
+        with:
+          placeholder: 'yes'
+          project-name: 'harness-no-such-project'
+          lectures-dir: ''
+
+      - name: Assert an invalid input failed before any install
         env:
           RESULTS: |
             preview-netlify|${{ steps.netlify-bad.outcome }}|${{ steps.netlify-bad.outputs.deployed }}|${{ steps.netlify-bad.outputs.deploy-url }}
             preview-cloudflare|${{ steps.cloudflare-bad.outcome }}|${{ steps.cloudflare-bad.outputs.deployed }}|${{ steps.cloudflare-bad.outputs.deploy-url }}
+            preview-netlify|${{ steps.netlify-bad-placeholder.outcome }}|${{ steps.netlify-bad-placeholder.outputs.deployed }}|${{ steps.netlify-bad-placeholder.outputs.deploy-url }}
+            preview-cloudflare|${{ steps.cloudflare-bad-placeholder.outcome }}|${{ steps.cloudflare-bad-placeholder.outputs.deployed }}|${{ steps.cloudflare-bad-placeholder.outputs.deploy-url }}
         run: |
           set -euo pipefail
           bad=0 n=0
@@ -3445,18 +3480,83 @@ jobs:
             [ -n "$action" ] || continue
             n=$((n + 1))
             if [ "$outcome" != "failure" ] || [ "$deployed" != "false" ] || [ -n "$url" ]; then
-              echo "::error::$action: expected outcome=failure, deployed=false and no deploy-url, got outcome=[$outcome] deployed=[$deployed] deploy-url=[$url]"
+              echo "::error::$action, case $n: expected outcome=failure, deployed=false and no deploy-url, got outcome=[$outcome] deployed=[$deployed] deploy-url=[$url]"
               bad=1
             elif compgen -G "$RUNNER_TEMP/$action.*" > /dev/null; then
-              echo "::error::$action: $(compgen -G "$RUNNER_TEMP/$action.*") exists, so an invalid dispatch-alias got as far as the CLI install"
+              echo "::error::$action, case $n: $(compgen -G "$RUNNER_TEMP/$action.*") exists, so an invalid input got as far as the CLI install"
               bad=1
             else
-              echo "✓ $action refused the alias before installing its CLI"
+              echo "✓ $action, case $n: refused the input before installing its CLI"
+            fi
+          done <<< "$RESULTS"
+          [ "$n" -eq 4 ] || { echo "::error::expected 4 cases, read $n"; exit 1; }
+          [ "$bad" -eq 0 ]
+          echo "✅ an invalid dispatch-alias or placeholder input fails each action before anything is installed"
+
+      # #153: a deploy without its secrets or build-dir fails at the input
+      # check, before the CLI install, wherever a deploy would run. An empty
+      # value is what a missing secret gives. dispatch-alias lets a dispatch of
+      # the harness deploy, as a pull request does.
+      - name: 'preview-netlify: a deploy without its token'
+        id: netlify-no-token
+        continue-on-error: true
+        uses: ./preview-netlify
+        with:
+          netlify-auth-token: ''
+          netlify-site-id: '00000000-0000-0000-0000-000000000000'
+          build-dir: 'harness-site'
+          lectures-dir: ''
+          dispatch-alias: 'dispatch-harness'
+
+      - name: 'preview-cloudflare: a deploy without build-dir'
+        id: cloudflare-no-build-dir
+        continue-on-error: true
+        uses: ./preview-cloudflare
+        with:
+          cloudflare-api-token: 'harness-fake-token'
+          cloudflare-account-id: '00000000000000000000000000000000'
+          project-name: 'harness-no-such-project'
+          lectures-dir: ''
+          dispatch-alias: 'dispatch-harness'
+
+      - name: Assert a deploy without its inputs failed before any install
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          ACTOR: ${{ github.actor }}
+          REPOSITORY: ${{ github.repository }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          RESULTS: |
+            preview-netlify|${{ steps.netlify-no-token.outcome }}|${{ steps.netlify-no-token.outputs.deployed }}|${{ steps.netlify-no-token.outputs.deploy-url }}
+            preview-cloudflare|${{ steps.cloudflare-no-build-dir.outcome }}|${{ steps.cloudflare-no-build-dir.outputs.deployed }}|${{ steps.cloudflare-no-build-dir.outputs.deploy-url }}
+        run: |
+          set -euo pipefail
+          # As in the last assertion below: where a deploy would run, the
+          # check must fail it; elsewhere it is skipped, and the check with it.
+          want=success
+          if [ "$ACTOR" != "dependabot[bot]" ]; then
+            case "$EVENT_NAME" in
+              pull_request) [ "$HEAD_REPO" != "$REPOSITORY" ] || want=failure ;;
+              workflow_dispatch) want=failure ;;
+            esac
+          fi
+          echo "event [$EVENT_NAME], actor [$ACTOR], head [$HEAD_REPO]: expecting outcome=$want"
+          bad=0 n=0
+          while IFS='|' read -r action outcome deployed url; do
+            [ -n "$action" ] || continue
+            n=$((n + 1))
+            if [ "$outcome" != "$want" ] || [ "$deployed" != "false" ] || [ -n "$url" ]; then
+              echo "::error::$action: expected outcome=$want, deployed=false and no deploy-url, got outcome=[$outcome] deployed=[$deployed] deploy-url=[$url]"
+              bad=1
+            elif compgen -G "$RUNNER_TEMP/$action.*" > /dev/null; then
+              echo "::error::$action: $(compgen -G "$RUNNER_TEMP/$action.*") exists, so a deploy without its inputs got as far as the CLI install"
+              bad=1
+            else
+              echo "✓ $action: outcome=$outcome, nothing installed"
             fi
           done <<< "$RESULTS"
           [ "$n" -eq 2 ] || { echo "::error::expected 2 cases, read $n"; exit 1; }
           [ "$bad" -eq 0 ]
-          echo "✅ an invalid dispatch-alias fails each action before anything is installed"
+          echo "✅ a deploy without its token or build-dir fails before anything is installed"
 
       # A valid alias, on this workflow's own event. On a pull request it is
       # ignored and the target is pr-<number>.

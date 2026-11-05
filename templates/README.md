@@ -22,15 +22,16 @@ Also here: [latex-requirements.txt](latex-requirements.txt), an example LaTeX pa
 
 ### [ci.yml](ci.yml) — PR Preview
 
-Runs on every pull request to `main`, in three jobs:
+Runs on every pull request to `main`, in four jobs:
 
 | Job | What it does | What it holds |
 |---|---|---|
+| `placeholder` | Comments on the pull request within seconds of a push, with the preview's URL and links to changed pages, before the build finishes; `deploy`'s comment replaces it | `contents: read`, `pull-requests: write`, no secrets |
 | `build` | Restores the build cache, runs an incremental HTML build (only changed notebooks re-execute), and uploads the site as an artifact | `contents: read`, no secrets |
 | `deploy` | Deploys that site as a Netlify preview, and comments on the pull request with links to changed pages | the Netlify secrets, `pull-requests: write` |
 | `pdf-check` | Builds the PDF from the notebooks `build` executed, and fails the pull request's checks when the LaTeX build fails | `contents: read`, no secrets |
 
-`deploy` and `pdf-check` both start when `build` has finished, and run side by side, so the preview never waits for the PDF. The deploy has a job of its own so that the Netlify token is never in a job that runs notebook code: see [Why the preview deploys from its own job](#why-the-preview-deploys-from-its-own-job). Malformed LaTeX can pass the HTML build and still break the PDF build, and with it the publish, which is what `pdf-check` catches. It builds from the execution cache `build` uploads, so it executes no notebooks and needs no GPU. See [The PDF check](#the-pdf-check).
+`placeholder` starts at once, with no checkout and no container, and reads the pull request's changed files from the API; it needs the Netlify site's name in `netlify-site-name`. `deploy` and `pdf-check` both start when `build` has finished, and run side by side, so the preview never waits for the PDF. The deploy has a job of its own so that the Netlify token is never in a job that runs notebook code: see [Why the preview deploys from its own job](#why-the-preview-deploys-from-its-own-job). Malformed LaTeX can pass the HTML build and still break the PDF build, and with it the publish, which is what `pdf-check` catches. It builds from the execution cache `build` uploads, so it executes no notebooks and needs no GPU. See [The PDF check](#the-pdf-check).
 
 **Key features:**
 - Container-based build (fast startup, pre-installed packages)
@@ -87,6 +88,8 @@ The split is the one `ci.yml` makes, for the same reason: the build runs noteboo
 ┌─────────────────────┐ ┌─────────────────────────────────┐
 │  ci.yml (PRs)       │ │  publish.yml (push to main)     │
 │                     │ │                                 │
+│  placeholder:       │ │                                 │
+│   comment at once   │ │                                 │
 │  build:             │ │  build:                         │
 │   restore cache     │ │   restore cache                 │
 │   build HTML        │ │   build HTML                    │
