@@ -12,23 +12,25 @@ inputs:
   cloudflare-api-token:
     description: >-
       A Cloudflare API token that can edit Cloudflare Pages in the account, from a repository
-      secret such as `secrets.CLOUDFLARE_API_TOKEN`.
-    required: true
+      secret such as `secrets.CLOUDFLARE_API_TOKEN`. Required for a deploy: a run that would deploy
+      without it fails before anything is installed. Leave it out with `placeholder: 'true'`.
+    required: false
   cloudflare-account-id:
     description: >-
       The ID of the Cloudflare account that owns the Pages project, from a repository secret such
-      as `secrets.CLOUDFLARE_ACCOUNT_ID`.
-    required: true
+      as `secrets.CLOUDFLARE_ACCOUNT_ID`. Required for a deploy, as `cloudflare-api-token` is.
+      Leave it out with `placeholder: 'true'`.
+    required: false
   project-name:
     description: >-
       The Cloudflare Pages project to deploy to, which must already exist. Its name is part of
-      every preview URL, as in `<project-name>.pages.dev`.
+      every preview URL, as in `<project-name>.pages.dev`, so `placeholder: 'true'` needs it too.
     required: true
   build-dir:
     description: >-
       The directory that holds the built site, such as `_build/html`, which `build-lectures` gives
-      in its `build-path` output.
-    required: true
+      in its `build-path` output. Required for a deploy, as `cloudflare-api-token` is.
+    required: false
   lectures-dir:
     description: >-
       The directory of lecture `.md` files that change detection looks in, as a path from the
@@ -47,13 +49,25 @@ inputs:
       pull request ignores the input. Empty, the default, deploys on `pull_request` only.
     required: false
     default: ''
+  placeholder:
+    description: >-
+      `'true'` posts the pull request's preview comment at once, before there is a build to
+      deploy, and deploys nothing. The comment has the preview's URL and links to the lectures the
+      pull request changes, all built from its number and `project-name`, and says that they show
+      the last deployed push until this one's deploy finishes; the deploy's comment then replaces
+      it. It needs no checkout and no secret, so it runs in a job of its own, with no `needs:`. It
+      posts only where a deploy would run, so not for a pull request from a fork or by
+      Dependabot, nor on any other event. Any value but `'true'` or `'false'` fails the job.
+    required: false
+    default: 'false'
 
 outputs:
   deployed:
     description: >-
       `'true'` when this run deployed a preview, so that `deploy-url` is set, and `'false'` when it
-      did not, and then a notice or a warning in the log says why. A scheduled or dispatched check
-      should assert `deployed == 'true'`, or it passes without testing the deploy.
+      did not: then a notice or a warning in the log says why, or `placeholder` is `'true'`. A
+      scheduled or dispatched check should assert `deployed == 'true'`, or it passes without
+      testing the deploy.
     value: ${{ steps.deploy.outputs.deploy-url != '' && 'true' || 'false' }}
   deploy-url:
     description: >-
@@ -76,7 +90,8 @@ outputs:
       instead, with a warning, so a lecture changed only on the base branch is listed too. When git
       fails, the action warns and lists none.
       Empty when there are none, with `lectures-dir: ''`, on an event other than
-      `pull_request`, and for a pull request from a fork or by Dependabot.
+      `pull_request`, for a pull request from a fork or by Dependabot, and with `placeholder:
+      'true'`.
     value: ${{ steps.detect-changes.outputs.changed-files }}
 
 runs:
@@ -98,9 +113,48 @@ runs:
         DISPATCH_ALIAS: ${{ inputs.dispatch-alias }}
       run: bash "$GITHUB_ACTION_PATH/../scripts/preview-decide.sh"
 
+    # The inputs each mode needs, checked before anything is installed. The
+    # placeholder's on every event, as dispatch-alias is, so a typo shows on
+    # the next pull request. A deploy's only when one will run: a fork's pull
+    # request, which is skipped, gets no secrets. The secrets themselves never
+    # reach this step, only whether they are set. project-name is required in
+    # both modes, so it is not checked here.
+    - name: Check the inputs
+      id: check-inputs
+      shell: bash
+      env:
+        PLACEHOLDER: ${{ inputs.placeholder }}
+        DEPLOY: ${{ steps.decide.outputs.deploy }}
+        HAVE_TOKEN: ${{ inputs.cloudflare-api-token != '' }}
+        HAVE_ACCOUNT_ID: ${{ inputs.cloudflare-account-id != '' }}
+        HAVE_BUILD_DIR: ${{ inputs.build-dir != '' }}
+      run: |
+        # Escaped as the runner expects, so a value cannot end an annotation
+        # and start a workflow command of its own.
+        esc() { local s=$1; s=${s//'%'/'%25'}; s=${s//$'\r'/'%0D'}; s=${s//$'\n'/'%0A'}; printf '%s' "$s"; }
+        case "$PLACEHOLDER" in
+          true|false) ;;
+          *) echo "::error::placeholder is [$(esc "$PLACEHOLDER")], not 'true' or 'false'"; exit 1 ;;
+        esac
+        if [ "$PLACEHOLDER" = true ]; then
+          for given in "cloudflare-api-token=$HAVE_TOKEN" "cloudflare-account-id=$HAVE_ACCOUNT_ID"; do
+            [ "${given#*=}" != true ] \
+              || echo "::warning::${given%%=*} is not used with placeholder: 'true'. Leave it out, so that the placeholder's job holds no deploy secret."
+          done
+        elif [ "$DEPLOY" = true ]; then
+          missing=()
+          [ "$HAVE_TOKEN" = true ] || missing+=(cloudflare-api-token)
+          [ "$HAVE_ACCOUNT_ID" = true ] || missing+=(cloudflare-account-id)
+          [ "$HAVE_BUILD_DIR" = true ] || missing+=(build-dir)
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::A deploy needs cloudflare-api-token, cloudflare-account-id and build-dir, and this run has no ${missing[*]}. A secret that the repository does not have is empty."
+            exit 1
+          fi
+        fi
+
     - name: Detect Changed Lecture Files
       id: detect-changes
-      if: steps.decide.outputs.deploy == 'true' && inputs.lectures-dir != '' && github.event_name == 'pull_request'
+      if: steps.decide.outputs.deploy == 'true' && inputs.placeholder != 'true' && inputs.lectures-dir != '' && github.event_name == 'pull_request'
       shell: bash
       env:
         LECTURES_DIR: ${{ inputs.lectures-dir }}
@@ -111,8 +165,8 @@ runs:
     - name: Install Wrangler CLI
       id: install-cli
       # Exactly the deploy's condition, so the CLI is installed only for a
-      # deploy that will run (#193).
-      if: steps.decide.outputs.deploy == 'true'
+      # deploy that will run (#193). The placeholder deploys nothing.
+      if: steps.decide.outputs.deploy == 'true' && inputs.placeholder != 'true'
       shell: bash
       run: |
         # Exactly the version in package.json / package-lock.json beside this
@@ -149,7 +203,7 @@ runs:
 
     - name: Deploy to Cloudflare Pages
       id: deploy
-      if: steps.decide.outputs.deploy == 'true'
+      if: steps.decide.outputs.deploy == 'true' && inputs.placeholder != 'true'
       shell: bash
       env:
         CLOUDFLARE_API_TOKEN: ${{ inputs.cloudflare-api-token }}
@@ -252,10 +306,12 @@ runs:
     # The comment is built and posted by a script shared with preview-netlify
     # (#153). Its path is resolved here, from $GITHUB_ACTION_PATH, as the
     # steps above find theirs: in a container job, `github.action_path` gives
-    # the runner's path, which the container does not have.
+    # the runner's path, which the container does not have. The two steps run
+    # after a deploy, and for the placeholder, whose pending comment the
+    # deploy's comment later replaces.
     - name: Find the comment script
       id: comment-script
-      if: steps.decide.outputs.deploy == 'true' && github.event_name == 'pull_request' && steps.deploy.outputs.deploy-url != ''
+      if: steps.decide.outputs.deploy == 'true' && github.event_name == 'pull_request' && (inputs.placeholder == 'true' || steps.deploy.outputs.deploy-url != '')
       shell: bash
       run: |
         SCRIPT="$GITHUB_ACTION_PATH/../scripts/preview-comment.cjs"
@@ -264,13 +320,18 @@ runs:
 
     - name: Comment on PR
       id: comment
-      if: steps.decide.outputs.deploy == 'true' && github.event_name == 'pull_request' && steps.deploy.outputs.deploy-url != ''
+      if: steps.decide.outputs.deploy == 'true' && github.event_name == 'pull_request' && (inputs.placeholder == 'true' || steps.deploy.outputs.deploy-url != '')
       uses: actions/github-script@v9
       env:
         PREVIEW_COMMENT_SCRIPT: ${{ steps.comment-script.outputs.path }}
         # Picks the comment's heading and hidden marker in the script.
         PROVIDER: cloudflare
+        PREVIEW_STATE: ${{ inputs.placeholder == 'true' && 'pending' || 'ready' }}
         DEPLOY_URL: ${{ steps.deploy.outputs.deploy-url }}
+        # The placeholder builds the URL from these, having no deploy to ask:
+        # the same URL as the deploy step's.
+        PREVIEW_ALIAS: ${{ steps.decide.outputs.alias }}
+        PREVIEW_SITE: ${{ inputs.project-name }}
         # Named under Build Info, when wrangler printed it.
         DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
         CHANGED_FILES: ${{ steps.detect-changes.outputs.changed-files }}

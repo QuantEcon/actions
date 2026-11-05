@@ -52,6 +52,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   asserts that `upload` uploads the site, that `release` skips off a tag, and that each refused
   combination fails with an empty `mode`, before anything is uploaded. A real deploy and a
   release upload are the staged canary's to prove. (#233)
+- **`preview-netlify`, `preview-cloudflare`, `templates/ci.yml`**: a `placeholder` input, which
+  posts the pull request's preview comment within seconds of a push, before the build has
+  finished, and a `placeholder` job in `ci.yml` that runs it (#153). Until now the comment came
+  only after a successful deploy, minutes later. With `placeholder: 'true'` the action decides as
+  for a deploy, so a fork's or Dependabot's pull request gets nothing, then installs and deploys
+  nothing. It builds the preview URL from the pull request's number, from a new
+  `netlify-site-name` input on `preview-netlify` and from `project-name` on `preview-cloudflare`,
+  and reads the changed lectures from the API's list of the pull request's files, by change
+  detection's rules, so its job needs no checkout, no container and no secret. The comment is
+  headed "⏳ … Preview Building", says that its links show the last push deployed until this one's
+  deploy finishes, and carries the same hidden marker, so the deploy's comment replaces it in
+  place; the placeholder never replaces the deploy's comment for its own commit. The token, the
+  site or account ID and `build-dir` are now required for a deploy only: a run that would deploy
+  without one fails at a new input check, before anything is installed, with an error naming it.
+  A step that passes them, as every caller does, deploys as before. The `preview-comment` harness
+  job now runs that check for 20 cases, and the placeholder's comment against the API stand-in,
+  and `preview-wiring` runs a deploy without its token or `build-dir`, and invalid placeholder
+  inputs, through each action.
 
 ### Changed
 - **`templates/publish.yml`**: builds and deploys in separate jobs, as `ci.yml` does since #232.

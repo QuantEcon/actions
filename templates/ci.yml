@@ -1,14 +1,17 @@
 # CI Workflow Template (Pull Request Preview + PDF Check)
 #
-# Provides fast PR feedback in three jobs:
-#   build      restores cached builds, runs an incremental HTML build, and
-#              uploads the site.
-#   deploy     deploys that site as a Netlify preview and comments on the PR
-#              with links to changed pages.
-#   pdf-check  builds the PDF from the notebooks the build job executed,
-#              because malformed LaTeX can pass the HTML build and still
-#              break the PDF build, and with it the publish. The preview
-#              never waits for it.
+# Provides fast PR feedback in four jobs:
+#   placeholder  comments on the PR within seconds of a push, with the
+#                preview's URL and links to changed pages, before the build
+#                has finished. The deploy job's comment replaces it.
+#   build        restores cached builds, runs an incremental HTML build, and
+#                uploads the site.
+#   deploy       deploys that site as a Netlify preview and comments on the
+#                PR with links to changed pages.
+#   pdf-check    builds the PDF from the notebooks the build job executed,
+#                because malformed LaTeX can pass the HTML build and still
+#                break the PDF build, and with it the publish. The preview
+#                never waits for it.
 #
 # Why the deploy has a job of its own: building the lectures runs code the
 # repository does not fully control (notebook cells, packages installed at
@@ -24,7 +27,9 @@
 #   1. cache.yml workflow running on schedule/main (generates the build cache)
 #   2. Netlify site created for PR previews
 #   3. Repository secrets: NETLIFY_AUTH_TOKEN, NETLIFY_SITE_ID
-#   4. A private repository: set fetch-depth: 0 on the deploy job's checkout
+#   4. The Netlify site's name, as in <name>.netlify.app, in the placeholder
+#      job's netlify-site-name
+#   5. A private repository: set fetch-depth: 0 on the deploy job's checkout
 #      (see that step)
 #
 # PDF check: on by default. A site that publishes no PDF sets PDF_CHECK to
@@ -60,6 +65,43 @@ env:
   PDF_CHECK: 'true'
 
 jobs:
+  # ─── Placeholder ─────────────────────────────────────────────────
+  # Comments on the PR as soon as it is pushed, with the preview URL and
+  # links to the changed lecture pages, so a reviewer has them before the
+  # build finishes. Until the deploy, they show the last push deployed, or
+  # nothing on the PR's first push. The deploy job's comment then replaces
+  # this one in place, so the PR keeps one preview comment.
+  #
+  # It runs no repository code and holds no secret: no checkout, no
+  # container and no needs, so it starts at once. It reads the PR's changed
+  # files from the API instead. Like the deploy, it skips pull requests from
+  # forks and from Dependabot. Remove this job to comment only after the
+  # deploy.
+  placeholder:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read            # Whether lectures/_toc.yml exists, for the links
+      pull-requests: write      # The PR's changed files, and the comment
+
+    steps:
+      - name: Post the preview comment
+        uses: quantecon/actions/preview-netlify@v0
+        with:
+          placeholder: 'true'
+          netlify-site-name: 'my-lecture-site'   # Your site's name: <name>.netlify.app
+          lectures-dir: 'lectures'
+
+      # ─── Cloudflare Pages Alternative ────────────────────────────
+      # With the deploy job's Cloudflare step, replace the step above with:
+      #
+      # - name: Post the preview comment
+      #   uses: quantecon/actions/preview-cloudflare@v0
+      #   with:
+      #     placeholder: 'true'
+      #     project-name: 'my-lecture-site'      # The deploy step's project-name
+      #     lectures-dir: 'lectures'
+
   # ─── Build ───────────────────────────────────────────────────────
   # Builds the site and hands it to the deploy job as an artifact. It holds
   # no secrets and only read access, because it runs the notebooks.

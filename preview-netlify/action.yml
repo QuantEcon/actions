@@ -12,18 +12,20 @@ inputs:
     description: >-
       A Netlify personal access token, from a repository secret such as
       `secrets.NETLIFY_AUTH_TOKEN`. It reaches `netlify-cli` through the environment, never on its
-      command line.
-    required: true
+      command line. Required for a deploy: a run that would deploy without it fails before
+      anything is installed. Leave it out with `placeholder: 'true'`.
+    required: false
   netlify-site-id:
     description: >-
       The ID of the Netlify site to deploy to, from a repository secret such as
-      `secrets.NETLIFY_SITE_ID`.
-    required: true
+      `secrets.NETLIFY_SITE_ID`. Required for a deploy, as `netlify-auth-token` is. Leave it out
+      with `placeholder: 'true'`.
+    required: false
   build-dir:
     description: >-
       The directory that holds the built site, such as `_build/html`, which `build-lectures` gives
-      in its `build-path` output.
-    required: true
+      in its `build-path` output. Required for a deploy, as `netlify-auth-token` is.
+    required: false
   lectures-dir:
     description: >-
       The directory of lecture `.md` files that change detection looks in, as a path from the
@@ -42,13 +44,33 @@ inputs:
       request ignores the input. Empty, the default, deploys on `pull_request` only.
     required: false
     default: ''
+  placeholder:
+    description: >-
+      `'true'` posts the pull request's preview comment at once, before there is a build to
+      deploy, and deploys nothing. The comment has the preview's URL and links to the lectures the
+      pull request changes, all built from its number and `netlify-site-name`, and says that they
+      show the last deployed push until this one's deploy finishes; the deploy's comment then
+      replaces it. It needs no checkout and no secret, so it runs in a job of its own, with no
+      `needs:`. It posts only where a deploy would run, so not for a pull request from a fork or
+      by Dependabot, nor on any other event. Any value but `'true'` or `'false'` fails the job.
+    required: false
+    default: 'false'
+  netlify-site-name:
+    description: >-
+      The Netlify site's name, as in `<name>.netlify.app`, from which `placeholder: 'true'` builds
+      the preview URL, `https://pr-<number>--<name>.netlify.app`. Required with `placeholder:
+      'true'`, where it must be lowercase letters, digits and dashes, or the job fails; not used
+      otherwise.
+    required: false
+    default: ''
 
 outputs:
   deployed:
     description: >-
       `'true'` when this run deployed a preview, so that `deploy-url` is set, and `'false'` when it
-      did not, and then a notice or a warning in the log says why. A scheduled or dispatched check
-      should assert `deployed == 'true'`, or it passes without testing the deploy.
+      did not: then a notice or a warning in the log says why, or `placeholder` is `'true'`. A
+      scheduled or dispatched check should assert `deployed == 'true'`, or it passes without
+      testing the deploy.
     value: ${{ steps.deploy.outputs.deploy-url != '' && 'true' || 'false' }}
   deploy-url:
     description: >-
@@ -64,7 +86,8 @@ outputs:
       instead, with a warning, so a lecture changed only on the base branch is listed too. When git
       fails, the action warns and lists none.
       Empty when there are none, with `lectures-dir: ''`, on an event other than
-      `pull_request`, and for a pull request from a fork or by Dependabot.
+      `pull_request`, for a pull request from a fork or by Dependabot, and with `placeholder:
+      'true'`.
     value: ${{ steps.detect-changes.outputs.changed-files }}
 
 runs:
@@ -86,9 +109,53 @@ runs:
         DISPATCH_ALIAS: ${{ inputs.dispatch-alias }}
       run: bash "$GITHUB_ACTION_PATH/../scripts/preview-decide.sh"
 
+    # The inputs each mode needs, checked before anything is installed. The
+    # placeholder's on every event, as dispatch-alias is, so a typo shows on
+    # the next pull request. A deploy's only when one will run: a fork's pull
+    # request, which is skipped, gets no secrets. The secrets themselves never
+    # reach this step, only whether they are set.
+    - name: Check the inputs
+      id: check-inputs
+      shell: bash
+      env:
+        PLACEHOLDER: ${{ inputs.placeholder }}
+        DEPLOY: ${{ steps.decide.outputs.deploy }}
+        SITE_NAME: ${{ inputs.netlify-site-name }}
+        HAVE_TOKEN: ${{ inputs.netlify-auth-token != '' }}
+        HAVE_SITE_ID: ${{ inputs.netlify-site-id != '' }}
+        HAVE_BUILD_DIR: ${{ inputs.build-dir != '' }}
+      run: |
+        # Escaped as the runner expects, so a value cannot end an annotation
+        # and start a workflow command of its own.
+        esc() { local s=$1; s=${s//'%'/'%25'}; s=${s//$'\r'/'%0D'}; s=${s//$'\n'/'%0A'}; printf '%s' "$s"; }
+        case "$PLACEHOLDER" in
+          true|false) ;;
+          *) echo "::error::placeholder is [$(esc "$PLACEHOLDER")], not 'true' or 'false'"; exit 1 ;;
+        esac
+        if [ "$PLACEHOLDER" = true ]; then
+          # A Netlify site name is one DNS label.
+          if ! [[ $SITE_NAME =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]]; then
+            echo "::error::placeholder: 'true' needs netlify-site-name, the site's name as in <name>.netlify.app, in lowercase letters, digits and dashes; it is [$(esc "$SITE_NAME")]"
+            exit 1
+          fi
+          for given in "netlify-auth-token=$HAVE_TOKEN" "netlify-site-id=$HAVE_SITE_ID"; do
+            [ "${given#*=}" != true ] \
+              || echo "::warning::${given%%=*} is not used with placeholder: 'true'. Leave it out, so that the placeholder's job holds no deploy secret."
+          done
+        elif [ "$DEPLOY" = true ]; then
+          missing=()
+          [ "$HAVE_TOKEN" = true ] || missing+=(netlify-auth-token)
+          [ "$HAVE_SITE_ID" = true ] || missing+=(netlify-site-id)
+          [ "$HAVE_BUILD_DIR" = true ] || missing+=(build-dir)
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::A deploy needs netlify-auth-token, netlify-site-id and build-dir, and this run has no ${missing[*]}. A secret that the repository does not have is empty."
+            exit 1
+          fi
+        fi
+
     - name: Detect Changed Lecture Files
       id: detect-changes
-      if: steps.decide.outputs.deploy == 'true' && inputs.lectures-dir != '' && github.event_name == 'pull_request'
+      if: steps.decide.outputs.deploy == 'true' && inputs.placeholder != 'true' && inputs.lectures-dir != '' && github.event_name == 'pull_request'
       shell: bash
       env:
         LECTURES_DIR: ${{ inputs.lectures-dir }}
@@ -99,8 +166,8 @@ runs:
     - name: Install Netlify CLI
       id: install-cli
       # Exactly the deploy's condition, so the CLI is installed only for a
-      # deploy that will run (#193).
-      if: steps.decide.outputs.deploy == 'true'
+      # deploy that will run (#193). The placeholder deploys nothing.
+      if: steps.decide.outputs.deploy == 'true' && inputs.placeholder != 'true'
       shell: bash
       run: |
         # Exactly the version in package.json / package-lock.json beside this
@@ -136,7 +203,7 @@ runs:
 
     - name: Deploy to Netlify
       id: deploy
-      if: steps.decide.outputs.deploy == 'true'
+      if: steps.decide.outputs.deploy == 'true' && inputs.placeholder != 'true'
       shell: bash
       env:
         # netlify-cli reads both natively: the token as the fallback for
@@ -225,10 +292,11 @@ runs:
     # preview-cloudflare (#153). Its path is resolved here, from
     # $GITHUB_ACTION_PATH, as the steps above find theirs: in a container job,
     # `github.action_path` gives the runner's path, which the container does
-    # not have.
+    # not have. The two steps run after a deploy, and for the placeholder,
+    # whose pending comment the deploy's comment later replaces.
     - name: Find the comment script
       id: comment-script
-      if: steps.decide.outputs.deploy == 'true' && github.event_name == 'pull_request' && steps.deploy.outputs.deploy-url != ''
+      if: steps.decide.outputs.deploy == 'true' && github.event_name == 'pull_request' && (inputs.placeholder == 'true' || steps.deploy.outputs.deploy-url != '')
       shell: bash
       run: |
         SCRIPT="$GITHUB_ACTION_PATH/../scripts/preview-comment.cjs"
@@ -237,13 +305,17 @@ runs:
 
     - name: Comment on PR
       id: comment
-      if: steps.decide.outputs.deploy == 'true' && github.event_name == 'pull_request' && steps.deploy.outputs.deploy-url != ''
+      if: steps.decide.outputs.deploy == 'true' && github.event_name == 'pull_request' && (inputs.placeholder == 'true' || steps.deploy.outputs.deploy-url != '')
       uses: actions/github-script@v9
       env:
         PREVIEW_COMMENT_SCRIPT: ${{ steps.comment-script.outputs.path }}
         # Picks the comment's heading and hidden marker in the script.
         PROVIDER: netlify
+        PREVIEW_STATE: ${{ inputs.placeholder == 'true' && 'pending' || 'ready' }}
         DEPLOY_URL: ${{ steps.deploy.outputs.deploy-url }}
+        # The placeholder builds the URL from these, having no deploy to ask.
+        PREVIEW_ALIAS: ${{ steps.decide.outputs.alias }}
+        PREVIEW_SITE: ${{ inputs.netlify-site-name }}
         CHANGED_FILES: ${{ steps.detect-changes.outputs.changed-files }}
         LECTURES_DIR: ${{ inputs.lectures-dir }}
         STRIP_LECTURES_DIR: ${{ steps.detect-changes.outputs.strip-lectures-dir }}
