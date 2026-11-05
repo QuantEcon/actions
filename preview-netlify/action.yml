@@ -221,10 +221,28 @@ runs:
         # summary page instead.
         [ "$EVENT_NAME" = "pull_request" ] || echo "::notice::Netlify preview deployed to $DEPLOY_URL"
 
+    # The comment is built and posted by a script shared with
+    # preview-cloudflare (#153). Its path is resolved here, from
+    # $GITHUB_ACTION_PATH, as the steps above find theirs: in a container job,
+    # `github.action_path` gives the runner's path, which the container does
+    # not have.
+    - name: Find the comment script
+      id: comment-script
+      if: steps.decide.outputs.deploy == 'true' && github.event_name == 'pull_request' && steps.deploy.outputs.deploy-url != ''
+      shell: bash
+      run: |
+        SCRIPT="$GITHUB_ACTION_PATH/../scripts/preview-comment.cjs"
+        [ -f "$SCRIPT" ] || { echo "::error::the comment script is missing from the action: $SCRIPT"; exit 1; }
+        echo "path=$SCRIPT" >> "$GITHUB_OUTPUT"
+
     - name: Comment on PR
+      id: comment
       if: steps.decide.outputs.deploy == 'true' && github.event_name == 'pull_request' && steps.deploy.outputs.deploy-url != ''
       uses: actions/github-script@v9
       env:
+        PREVIEW_COMMENT_SCRIPT: ${{ steps.comment-script.outputs.path }}
+        # Picks the comment's heading and hidden marker in the script.
+        PROVIDER: netlify
         DEPLOY_URL: ${{ steps.deploy.outputs.deploy-url }}
         CHANGED_FILES: ${{ steps.detect-changes.outputs.changed-files }}
         LECTURES_DIR: ${{ inputs.lectures-dir }}
@@ -232,82 +250,10 @@ runs:
         COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
       with:
         github-token: ${{ github.token }}
+        # Untrusted PR data (file paths, deploy URL) is read from env by the
+        # script, never interpolated into this body (avoids script injection).
         script: |
-          // Untrusted PR data (file paths, deploy URL) is read from env, never
-          // interpolated into the script body (avoids script injection).
-          const deployUrl = process.env.DEPLOY_URL || '';
-          const changedFiles = process.env.CHANGED_FILES || '';
-          const lecturesDir = process.env.LECTURES_DIR || '';
-          const stripLecturesDir = process.env.STRIP_LECTURES_DIR === 'true';
-          const prNumber = context.issue.number;
-          const commitSha = process.env.COMMIT_SHA || '';
-          const shortSha = commitSha.substring(0, 7);
-          const commitUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/commit/${commitSha}`;
-          
-          // Build the comment body
-          let comment = `## 📖 Netlify Preview Ready!\n\n`;
-          comment += `**Preview URL:** ${deployUrl}\n\n`;
-          comment += `**Commit:** [\`${shortSha}\`](${commitUrl})\n\n`;
-          
-          // Add direct links to changed lecture pages
-          if (changedFiles && changedFiles.trim() && lecturesDir) {
-            const files = changedFiles.split('\n').filter(f => f.trim());
-            if (files.length > 0) {
-              comment += `### 📚 Changed Lectures\n\n`;
-              for (const file of files) {
-                const cleanFile = file.trim();
-                if (cleanFile) {
-                  // Determine URL path based on _toc.yml location
-                  // If _toc.yml is in lectures-dir, strip the dir (JB builds relative to it)
-                  // If _toc.yml is at root, keep the dir (JB preserves structure)
-                  let filePath;
-                  if (stripLecturesDir) {
-                    filePath = cleanFile.replace(`${lecturesDir}/`, '').replace('.md', '');
-                  } else {
-                    filePath = cleanFile.replace('.md', '');
-                  }
-                  const displayName = filePath.split('/').pop();  // Just filename for display
-                  const pageUrl = `${deployUrl}/${filePath}.html`;
-                  comment += `- [${displayName}](${pageUrl})\n`;
-                }
-              }
-              comment += '\n';
-            }
-          }
-          
-          // Add build info
-          comment += `---\n`;
-          comment += `<details><summary>Build Info</summary>\n\n`;
-          comment += `- **Workflow:** [${context.workflow}](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})\n`;
-          comment += `</details>\n`;
-          
-          // Check for existing preview comment and update it
-          const comments = await github.rest.issues.listComments({
-            issue_number: prNumber,
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-          });
-          
-          const marker = '## 📖 Netlify Preview Ready!';
-          const existingComment = comments.data.find(c => c.body.includes(marker));
-          
-          if (existingComment) {
-            await github.rest.issues.updateComment({
-              comment_id: existingComment.id,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: comment
-            });
-            console.log(`Updated existing comment ${existingComment.id}`);
-          } else {
-            await github.rest.issues.createComment({
-              issue_number: prNumber,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: comment
-            });
-            console.log('Created new comment');
-          }
+          await require(process.env.PREVIEW_COMMENT_SCRIPT).run({ github, context, core });
 
 branding:
   icon: 'upload-cloud'
