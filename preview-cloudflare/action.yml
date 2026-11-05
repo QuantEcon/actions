@@ -32,19 +32,35 @@ inputs:
   lectures-dir:
     description: >-
       The directory of lecture `.md` files that change detection looks in, as a path from the
-      repository root such as `lectures`, with no `./` or trailing slash: each lecture that differs
-      from the base branch gets a link in the comment, and is listed in `changed-files`. Empty
+      repository root such as `lectures`, with no `./` or trailing slash: each lecture the pull
+      request added or modified gets a link in the comment, and is listed in `changed-files`. Empty
       turns change detection off, and the comment gives only the preview URL.
     required: false
     default: 'lectures'
+  dispatch-alias:
+    description: >-
+      Deploys on `workflow_dispatch` and `schedule` events too, to this branch, such as
+      `dispatch-canary`, at `https://<alias>.<project-name>.pages.dev`. It must start with
+      `dispatch-`, which keeps it clear of every pull request's `pr-<number>`, and be lowercase
+      letters and digits in words joined by single dashes, at most 28 characters in all. Any other
+      value fails the job, on every event. Such a run has no comment and no changed lectures, and a
+      pull request ignores the input. Empty, the default, deploys on `pull_request` only.
+    required: false
+    default: ''
 
 outputs:
+  deployed:
+    description: >-
+      `'true'` when this run deployed a preview, so that `deploy-url` is set, and `'false'` when it
+      did not, and then a notice or a warning in the log says why. A scheduled or dispatched check
+      should assert `deployed == 'true'`, or it passes without testing the deploy.
+    value: ${{ steps.deploy.outputs.deploy-url != '' && 'true' || 'false' }}
   deploy-url:
     description: >-
       The pull request's preview URL, `https://pr-<number>.<project-name>.pages.dev`, which always
-      shows its newest push, so use it for anything a person will follow. Empty when nothing was
-      deployed: on an event other than `pull_request`, and for a pull request from a fork or by
-      Dependabot.
+      shows its newest push, so use it for anything a person will follow; on a `workflow_dispatch`
+      or `schedule` run, `https://<dispatch-alias>.<project-name>.pages.dev`. Empty when nothing
+      was deployed.
     value: ${{ steps.deploy.outputs.deploy-url }}
   deployment-url:
     description: >-
@@ -54,33 +70,37 @@ outputs:
     value: ${{ steps.deploy.outputs.deployment-url }}
   changed-files:
     description: >-
-      The lecture files under `lectures-dir` that were added or modified between the tip of the
-      pull request's base branch and its head, one path per line, so a lecture changed on the base
-      branch since the pull request branched off is listed too. Empty when there are none, with `lectures-dir: ''`, on an event other than
+      The lecture files under `lectures-dir` that the pull request added or modified, one path per
+      line, compared from the commit where it branched off. When a shallow checkout's history does
+      not reach that commit within 1,024 commits, the comparison starts from the base branch's tip
+      instead, with a warning, so a lecture changed only on the base branch is listed too. When git
+      fails, the action warns and lists none.
+      Empty when there are none, with `lectures-dir: ''`, on an event other than
       `pull_request`, and for a pull request from a fork or by Dependabot.
     value: ${{ steps.detect-changes.outputs.changed-files }}
 
 runs:
   using: "composite"
   steps:
-    - name: Check for trusted actor
-      id: check-trust
+    # One decision for the whole run (#227): every step below follows
+    # `deploy`. The event allow-list, the Dependabot and fork checks and the
+    # dispatch-alias rules are in the script, shared with preview-netlify.
+    - name: Decide whether to deploy
+      id: decide
       shell: bash
-      run: |
-        # Skip for dependabot and fork PRs (they can't access secrets)
-        if [ "${{ github.actor }}" = "dependabot[bot]" ]; then
-          echo "skip=true" >> "$GITHUB_OUTPUT"
-          echo "⚠️ Skipping Cloudflare deploy for dependabot"
-        elif [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
-          echo "skip=true" >> "$GITHUB_OUTPUT"
-          echo "⚠️ Skipping Cloudflare deploy for fork PR"
-        else
-          echo "skip=false" >> "$GITHUB_OUTPUT"
-        fi
+      env:
+        PROVIDER: Cloudflare
+        EVENT_NAME: ${{ github.event_name }}
+        ACTOR: ${{ github.actor }}
+        REPOSITORY: ${{ github.repository }}
+        HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        DISPATCH_ALIAS: ${{ inputs.dispatch-alias }}
+      run: bash "$GITHUB_ACTION_PATH/../scripts/preview-decide.sh"
 
     - name: Detect Changed Lecture Files
       id: detect-changes
-      if: steps.check-trust.outputs.skip != 'true' && inputs.lectures-dir != '' && github.event_name == 'pull_request'
+      if: steps.decide.outputs.deploy == 'true' && inputs.lectures-dir != '' && github.event_name == 'pull_request'
       shell: bash
       env:
         LECTURES_DIR: ${{ inputs.lectures-dir }}
@@ -90,7 +110,9 @@ runs:
 
     - name: Install Wrangler CLI
       id: install-cli
-      if: steps.check-trust.outputs.skip != 'true'
+      # Exactly the deploy's condition, so the CLI is installed only for a
+      # deploy that will run (#193).
+      if: steps.decide.outputs.deploy == 'true'
       shell: bash
       run: |
         # Exactly the version in package.json / package-lock.json beside this
@@ -127,23 +149,32 @@ runs:
 
     - name: Deploy to Cloudflare Pages
       id: deploy
-      if: steps.check-trust.outputs.skip != 'true' && github.event_name == 'pull_request'
+      if: steps.decide.outputs.deploy == 'true'
       shell: bash
       env:
         CLOUDFLARE_API_TOKEN: ${{ inputs.cloudflare-api-token }}
         CLOUDFLARE_ACCOUNT_ID: ${{ inputs.cloudflare-account-id }}
         # Read from env rather than interpolated into the script body, matching
         # the discipline the comment step below already follows.
+        BRANCH_ALIAS: ${{ steps.decide.outputs.alias }}
+        EVENT_NAME: ${{ github.event_name }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
-        COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+        REF_NAME: ${{ github.ref_name }}
+        # The pull request's head, or on a dispatched or scheduled run the
+        # commit it ran on.
+        COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         PROJECT_NAME: ${{ inputs.project-name }}
         BUILD_DIR: ${{ inputs.build-dir }}
         WRANGLER: ${{ steps.install-cli.outputs.bin }}
       run: |
         SHORT_SHA="${COMMIT_SHA:0:7}"
-        BRANCH_ALIAS="pr-${PR_NUMBER}"
+        if [ "$EVENT_NAME" = "pull_request" ]; then
+          WHAT="PR #${PR_NUMBER}"
+        else
+          WHAT="${EVENT_NAME} on ${REF_NAME}"
+        fi
 
-        echo "🔍 Deploying preview for PR #${PR_NUMBER} to Cloudflare Pages..."
+        echo "🔍 Deploying preview for ${WHAT} to Cloudflare Pages, branch ${BRANCH_ALIAS}..."
 
         # Deploy to Cloudflare Pages with branch alias. The output streams to
         # the log as wrangler runs, stderr included, and tee keeps a copy for
@@ -161,7 +192,7 @@ runs:
           --project-name="${PROJECT_NAME}" \
           --branch="${BRANCH_ALIAS}" \
           --commit-hash="${COMMIT_SHA}" \
-          --commit-message="PR #${PR_NUMBER} (${SHORT_SHA})" \
+          --commit-message="${WHAT} (${SHORT_SHA})" \
           2>&1 | tee "$LOG"
         EXIT=${PIPESTATUS[0]}
         set -e
@@ -184,12 +215,14 @@ runs:
         #      deep link in the comment below, which is the bigger cost. The
         #      alias tracks the newest deployment, so a reviewer can keep one
         #      tab open across the whole review.
-        #   2. It needs no parsing at all. `pr-N` is already alias-safe
+        #   2. It needs no parsing at all. The branch is already alias-safe
         #      (Cloudflare lowercases branch names and maps non-alphanumerics to
         #      `-`), so the URL is fully determined by inputs we already hold.
         #
-        # Cloudflare creates the alias for any non-production branch, and this
-        # step only runs on pull_request, so the branch is always `pr-N`.
+        # Cloudflare creates the alias for any non-production branch, and the
+        # branch is `pr-N` or a `dispatch-` alias that preview-decide.sh has
+        # checked is lowercase letters, digits and single dashes, at most 28
+        # characters, so the alias is the branch name unchanged.
         DEPLOY_URL="https://${BRANCH_ALIAS}.${PROJECT_NAME}.pages.dev"
 
         # The per-deployment URL is still worth having — it is the only way to
@@ -212,9 +245,12 @@ runs:
         else
           echo "📌 This deployment:   (not named in wrangler output)"
         fi
+        # No pull request means no comment, so put the URL on the run's
+        # summary page instead.
+        [ "$EVENT_NAME" = "pull_request" ] || echo "::notice::Cloudflare preview deployed to $DEPLOY_URL"
 
     - name: Comment on PR
-      if: steps.check-trust.outputs.skip != 'true' && github.event_name == 'pull_request' && steps.deploy.outputs.deploy-url != ''
+      if: steps.decide.outputs.deploy == 'true' && github.event_name == 'pull_request' && steps.deploy.outputs.deploy-url != ''
       uses: actions/github-script@v9
       env:
         DEPLOY_URL: ${{ steps.deploy.outputs.deploy-url }}
@@ -309,13 +345,6 @@ runs:
             });
             console.log('Created new comment');
           }
-
-    - name: Skip notification
-      if: steps.check-trust.outputs.skip == 'true'
-      shell: bash
-      run: |
-        echo "⚠️ Cloudflare deployment skipped (untrusted actor or fork PR)"
-        echo "This is expected for dependabot PRs and PRs from forks."
 
 branding:
   icon: 'cloud'

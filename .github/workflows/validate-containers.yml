@@ -1,0 +1,339 @@
+name: Validate Container Images
+
+# A pull request's container images, built and smoke-tested before it merges
+# (#142, phase 1). Until this, the merge that first built a changed image was
+# also the push that moved :latest, which every consumer pulls.
+#
+# The action harness (test-actions.yml) calls this on every event it runs on,
+# so that the one required check, `Action harness: all checks`, covers the
+# images too:
+#   plan   which images the pull request changes (scripts/detect-changed-images.sh).
+#          On a push or a dispatch, or a pull request that changes none,
+#          nothing more runs.
+#   build  each changed image, pushed to GHCR as a candidate tagged pr-<N>
+#          (moves with the pull request) and pr-<N>-<YYYYMMDD>-<HHMMSS>-<sha7>
+#          (one per run: what this run tests). Never :latest.
+#   smoke  test-container.yml against the candidates: the real `container:`
+#          job, smoke test and size report that :latest gets after each push.
+# When the pull request closes, the `closed` trigger deletes its candidates
+# (scripts/delete-pr-images.sh).
+#
+# Not here: main's own builds (phase 2 of #142). build-containers.yml still
+# pushes :latest directly, tested only afterwards by test-container.yml and
+# test-containers-lectures.yml. Publishing a candidate from main, testing it,
+# and retagging :latest on green is that phase.
+#
+# A fork's pull request gets a read-only token and cannot push a candidate, so
+# one that changes an image fails `plan` rather than pass untested. Do not
+# reach for pull_request_target to fix that (#105).
+#
+# The `quantecon` GHCR org is intentionally hardcoded (GHCR image paths must be
+# lowercase, so github.repository_owner — which preserves casing — can't be
+# substituted here).
+
+on:
+  workflow_call:
+  pull_request:
+    types: [closed]
+
+jobs:
+  plan:
+    name: Plan
+    # The build half. `closed` belongs to the cleanup job below.
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read   # the pull request's file list
+    outputs:
+      images: ${{ steps.plan.outputs.images }}
+      tag: ${{ steps.plan.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Decide which images to build
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # Fails closed: a mapping that selected no image for a Dockerfile
+          # change would let this check pass having built nothing.
+          scripts/detect-changed-images.sh --self-test
+
+          if [ "$EVENT_NAME" != pull_request ]; then
+            echo "images=[]" >> "$GITHUB_OUTPUT"
+            echo "[$EVENT_NAME] event: candidates are built for pull requests only; build-containers.yml builds main's images"
+            exit 0
+          fi
+
+          # The files API, as the harness gate uses it. A rename's old path
+          # counts as well, since moving a file out of an image changes it.
+          listing=$(mktemp)
+          gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files?per_page=100" \
+            --jq '.[] | [.filename, (.previous_filename // empty)] | join("\t")' > "$listing"
+          if [ "$(wc -l < "$listing")" -lt 3000 ]; then
+            images=$(tr '\t' '\n' < "$listing" | scripts/detect-changed-images.sh)
+          else
+            # "Responses include a maximum of 3000 files." Past the cap the
+            # changes are unknown, so build everything.
+            images=$(scripts/detect-changed-images.sh --all)
+          fi
+          echo "images=$images" >> "$GITHUB_OUTPUT"
+
+          if [ "$images" = "[]" ]; then
+            echo "This pull request changes no container image." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [ "$HEAD_REPO" != "$REPO" ]; then
+            echo "::error::This pull request changes the images $images, but it comes from ${HEAD_REPO:-a deleted fork}, whose token cannot push the candidates this check tests. A maintainer can validate it by pushing the branch to $REPO and opening a pull request from there."
+            exit 1
+          fi
+          [[ $HEAD_SHA =~ ^[0-9a-f]{40}$ ]] || { echo "::error::head SHA [$HEAD_SHA] is not a commit SHA"; exit 1; }
+          tag="pr-$PR_NUMBER-$(date -u +%Y%m%d-%H%M%S)-${HEAD_SHA:0:7}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Building $images from this pull request's merge commit and smoke-testing them as \`$tag\`." | tee -a "$GITHUB_STEP_SUMMARY"
+
+  build:
+    name: 'Build candidate: ${{ matrix.image }}'
+    needs: plan
+    if: needs.plan.outputs.images != '[]'
+    runs-on: ubuntu-latest
+    # As build-containers.yml. With :latest as the cache, only the layers from
+    # the first changed instruction on are rebuilt.
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write   # push pr-<N> candidates
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.plan.outputs.images) }}
+    env:
+      IMAGE: ghcr.io/quantecon/${{ matrix.image }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+          # metadata-action adds `latest` by itself for some tag types.
+          flavor: latest=false
+          tags: |
+            type=raw,value=pr-${{ github.event.pull_request.number }}
+            type=raw,value=${{ needs.plan.outputs.tag }}
+
+      # The tags above are literal; this holds them there through later edits.
+      # A candidate must never reach :latest, and delete-pr-images.sh removes a
+      # version only if every tag on it has one of these two forms, so any
+      # other tag would also outlive the pull request.
+      - name: Refuse any tag but this pull request's
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          n=0
+          while IFS= read -r ref; do
+            [ -n "$ref" ] || continue
+            [[ $ref =~ ^"$IMAGE":pr-$PR_NUMBER(-[0-9]{8}-[0-9]{6}-[0-9a-f]{7})?$ ]] \
+              || { echo "::error::refusing to push [$ref]: a pull request pushes only $IMAGE:pr-$PR_NUMBER tags"; exit 1; }
+            n=$((n + 1))
+          done <<< "$TAGS"
+          [ "$n" -eq 2 ] || { echo "::error::expected two tags, got $n: [$TAGS]"; exit 1; }
+
+      # As build-containers.yml, where it is the rollback target. Here it
+      # records which :latest the candidate was compared against.
+      - name: Record what :latest points at
+        id: before
+        shell: bash
+        run: |
+          digest=$(docker buildx imagetools inspect "$IMAGE:latest" --format '{{json .Manifest}}' | jq -r .digest) || digest=''
+          if [[ $digest =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::could not read $IMAGE:latest, so the step summary will not record it"
+          fi
+
+      - name: Build and push the candidate
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: containers/${{ matrix.image }}
+          file: containers/${{ matrix.image }}/Dockerfile
+          push: true
+          # One image manifest, not an index with a provenance attestation. A
+          # candidate is never promoted, so nothing reads its provenance, and
+          # one version per push is what lets the cleanup delete it whole:
+          # an index's untagged children would stay in GHCR.
+          provenance: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # The pull request's previous candidate first, so a push that leaves
+          # environment.yml alone reuses its conda layer, then :latest.
+          cache-from: |
+            type=registry,ref=${{ env.IMAGE }}:pr-${{ github.event.pull_request.number }}
+            type=registry,ref=${{ env.IMAGE }}:latest
+          cache-to: type=inline
+
+      - name: Write the pushed digest to the step summary
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          BEFORE: ${{ steps.before.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          {
+            echo "### \`$IMAGE\`"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| **Pushed** | \`$IMAGE@$DIGEST\` |"
+            echo "| **Tags** | $(sed 's/^.*:\(.*\)$/`\1`/' <<< "$TAGS" | paste -sd' ' -) |"
+            if [ -n "$BEFORE" ]; then
+              echo "| **\`:latest\` at build time** | \`$IMAGE@$BEFORE\` |"
+            else
+              echo "| **\`:latest\` at build time** | unknown |"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # The cleanup runs when nobody is watching any more, so prove here, where
+      # someone is, that it will remove what this job pushed: the token can
+      # list the package's versions, GHCR reports the candidate with only this
+      # pull request's tags, and neither of the script's guards holds it back.
+      # Otherwise candidates would pile up in GHCR unseen. The versions API can
+      # trail a push by a few seconds.
+      - name: Check the close-time cleanup selects this candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ github.repository_owner }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          IMAGES: ${{ matrix.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          DRY_RUN: 'true'
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5 6; do
+            selected=$(scripts/delete-pr-images.sh)
+            if grep -qF "@$DIGEST " <<< "$selected"; then
+              echo "✅ the cleanup selects $IMAGE@$DIGEST (attempt $attempt)"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Selected:"; echo "${selected:-  nothing}"
+          echo "::error::when this pull request closes, scripts/delete-pr-images.sh would not delete $IMAGE@$DIGEST, so the candidate would stay in GHCR"
+          exit 1
+
+  smoke:
+    name: Smoke test
+    needs: [plan, build]
+    # A ceiling for test-container.yml, not a grant: each of its jobs sets its
+    # own permissions. issues and actions are for its notify-failure job,
+    # which runs only on workflow_run, never from here.
+    permissions:
+      contents: read
+      packages: read
+      issues: write
+      actions: read
+    uses: ./.github/workflows/test-container.yml
+    with:
+      images: ${{ needs.plan.outputs.images }}
+      tag: ${{ needs.plan.outputs.tag }}
+
+  cleanup:
+    name: Delete this pull request's candidates
+    # A fork's pull request never pushed any.
+    if: github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write   # list and delete package versions
+    steps:
+      # The default branch's scripts: this job holds a token that deletes, and
+      # after a merge the pull request's merge ref may be gone.
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Delete the candidates
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # Every image on the default branch, and any the pull request added.
+          # The second list is best effort: the head commit can be gone.
+          IMAGES=$( { scripts/detect-changed-images.sh --all | jq -r '.[]'
+                      gh api "repos/$REPO/contents/containers?ref=$HEAD_SHA" \
+                        --jq '.[] | select(.type == "dir") | .name' || true; } | sort -u | paste -sd' ' -)
+          export IMAGES
+          echo "images: $IMAGES"
+          deleted=$(scripts/delete-pr-images.sh)
+          {
+            echo "### Candidates deleted for pull request #$PR_NUMBER"
+            echo
+            if [ -n "$deleted" ]; then sed 's/^/- /' <<< "$deleted"; else echo "None: it pushed no candidates."; fi
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # The cleanup runs after the pull request has closed, with nobody watching,
+  # so a failure opens (or comments on) a tracking issue, as the other
+  # unattended container workflows do. Unreported, candidates would pile up in
+  # GHCR. `cancelled` too: a job killed by timeout-minutes concludes cancelled.
+  notify-failure:
+    name: Report failure
+    runs-on: ubuntu-latest
+    needs: [cleanup]
+    if: ${{ always() && github.event.action == 'closed' && (needs.cleanup.result == 'failure' || needs.cleanup.result == 'cancelled') }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      actions: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Open or update the failure tracking issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_LABELS: bug,infrastructure
+        run: ./scripts/create-ci-failure-issue.sh

@@ -8,7 +8,7 @@ Deploys a pull request's built site to a Cloudflare Pages project as a preview, 
 - under "Changed Lectures", a link to the page of each lecture that differs between the pull request and its base branch;
 - under "Build Info", a link to the workflow run, and the URL of this push's own deployment.
 
-It deploys only on `pull_request` events, and skips pull requests from forks and from Dependabot, whose runs get no secrets. The project's production site is never touched.
+It deploys on `pull_request` events, and skips pull requests from forks and from Dependabot, whose runs get no secrets. With `dispatch-alias` set, it also deploys a `workflow_dispatch` or `schedule` run's build, on that branch and with no comment: see [Outside a pull request](#outside-a-pull-request). On any other event it deploys nothing, and says why in a notice. Its `deployed` output tells the workflow which happened. The project's production site is never touched.
 
 ## When to use it
 
@@ -16,14 +16,15 @@ Use it in a pull request's build job, after [`build-lectures`](build-lectures.md
 
 - **Or on Netlify.** [`preview-netlify`](preview-netlify.md) does the same on Netlify, and is the one `ci.yml` uses. [Netlify or Cloudflare?](preview-netlify.md#netlify-or-cloudflare) compares the two.
 - **Not to publish the site.** [`publish-gh-pages`](publish-gh-pages.md) publishes to GitHub Pages, and [`deploy-cloudflare`](deploy-cloudflare.md) publishes a site that only members may see.
+- **To check the preview outside a pull request**, from a scheduled or dispatched run, set `dispatch-alias`: see [Outside a pull request](#outside-a-pull-request).
 
 ## Requirements
 
 - **Runner.** Any, with `bash`, `git` and `npm`, as GitHub-hosted runners and the QuantEcon images have. The job must be able to reach `registry.npmjs.org`: `wrangler` is installed each run from the lockfile beside the action.
 - **Node.** 22 or later, which the pinned `wrangler` needs. The QuantEcon images carry Node 24. On a standard runner, set it up before this action with `actions/setup-node`, as in [preview-netlify's example](preview-netlify.md#on-a-standard-runner).
-- **Permissions.** `pull-requests: write`, for the comment. The job also needs `contents: read` for `actions/checkout`.
+- **Permissions.** `pull-requests: write`, for the comment. The job also needs `contents: read` for `actions/checkout`. A run outside a pull request posts no comment, so it needs only `contents: read`.
 - **Secrets.** `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, from [Setting up Cloudflare Pages](#setting-up-cloudflare-pages).
-- **Files in your repository.** None beyond the built site. The comment's lecture links need the pull request's base and head commits, which the action fetches if the checkout lacks them.
+- **Files in your repository.** None beyond the built site. The comment's lecture links compare the pull request's head with the commit where it branched off its base branch. A checkout with `fetch-depth: 0` has that commit, and nothing is fetched. From a shallow checkout, such as `actions/checkout`'s default of one commit, the action fetches history until it finds it, up to 1,024 commits behind the pull request's base and head: see [preview-netlify's Behaviour](preview-netlify.md#behaviour).
 - **Setup outside GitHub.** A Cloudflare Pages project, once: see [Setting up Cloudflare Pages](#setting-up-cloudflare-pages).
 
 ## Setting up Cloudflare Pages
@@ -47,6 +48,7 @@ The previews then appear at:
 |---|---|
 | Pull request 5, newest push | `https://pr-5.<project-name>.pages.dev` |
 | One push | `https://<hash>.<project-name>.pages.dev` |
+| The newest scheduled or dispatched run with `dispatch-alias: dispatch-canary` | `https://dispatch-canary.<project-name>.pages.dev` |
 | The project's production site, which the action leaves alone | `https://<project-name>.pages.dev` |
 
 ## Inputs
@@ -59,7 +61,8 @@ The previews then appear at:
 | `cloudflare-account-id` | yes | none | The ID of the Cloudflare account that owns the Pages project, from a repository secret such as `secrets.CLOUDFLARE_ACCOUNT_ID`. |
 | `project-name` | yes | none | The Cloudflare Pages project to deploy to, which must already exist. Its name is part of every preview URL, as in `<project-name>.pages.dev`. |
 | `build-dir` | yes | none | The directory that holds the built site, such as `_build/html`, which `build-lectures` gives in its `build-path` output. |
-| `lectures-dir` | no | `lectures` | The directory of lecture `.md` files that change detection looks in, as a path from the repository root such as `lectures`, with no `./` or trailing slash: each lecture that differs from the base branch gets a link in the comment, and is listed in `changed-files`. Empty turns change detection off, and the comment gives only the preview URL. |
+| `lectures-dir` | no | `lectures` | The directory of lecture `.md` files that change detection looks in, as a path from the repository root such as `lectures`, with no `./` or trailing slash: each lecture the pull request added or modified gets a link in the comment, and is listed in `changed-files`. Empty turns change detection off, and the comment gives only the preview URL. |
+| `dispatch-alias` | no | `''` | Deploys on `workflow_dispatch` and `schedule` events too, to this branch, such as `dispatch-canary`, at `https://<alias>.<project-name>.pages.dev`. It must start with `dispatch-`, which keeps it clear of every pull request's `pr-<number>`, and be lowercase letters and digits in words joined by single dashes, at most 28 characters in all. Any other value fails the job, on every event. Such a run has no comment and no changed lectures, and a pull request ignores the input. Empty, the default, deploys on `pull_request` only. |
 
 <!-- END GENERATED -->
 
@@ -69,9 +72,10 @@ The previews then appear at:
 
 | Output | Description |
 |---|---|
-| `deploy-url` | The pull request's preview URL, `https://pr-<number>.<project-name>.pages.dev`, which always shows its newest push, so use it for anything a person will follow. Empty when nothing was deployed: on an event other than `pull_request`, and for a pull request from a fork or by Dependabot. |
+| `deployed` | `'true'` when this run deployed a preview, so that `deploy-url` is set, and `'false'` when it did not, and then a notice or a warning in the log says why. A scheduled or dispatched check should assert `deployed == 'true'`, or it passes without testing the deploy. |
+| `deploy-url` | The pull request's preview URL, `https://pr-<number>.<project-name>.pages.dev`, which always shows its newest push, so use it for anything a person will follow; on a `workflow_dispatch` or `schedule` run, `https://<dispatch-alias>.<project-name>.pages.dev`. Empty when nothing was deployed. |
 | `deployment-url` | The URL of this one deployment, `https://<hash>.<project-name>.pages.dev`, which goes on showing this push after later ones. Empty when wrangler's output does not name it, and when nothing was deployed. |
-| `changed-files` | The lecture files under `lectures-dir` that were added or modified between the tip of the pull request's base branch and its head, one path per line, so a lecture changed on the base branch since the pull request branched off is listed too. Empty when there are none, with `lectures-dir: ''`, on an event other than `pull_request`, and for a pull request from a fork or by Dependabot. |
+| `changed-files` | The lecture files under `lectures-dir` that the pull request added or modified, one path per line, compared from the commit where it branched off. When a shallow checkout's history does not reach that commit within 1,024 commits, the comparison starts from the base branch's tip instead, with a warning, so a lecture changed only on the base branch is listed too. When git fails, the action warns and lists none. Empty when there are none, with `lectures-dir: ''`, on an event other than `pull_request`, and for a pull request from a fork or by Dependabot. |
 
 <!-- END GENERATED -->
 
@@ -108,36 +112,59 @@ jobs:
           build-dir: ${{ steps.build.outputs.build-path }}
 ```
 
+### Outside a pull request
+
+A scheduled or dispatched run deploys only with `dispatch-alias` set, here to `https://dispatch-canary.my-lectures.pages.dev`, which always shows the newest such run. Check `deployed`: a run that deployed nothing still passes. In a workflow like [preview-netlify's](preview-netlify.md#outside-a-pull-request), the steps are:
+
+```yaml
+- uses: quantecon/actions/preview-cloudflare@v0
+  id: preview
+  with:
+    cloudflare-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    cloudflare-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    project-name: my-lectures
+    build-dir: ${{ steps.build.outputs.build-path }}
+    dispatch-alias: dispatch-canary
+- name: Fail unless the preview was deployed
+  if: steps.preview.outputs.deployed != 'true'
+  run: |
+    echo "::error::no preview was deployed"
+    exit 1
+```
+
 ### In the templates
 
 [`ci.yml`](https://github.com/QuantEcon/actions/blob/main/templates/ci.yml) carries this action as a commented alternative to its `preview-netlify` step. To use it, replace that step with the comment's, set `project-name`, and add the two secrets.
 
 ## Behaviour
 
-1. **Who gets a preview.** A run by Dependabot, or for a pull request from a fork, stops here: it prints `⚠️ Cloudflare deployment skipped (untrusted actor or fork PR)`, deploys nothing, and passes.
-2. **Changed lectures.** On a `pull_request` event with `lectures-dir` set, the action lists the lectures that differ between the pull request's base, which is the tip of its base branch, and its head, by the same rules as [preview-netlify](preview-netlify.md#behaviour). That includes a lecture changed on the base branch since the pull request branched off ([#215](https://github.com/QuantEcon/actions/issues/215)).
+1. **Whether to deploy.** The action decides first, by the same rules as [preview-netlify](preview-netlify.md#behaviour), and every later step follows the decision. It deploys a pull request from this repository to the branch `pr-<number>`, and a `workflow_dispatch` or `schedule` run with `dispatch-alias` set to the branch that input names; anything else, such as a pull request from a fork, any run by Dependabot, a `push` or a `pull_request_target`, deploys nothing. A run that deploys nothing stops here: it installs nothing, sets `deployed` to `'false'`, passes, and says why in a notice, such as `No Cloudflare preview deployed: pull requests from forks get no secrets.` On `pull_request_target` the message is a warning, because of [Security](#security). A `dispatch-alias` that breaks the input's rules fails the job, on every event.
+2. **Changed lectures.** On a `pull_request` event with `lectures-dir` set, the action lists the lectures the pull request added or modified, compared from the commit where it branched off its base branch, by the same rules as [preview-netlify](preview-netlify.md#behaviour). That section also says how much history a shallow checkout fetches, and what the action does when git fails.
 3. **The CLI.** The `wrangler` version pinned in the action's [`package.json`](https://github.com/QuantEcon/actions/blob/main/preview-cloudflare/package.json) is installed with `npm ci`, into a temporary directory, and its `wrangler` command is added to the `PATH` of the job's later steps.
-4. **The deploy**, on `pull_request` events only:
+4. **The deploy:**
 
    ```text
-   wrangler pages deploy <build-dir> --project-name <project-name> --branch pr-<number> --commit-hash <head commit> --commit-message "PR #<number> (<short commit>)"
+   wrangler pages deploy <build-dir> --project-name <project-name> --branch <branch> --commit-hash <commit> --commit-message "<run> (<short commit>)"
    ```
 
-   `<short commit>` is the first 7 characters of the head commit. The token and the account ID reach the CLI through the environment. A branch other than the project's production branch makes the deployment a preview, so the production site is untouched. wrangler's output is in the "Deployment Output" log group.
-5. **The URLs.** `deploy-url` is not read from wrangler's output but built from the inputs: `https://pr-<number>.<project-name>.pages.dev` is the alias Cloudflare gives the newest deployment of the branch `pr-<number>`, as long as the project's own address is `<project-name>.pages.dev`. `deployment-url` is the first other `pages.dev` address in wrangler's output.
-6. **The comment.** Among the pull request's first 30 comments, the action looks for one that contains `## ☁️ Cloudflare Preview Ready!`, and updates it; if there is none, it posts a new one. Its lecture links are built as in preview-netlify's.
+   `<branch>` is `pr-<number>` or `dispatch-alias`, as step 1 decided. `<commit>` is the pull request's head commit, or the commit a dispatched or scheduled run is on, and `<short commit>` is its first 7 characters. `<run>` is `PR #<number>`, or the event and branch, such as `workflow_dispatch on main`. The token and the account ID reach the CLI through the environment. A branch other than the project's production branch makes the deployment a preview, so the production site is untouched. wrangler's output is in the "Deployment Output" log group.
+5. **The URLs.** `deploy-url` is not read from wrangler's output but built from the inputs: `https://<branch>.<project-name>.pages.dev` is the alias Cloudflare gives the newest deployment of the branch, as long as the project's own address is `<project-name>.pages.dev`. Both kinds of branch are already in the form Cloudflare uses for an alias, lowercase letters, digits and dashes, so the alias is the branch name unchanged. `deployment-url` is the first other `pages.dev` address in wrangler's output. Outside a pull request, the preview's URL also goes in a notice, on the run's summary page.
+6. **The comment**, on a pull request only. Among the pull request's first 30 comments, the action looks for one that contains `## ☁️ Cloudflare Preview Ready!`, and updates it; if there is none, it posts a new one. Its lecture links are built as in preview-netlify's.
 
-On any event but `pull_request`, such as `push`, `workflow_dispatch` or `schedule`, the action installs the CLI and does nothing else, and nothing in the log says so: the step succeeds, with empty `deploy-url` and `deployment-url` outputs. To know whether a preview was deployed, check `deploy-url`. The one exception is a run by Dependabot, which prints the skip message and installs nothing.
+To know whether a preview was deployed, check `deployed`. A scheduled or dispatched check should fail unless it is `'true'`, as in [Outside a pull request](#outside-a-pull-request): otherwise a run that deployed nothing, because `dispatch-alias` was left out, say, passes having tested nothing.
 
 ### What fails the job
 
+- A `dispatch-alias` other than `dispatch-` followed by lowercase letters and digits in words joined by single dashes, at most 28 characters in all, on any event.
 - `npm ci` failing to install the pinned CLI, or the installed CLI failing to run.
 - `wrangler pages deploy` failing.
 - The comment failing to post, for want of `pull-requests: write`.
 
 ## Security
 
-Previews of pull requests from forks are not supported, and the action skips them. Do not run it from a `pull_request_target` workflow to get around that. A workflow triggered that way builds and runs the fork's notebooks with `CLOUDFLARE_API_TOKEN` and a write-scoped `GITHUB_TOKEN` within their reach, the pattern known as a "pwn request". It would not produce a preview either: the action deploys only on `pull_request` events.
+Previews of pull requests from forks are not supported, and the action skips them. Do not run it from a `pull_request_target` workflow to get around that. A workflow triggered that way builds and runs the fork's notebooks with `CLOUDFLARE_API_TOKEN` and a write-scoped `GITHUB_TOKEN` within their reach, the pattern known as a "pwn request". It would not produce a preview either: the action never deploys on `pull_request_target`, whatever `dispatch-alias` says, and warns instead.
+
+`dispatch-alias` does not widen who can deploy. A `workflow_dispatch` run needs write access to the repository, and a `schedule` run uses the workflow on the default branch, so either already has the repository's secrets.
 
 ## Troubleshooting
 
@@ -159,3 +186,7 @@ Previews of pull requests from forks are not supported, and the action skips the
 **A new preview comment on every push.** The pull request has more than 30 comments before the preview's, so the action does not find its own comment, and posts another.
 
 **The comment has no "This deployment" line.** wrangler's output named no per-deployment URL, so `deployment-url` is empty. The preview URL is not affected.
+
+**`No Cloudflare preview deployed: …`, in a notice, or `dispatch-alias […] must be dispatch- followed by …`.** See [preview-netlify's troubleshooting](preview-netlify.md#troubleshooting): the two actions decide whether to deploy the same way.
+
+**A dispatched or scheduled run deployed, but posted no comment.** Expected: there is no pull request to comment on. The URL is in `deploy-url`, and in a notice on the run's summary page.

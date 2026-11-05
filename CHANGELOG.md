@@ -7,7 +7,141 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`deploy-cloudflare`**: a `visibility` input, `private` or `public`, so the action publishes
+  public sites as well as private ones, and checks either kind against what the workflow declares
+  (#177). `private` is what the action did before: before the upload, after the deploy (production
+  and the new version's preview URL) and on the alias, an anonymous request must be redirected to
+  `team-domain`'s Access login. `public` inverts the same three checks: an anonymous request must
+  be served the site, and a redirect to any `*.cloudflareaccess.com` fails. A Worker declared
+  public but in fact gated is therefore refused before anything is uploaded, as a public Worker
+  declared private already was. `team-domain` is required for `private` and an error for `public`,
+  so a workflow copied from one kind of site to the other fails rather than check the wrong thing;
+  it is no longer a required input. The first line of the log and the job summary's heading name
+  the mode, and a new `visibility` output gives it. `scripts/check-access-gate.sh` gains
+  `--public`, and `--allow-404` for the check before the deploy, when the live version need not
+  hold this build's files yet. A public build with no `index.html` answers 404 at its root, so
+  after the deploy it is checked on its non-HTML probe file alone; one with neither fails
+  validation. In CI, `dc-gate-probe` covers every public verdict, `dc-inputs` every rejected
+  combination, and `dc-refuses-ungated` the deprecated forms. A new job, `dc-refuses-mismatch`,
+  runs the action against a gated and a public Worker stood in for on the runner (the access-gate
+  fixture over TLS, behind `/etc/hosts`), and asserts that both mix-ups are refused before wrangler
+  is installed, while matching ones reach it.
+- **`preview-netlify`, `preview-cloudflare`**: a `dispatch-alias` input and a `deployed` output,
+  so a scheduled or dispatched run can test the preview deploy, as decided on #143. Until now
+  both actions deployed only on `pull_request`, and on any other event passed having deployed
+  nothing, with nothing in the log to say so: a scheduled canary run was green while testing
+  nothing. With `dispatch-alias: dispatch-canary`, a `workflow_dispatch` or `schedule` run deploys
+  its build to that alias (`https://dispatch-canary--<site>.netlify.app`,
+  `https://dispatch-canary.<project-name>.pages.dev`), with no comment and no changed lectures, and
+  puts the URL in a notice. The value must start with the reserved `dispatch-` prefix, which no
+  pull request's `pr-<number>` can, and be at most 28 characters of lowercase letters and digits
+  in words joined by single dashes; anything else fails the job, on every event. The events are an
+  allow-list: `pull_request` as before, and `workflow_dispatch` and `schedule` only with the
+  input. No input makes `pull_request_target`, `push` or any other event deploy (#105), and fork
+  and Dependabot runs are still skipped. `deployed` is always `'true'` or `'false'`, and a run
+  that deploys nothing says why in a notice, or a warning on `pull_request_target`. The decision
+  is one script, `scripts/preview-decide.sh`, that both actions run first. (#227)
+- **CI**: two harness jobs for that decision, neither needing provider secrets. `preview-decide`
+  runs `scripts/preview-decide.sh` for 35 combinations of event, actor, fork and alias, including
+  `schedule` and `pull_request_target`, which the harness itself never runs on. `preview-wiring`
+  runs both actions with fake credentials. It asserts that an invalid `dispatch-alias` fails each
+  one before anything is installed, and that each installs its CLI exactly when the decision says
+  deploy, with `deployed` always set; on this repository's own pull requests that means reaching
+  the provider and failing on the credentials. A successful deploy is not covered: the staged
+  canary check is its proof. (#227, #193)
+
 ### Changed
+- **`templates/ci.yml`**: a new `pdf-check` job builds the PDF on every pull request and fails
+  its checks when the LaTeX build fails. Malformed LaTeX can pass the HTML build and still break
+  the PDF build, and with it the publish, and previews are moving to HTML only (#148). The job
+  starts when the preview job has finished, so the preview link never waits for it, and builds
+  from the `_build/.jupyter_cache` the preview job uploads as an artifact, so it executes no
+  notebooks and needs no GPU runner. A site that publishes no PDF sets `PDF_CHECK: 'false'` in the
+  workflow's `env:` block, and the job is reported as skipped. The switch is in the file, not a
+  repository variable, because a run for a fork's pull request does not receive repository
+  variables. Harness jobs run the hand-off on the fixture in the lean image, through the
+  template's switch, and check that `PDF_CHECK: 'false'` skips both the upload and the job.
+  (#230)
+- **`preview-netlify`, `preview-cloudflare`**: the CLI is installed only when the run will
+  deploy, on the deploy step's own condition, so the two cannot drift apart. A `push` run, or a
+  `workflow_dispatch` run without `dispatch-alias`, used to spend 25-45 s on `npm ci` of the
+  pinned CLI and then skip the deploy. The trusted-actor check is now part of the shared decision,
+  and its skip message, which was plain log text, is a notice. (#193)
+- **Container images**: a pull request that changes an image now builds and tests it before it
+  merges. Until now the merge that first built a changed image was also the push that moved
+  `:latest`, and the smoke test ran only after that. The action harness now calls the new
+  `validate-containers.yml`, which builds each image the pull request changes (cached from
+  `:latest`), pushes it as a candidate tagged `pr-<N>` and `pr-<N>-<date>-<time>-<sha>`, never
+  `:latest`, and runs `test-container.yml`'s smoke test and size report on it in a real
+  `container:` job. Its result is part of `Action harness: all checks`, so a pull request that
+  changes only `containers/**` can no longer pass the required check without its image being built.
+  A fork's pull request that changes an image fails the check, since its token cannot push a
+  candidate. Candidates are deleted when the pull request closes. `test-container.yml` takes
+  `images` and `tag` inputs, on dispatch as well as on a call (#150), and opens a tracking issue
+  when its run after a build fails: without one, #222 went unseen for three weeks. Each
+  `build-containers.yml` run writes the digest it pushed, and the one `:latest` held before it, to
+  its step summary as the rollback handle, and adds a tag unique to the build,
+  `main-<date>-<time>-<sha>`. Main's own builds still move `:latest` before any test; that is
+  phase 2. (#142)
+
+### Deprecated
+- **`deploy-cloudflare`**: `require-access`, and leaving out both it and `visibility`, which relied
+  on its default (#177). Both still work in this release, with a warning on every run:
+  `require-access: 'true'`, and neither input, check the site as `visibility: private`, as
+  v0.12.0's default did, and `require-access: 'false'` still skips every check. Setting both
+  inputs fails the job. In the minor release after this one, both forms become errors and
+  `visibility` becomes required, so add it now. The chapter's "Moving from `require-access`" table
+  gives the change for each form; note that `visibility: public` checks the site rather than skip
+  the checks.
+
+### Documentation
+- **`CONTRIBUTING.md`**: Staged Releases says how to roll back a container image: retag `:latest`
+  to the digest it held before, which each `build-containers.yml` run now records in its step
+  summary, with `docker buildx imagetools create`. Its known limit on container images now says
+  that they stage on pull requests only: the merge's own build and scheduled rebuilds still push
+  `:latest` untested. (#142)
+
+### Fixed
+- **`preview-netlify`, `preview-cloudflare`**: the comment's changed lectures, and the
+  `changed-files` output, are the lectures the pull request added or modified.
+  `scripts/detect-changed-lectures.sh` compared the base branch's tip with the head
+  (`BASE..HEAD`), so every lecture changed on the base branch after the pull request branched off
+  was listed too. It now compares from the merge base (`BASE...HEAD`), which the checkout must
+  have:
+  - A checkout with `fetch-depth: 0` has it, and nothing is fetched. The script used to fetch the
+    two commits on every run.
+  - In a shallow checkout the fetch is now bounded (#147). Fetching the two commits with no depth,
+    as the script did, pulled their entire history into a depth-1 checkout. It now fetches 64
+    commits behind each, and deepens, doubling, until it finds the merge base. If it has not
+    found it 1,024 commits behind each, it warns and compares from the base branch's tip, as
+    before. `--depth` is used only for a commit the checkout lacks: on one it has, it cuts the
+    history behind it to that depth. The fetches skip git's automatic maintenance, which runs in
+    the background and can rewrite `.git/shallow` during the next deepen, making git abort it.
+  - A git failure is a warning carrying git's own message. Every git call ended in
+    `2>/dev/null || true` or `|| echo ""`, so a failure listed no lectures without a word. It
+    still never fails the step: the deploy is worth more than the links.
+
+  A second, per-file `git diff`, which repeated the first comparison, is gone. A new harness job,
+  `preview-change-detection`, runs the script against a scratch repository checked out as
+  `actions/checkout` checks out a pull request: in full, and 1, 2 and 50 commits deep, with a
+  rename, a merge base just inside the cap and one past it, a remote that cannot be fetched from,
+  and no repository at all. (#215)
+- **`test-container.yml`**: the image-size job failed on every run once `ubuntu-latest` became
+  ubuntu-26.04, whose Docker 29.4 uses the containerd image store: there `docker image inspect`
+  reports the compressed content size, and the job's guard (#172) refuses to print that as the
+  on-disk size. The job now switches the runner's daemon back to the classic store
+  (`features.containerd-snapshotter=false`) before it pulls, so the on-disk figure is still the
+  unpacked layers on overlay2, comparable with every earlier report. The guard stays and fails
+  the job if the switch does not hold. (#142)
+
+## [0.13.0] - 2026-11-05
+
+### Changed
+- **`preview-netlify`, `preview-cloudflare`, `deploy-cloudflare`**: the pinned deploy CLIs move
+  from v0.12.0's wrangler 4.136.3 and netlify-cli 27.8.1 to wrangler 4.156.0 and netlify-cli
+  27.16.1, through Dependabot's lockfile bumps. The harness installs both from their lockfiles
+  and runs them. (#207, #219)
 - **Containers**: both images move to the **Anaconda 2026.07** baseline, which every lecture repo
   in the validation matrix already pins (#188). The full image's metapackage goes to
   `anaconda=2026.07`. The lean image's pin set is re-derived from the 2026.07 linux-64 py313 MKL
@@ -33,6 +167,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   under `containers/` still triggers a build: the smoke-test fixture's pages are Markdown. (#178)
 
 ### Documentation
+- **`docs/dev/PLAN.md`, `CONTRIBUTING.md`**: caught up with the v0.12.0 follow-ups, which have
+  landed. The canary runs `preview-cloudflare` (QuantEcon/test-actions-lecture-intro#67), so
+  Staged Releases loses its known limit about it, and step 2 says the canary PR deploys to both
+  preview providers. The six consumers that passed `cname` have dropped it, so PLAN's follow-up
+  list is gone. PLAN also records the 2026-11-04 decisions, none of them implemented yet: the
+  release gate is a `gate.yml` in the canary that tests a candidate checkout, with its fixture in
+  its own folder there and no `v0-next` tag (#135, #136, #143); the preview actions are to deploy
+  outside a pull request only when asked (#227); HTML-only previews keep a parallel PDF check
+  (#146, #230); and scheduled image rebuilds give way to a digest-pinned base that Dependabot
+  moves (#234, #235). Stale facts are corrected: every exact pin is on `v0.12.0`, branch hygiene
+  (item 16) is done, the container smoke fixture does exercise plotly export, and items 6, 15
+  and 18 point at #153, #229 and #228. (#202)
 - **User manual** (#178): every action has its chapter. `build-lectures`, `build-jupyter-cache`,
   `restore-jupyter-cache`, `preview-netlify`, `preview-cloudflare`, `publish-gh-pages` and
   `deploy-cloudflare` get theirs in `docs/user/actions/`, and their READMEs become generated
