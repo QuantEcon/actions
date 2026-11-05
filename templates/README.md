@@ -88,6 +88,8 @@ The split is the one `ci.yml` makes, for the same reason: the build runs noteboo
 ┌─────────────────────┐ ┌─────────────────────────────────┐
 │  ci.yml (PRs)       │ │  publish.yml (push to main)     │
 │                     │ │                                 │
+│  placeholder:       │ │                                 │
+│   comment at once   │ │                                 │
 │  build:             │ │  build:                         │
 │   restore cache     │ │   restore cache                 │
 │   build HTML        │ │   build HTML                    │
