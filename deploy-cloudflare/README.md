@@ -2,7 +2,7 @@
 
 # Deploy Cloudflare
 
-Publishes a built site to an existing Cloudflare Worker behind Cloudflare Access, for a site only members may see, and fails unless the site is proven gated before and after the deploy.
+Publishes a built site to an existing Cloudflare Worker, and proves who can see it before and after the deploy: a private site must be behind Cloudflare Access, a public one served to anyone.
 
 How to set it up, and every input and output: [the `deploy-cloudflare` chapter of the user manual](../docs/user/actions/deploy-cloudflare.md).
 

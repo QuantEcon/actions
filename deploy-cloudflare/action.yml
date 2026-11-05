@@ -1,7 +1,7 @@
 name: 'Deploy Cloudflare'
 description: >-
-  Publishes a built site to an existing Cloudflare Worker behind Cloudflare Access, for a site only
-  members may see, and fails unless the site is proven gated before and after the deploy.
+  Publishes a built site to an existing Cloudflare Worker, and proves who can see it before and
+  after the deploy: a private site must be behind Cloudflare Access, a public one served to anyone.
 author: 'QuantEcon'
 
 # Each description below is copied verbatim into the user manual
@@ -24,7 +24,7 @@ inputs:
     description: >-
       The Worker to deploy to, one per site: lowercase letters, digits and dashes, not starting or
       ending with a dash, at most 63 characters. It must already exist, with its `workers.dev`
-      route on, and already be behind Access.
+      route on, and, for a private site, already be behind Access.
     required: true
   account-subdomain:
     description: >-
@@ -32,15 +32,30 @@ inputs:
       `my-subdomain.workers.dev` also gives. The URLs are built from it, never read from
       wrangler's output.
     required: true
+  visibility:
+    description: >-
+      Who may see the site: `private` or `public`. The site is checked against it before anything
+      is uploaded, after the deploy, and on the alias after its upload. `private`: an anonymous
+      request must be redirected to the Access login at `team-domain`, which is required. `public`:
+      an anonymous request must be served the site, with no redirect to any Access login, and
+      `team-domain` must be empty. Any other value fails the job. Leaving it out is deprecated: in
+      this release the site is then checked as private, with a warning, and from the next minor
+      release the job fails.
+    required: false
+    default: ''
   team-domain:
     description: >-
       The Access team's login domain, `<team>.cloudflareaccess.com`; a bare `<team>` is accepted
-      too. Every gate check requires an anonymous request to be redirected to exactly this host.
-    required: true
+      too. Required for a private site, whose every check requires an anonymous request to be
+      redirected to exactly this host. Must be empty for a public site, so that a workflow copied
+      from a private site fails rather than publish it.
+    required: false
+    default: ''
   build-dir:
     description: >-
       The directory that holds the built site. The job fails if it is missing or holds no files,
-      and warns if it has no `index.html`, since the site's root would then answer 404.
+      and warns if it has no `index.html`, since the site's root would then answer 404. A public
+      site must hold an `index.html` or a file that is not HTML, for the check to request.
     required: true
   alias:
     description: >-
@@ -52,12 +67,12 @@ inputs:
     default: ''
   require-access:
     description: >-
-      `'true'`, the default, proves the site is gated: before anything is uploaded, after the
-      deploy, on production and on the new version's own preview URL, and on the alias after its
-      upload, an anonymous request must be redirected to `team-domain`. `'false'` skips every
-      check, with a warning: never use it for private content. Any other value fails the job.
+      Deprecated, and removed in the next minor release: use `visibility`. `'true'` checks the site
+      as `visibility: private` does. `'false'` skips every check: never use it for private
+      content. Either gives a warning. Any other value fails the job, and so does setting both
+      this and `visibility`.
     required: false
-    default: 'true'
+    default: ''
 
 outputs:
   deploy-url:
@@ -70,6 +85,13 @@ outputs:
       The alias's URL, `https://<alias>-<worker-name>.<account-subdomain>.workers.dev`. Empty when
       no `alias` is given, or when its upload failed or did not run.
     value: ${{ steps.alias.outputs.alias-url }}
+  visibility:
+    description: >-
+      Who the site is checked as visible to, `private` or `public`: `visibility`, or what the
+      deprecated `require-access` stands for. Set once every input is valid, even if a check then
+      fails the job. Empty when an input is rejected, or when `require-access: 'false'` turns the
+      checks off.
+    value: ${{ steps.inputs.outputs.visibility }}
 
 runs:
   using: "composite"
@@ -85,11 +107,62 @@ runs:
         TEAM_DOMAIN: ${{ inputs.team-domain }}
         BUILD_DIR: ${{ inputs.build-dir }}
         ALIAS: ${{ inputs.alias }}
+        VISIBILITY: ${{ inputs.visibility }}
         REQUIRE_ACCESS: ${{ inputs.require-access }}
       run: |
         set -euo pipefail
         fail() { echo "::error::$1"; exit 1; }
         label='^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'
+
+        # Who may see the site comes first, so that the log's first line says
+        # it (#177). require-access is visibility's deprecated alias for one
+        # release, and its old default, private, still holds when neither is
+        # given; a warning says so either way. `unchecked` is
+        # require-access: 'false', which runs no check.
+        case "$VISIBILITY" in
+          private|public)
+            [ -z "$REQUIRE_ACCESS" ] \
+              || fail "visibility and require-access are both set. require-access is deprecated: remove it, and keep visibility: $VISIBILITY."
+            mode=$VISIBILITY
+            ;;
+          '')
+            case "$REQUIRE_ACCESS" in
+              ''|true) mode=private ;;
+              false) mode=unchecked ;;
+              *) fail "require-access must be 'true' or 'false', got [$REQUIRE_ACCESS]. It is deprecated: set visibility to private or public instead." ;;
+            esac
+            ;;
+          *) fail "visibility must be private or public, got [$VISIBILITY]." ;;
+        esac
+
+        # Each kind of site refuses the other's team-domain, so a workflow
+        # copied from one kind to the other fails here.
+        team=""
+        if [ "$mode" = public ]; then
+          [ -z "$TEAM_DOMAIN" ] || fail "team-domain is set, but visibility is public — did you mean private?"
+        elif [ -z "$TEAM_DOMAIN" ]; then
+          [ -z "$VISIBILITY" ] || fail "visibility is private, so team-domain is required."
+          fail "team-domain is required unless visibility is public."
+        else
+          team=$(printf '%s' "$TEAM_DOMAIN" | tr '[:upper:]' '[:lower:]')
+          team=${team#https://}; team=${team%/}
+          [[ "$team" == *.* ]] || team="$team.cloudflareaccess.com"
+          [[ "$team" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?\.cloudflareaccess\.com$ ]] \
+            || fail "team-domain [$TEAM_DOMAIN] is not an Access login domain (<team>.cloudflareaccess.com)."
+        fi
+
+        case "$mode" in
+          private)   echo "🔒 PRIVATE site, gated by $team" ;;
+          public)    echo "🌐 PUBLIC site, served anonymously" ;;
+          unchecked) echo "⚠️ UNCHECKED site: require-access is false, so nothing checks who can see it" ;;
+        esac
+        if [ -z "$VISIBILITY" ]; then
+          case "$REQUIRE_ACCESS" in
+            true)  echo "::warning::require-access is deprecated, and is removed in the next minor release. Replace require-access: 'true' with visibility: private, which checks the same." ;;
+            false) echo "::warning::require-access is deprecated, and is removed in the next minor release, after which no input turns the checks off. Replace require-access: 'false' with visibility: public and no team-domain if the site is public, or with visibility: private if it is behind Access." ;;
+            *)     echo "::warning::visibility is not set, so the site is checked as private, as require-access's default did. Add visibility: private, or visibility: public for a public site: from the next minor release, leaving it out fails the job." ;;
+          esac
+        fi
 
         # Secrets are empty, not absent, on fork and Dependabot runs.
         [ -n "$API_TOKEN" ] || fail "cloudflare-api-token is empty. Secrets are not passed to workflows triggered from forks or by Dependabot."
@@ -103,12 +176,6 @@ runs:
         [[ "$subdomain" =~ $label ]] \
           || fail "account-subdomain [$ACCOUNT_SUBDOMAIN] is not a workers.dev subdomain; pass the part before .workers.dev."
 
-        team=$(printf '%s' "$TEAM_DOMAIN" | tr '[:upper:]' '[:lower:]')
-        team=${team#https://}; team=${team%/}
-        [[ "$team" == *.* ]] || team="$team.cloudflareaccess.com"
-        [[ "$team" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?\.cloudflareaccess\.com$ ]] \
-          || fail "team-domain [$TEAM_DOMAIN] is not an Access login domain (<team>.cloudflareaccess.com)."
-
         if [ -n "$ALIAS" ]; then
           # Cloudflare's rule; wrangler does not check it before uploading.
           [[ "$ALIAS" =~ ^[a-z]([a-z0-9-]*[a-z0-9])?$ ]] \
@@ -117,17 +184,11 @@ runs:
             || fail "alias [$ALIAS] is too long: [$ALIAS-$WORKER_NAME] must fit in one 63-character hostname label."
         fi
 
-        case "$REQUIRE_ACCESS" in
-          true|false) ;;
-          *) fail "require-access must be 'true' or 'false', got [$REQUIRE_ACCESS]." ;;
-        esac
-
         # A newline would inject keys into GITHUB_OUTPUT below.
         [[ "$BUILD_DIR" != *$'\n'* && "$BUILD_DIR" != *$'\r'* ]] || fail "build-dir must not contain line breaks."
         [ -d "$BUILD_DIR" ] || fail "build-dir [$BUILD_DIR] is not a directory."
         BUILD_DIR=$(cd "$BUILD_DIR" && pwd -P)
         [ -n "$(find "$BUILD_DIR" -type f -print -quit)" ] || fail "build-dir [$BUILD_DIR] contains no files."
-        [ -f "$BUILD_DIR/index.html" ] || echo "::warning::build-dir has no index.html, so the site root will answer 404 once past the Access login."
 
         # One real non-HTML file to probe besides the root, so a gate that
         # covers only the document root cannot pass (the pilot's
@@ -142,6 +203,22 @@ runs:
           | LC_ALL=C sort \
           | awk '!found && /^\.\/[A-Za-z0-9._~\/-]+$/ { print substr($0, 2); found = 1 }' || true)
 
+        # Without an index.html the root answers 404 even when the site is
+        # served, so a public site's checks after the deploy rest on the file
+        # alone, and need one. The check before the deploy still requests the
+        # root, where a 404 passes as "not behind Access".
+        probe_root=true
+        if [ ! -f "$BUILD_DIR/index.html" ]; then
+          if [ "$mode" != public ]; then
+            echo "::warning::build-dir has no index.html, so the site root will answer 404 once past the Access login."
+          elif [ -n "$probe_path" ]; then
+            probe_root=false
+            echo "::warning::build-dir has no index.html, so the site root will answer 404. After the deploy only $probe_path is checked, not the root."
+          else
+            fail "build-dir has no index.html and no file that is not HTML, so nothing could show that the public site is served. Add an index.html."
+          fi
+        fi
+
         deploy_url="https://${WORKER_NAME}.${subdomain}.workers.dev"
         # Every version and alias is served at <prefix>-<worker>.<subdomain>.workers.dev.
         preview_suffix="-${WORKER_NAME}.${subdomain}.workers.dev"
@@ -149,9 +226,12 @@ runs:
         [ -z "$ALIAS" ] || alias_url="https://${ALIAS}-${WORKER_NAME}.${subdomain}.workers.dev"
 
         {
+          echo "mode=$mode"
+          if [ "$mode" = unchecked ]; then echo "visibility="; else echo "visibility=$mode"; fi
           echo "team-domain=$team"
           echo "build-dir=$BUILD_DIR"
           echo "probe-path=$probe_path"
+          echo "probe-root=$probe_root"
           echo "deploy-url=$deploy_url"
           echo "preview-suffix=$preview_suffix"
           echo "alias-url=$alias_url"
@@ -160,35 +240,58 @@ runs:
         echo "Worker:      $WORKER_NAME"
         echo "Production:  $deploy_url"
         [ -z "$alias_url" ] || echo "Alias:       $alias_url"
-        echo "Access team: $team"
+        [ -z "$team" ] || echo "Access team: $team"
         echo "Probe paths: / ${probe_path:-(no non-HTML file in build-dir)}"
 
-    # Prevention, not detection. Before anything is uploaded, the Worker must
-    # already answer an anonymous request with a redirect to this team's login.
-    # That refuses a Worker that does not exist (a mistyped name, which a
-    # broader token than the manual's would otherwise create, ungated), one
-    # that is public, and one gated by the wrong Access organisation.
-    - name: Check the Access gate before deploying
+    # Prevention, not detection. Before anything is uploaded, a private site's
+    # Worker must already answer an anonymous request with a redirect to this
+    # team's login. That refuses a Worker that does not exist (a mistyped name,
+    # which a broader token than the manual's would otherwise create, ungated),
+    # one that is public, and one gated by the wrong Access organisation.
+    #
+    # A public site's Worker must not be behind any Access, which refuses a
+    # mix-up before it overwrites anything: a private site's Worker named by
+    # mistake, or a public declaration for a site that is gated. A 404 passes
+    # here, because the version live now need not hold this build's files; a
+    # Worker that does not exist then fails at wrangler deploy, since the
+    # manual's token cannot create one.
+    #
+    # Skipped only for an explicit `unchecked`, so a mode that somehow came
+    # out empty fails here rather than skip the check.
+    - name: Check who can see the site before deploying
       id: gate-before
-      if: inputs.require-access == 'true'
+      if: steps.inputs.outputs.mode != 'unchecked'
       shell: bash
       env:
+        MODE: ${{ steps.inputs.outputs.mode }}
         TEAM: ${{ steps.inputs.outputs.team-domain }}
         URL: ${{ steps.inputs.outputs.deploy-url }}
         PROBE_PATH: ${{ steps.inputs.outputs.probe-path }}
       run: |
         set -uo pipefail
+        check="$GITHUB_ACTION_PATH/../scripts/check-access-gate.sh"
+        checklist="https://github.com/QuantEcon/actions/blob/main/docs/user/actions/deploy-cloudflare.md#setup-checklist"
         urls=("$URL/")
         [ -z "$PROBE_PATH" ] || urls+=("$URL$PROBE_PATH")
-        if ! bash "$GITHUB_ACTION_PATH/../scripts/check-access-gate.sh" "$TEAM" "${urls[@]}"; then
-          echo "::error::Refusing to deploy: $URL is not behind Access for $TEAM. Nothing was uploaded. An admin must create the Worker and turn Access on (All traffic) before its first deploy; see the setup checklist at https://github.com/QuantEcon/actions/blob/main/docs/user/actions/deploy-cloudflare.md#setup-checklist"
-          exit 1
-        fi
+        case "$MODE" in
+          private)
+            bash "$check" "$TEAM" "${urls[@]}" && exit 0
+            echo "::error::Refusing to deploy: $URL is not behind Access for $TEAM. Nothing was uploaded. An admin must create the Worker and turn Access on (All traffic) before its first deploy; see the setup checklist at $checklist"
+            ;;
+          public)
+            bash "$check" --public --allow-404 "${urls[@]}" && exit 0
+            echo "::error::Refusing to deploy: visibility is public, but $URL did not answer an anonymous request as a public site (see above). Nothing was uploaded. If it is behind Access, check worker-name, then either turn Access off for the Worker or set visibility: private and team-domain; see the setup checklist at $checklist"
+            ;;
+          *)
+            echo "::error::Unknown mode [$MODE]; refusing to deploy unchecked."
+            ;;
+        esac
+        exit 1
 
-    - name: Warn that the gate is not checked
-      if: inputs.require-access != 'true'
+    - name: Warn that nothing is checked
+      if: steps.inputs.outputs.mode == 'unchecked'
       shell: bash
-      run: echo "::warning::require-access is false, so this deploy does not check that the site is behind Access. Never use this for private content."
+      run: echo "::warning::require-access is false, so this deploy does not check who can see the site. Never use this for private content."
 
     - name: Check for Node.js 22 or later
       id: node
@@ -279,7 +382,7 @@ runs:
         [ -z "$version" ] || echo "version-preview-url=https://${version}${PREVIEW_SUFFIX}" >> "$GITHUB_OUTPUT"
 
         if [ "$status" -ne 0 ]; then
-          echo "::error::wrangler deploy failed (exit $status); see its output above. It can fail after the new version is already live, so the gate is checked anyway. A permissions error usually means the token lacks Editor on this Worker."
+          echo "::error::wrangler deploy failed (exit $status); see its output above. It can fail after the new version is already live, so the site is checked anyway. A permissions error usually means the token lacks Editor on this Worker."
           exit 1
         fi
         echo "deploy-url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
@@ -290,34 +393,57 @@ runs:
     # check of the new version's own preview URL, which a gate on the production
     # hostname alone would leave public. It also runs when wrangler failed,
     # because wrangler can exit non-zero after the new version is already live.
-    - name: Check the Access gate after deploying
+    # For a public site it is the check that the new build is served, now
+    # that its files are live.
+    - name: Check who can see the site after deploying
       id: gate-after
-      if: ${{ !cancelled() && inputs.require-access == 'true' && steps.gate-before.outcome == 'success' && (steps.deploy.outcome == 'success' || steps.deploy.outcome == 'failure') }}
+      if: ${{ !cancelled() && steps.gate-before.outcome == 'success' && (steps.deploy.outcome == 'success' || steps.deploy.outcome == 'failure') }}
       shell: bash
       env:
+        MODE: ${{ steps.inputs.outputs.mode }}
         TEAM: ${{ steps.inputs.outputs.team-domain }}
         URL: ${{ steps.inputs.outputs.deploy-url }}
         PROBE_PATH: ${{ steps.inputs.outputs.probe-path }}
+        PROBE_ROOT: ${{ steps.inputs.outputs.probe-root }}
         DEPLOY: ${{ steps.deploy.outcome }}
         VERSION_URL: ${{ steps.deploy.outputs.version-preview-url }}
       run: |
         set -uo pipefail
+        check="$GITHUB_ACTION_PATH/../scripts/check-access-gate.sh"
         failed=0
-        urls=("$URL/")
-        [ -z "$PROBE_PATH" ] || urls+=("$URL$PROBE_PATH")
-        if [ -n "$VERSION_URL" ]; then
-          urls+=("$VERSION_URL/")
-          [ -z "$PROBE_PATH" ] || urls+=("$VERSION_URL$PROBE_PATH")
-        else
+        urls=()
+        for base in "$URL" ${VERSION_URL:+"$VERSION_URL"}; do
+          [ "$PROBE_ROOT" != true ] || urls+=("$base/")
+          [ -z "$PROBE_PATH" ] || urls+=("$base$PROBE_PATH")
+        done
+        if [ -z "$VERSION_URL" ]; then
           # wrangler prints the id only after every post-upload step succeeds,
           # so a deploy that failed after going live usually lacks it too.
-          echo "::error::wrangler's output named no 'Current Version ID', so the new version's preview URL could not be checked. Treat it as public until verified by hand with scripts/check-access-gate.sh."
+          if [ "$MODE" = private ]; then
+            echo "::error::wrangler's output named no 'Current Version ID', so the new version's preview URL could not be checked. Treat it as public until verified by hand with scripts/check-access-gate.sh."
+          else
+            echo "::error::wrangler's output named no 'Current Version ID', so the new version's preview URL could not be checked."
+          fi
           failed=1
         fi
-        if ! bash "$GITHUB_ACTION_PATH/../scripts/check-access-gate.sh" "$TEAM" "${urls[@]}"; then
-          echo "::error::A hostname serving this Worker is NOT behind Access for $TEAM (see above). Treat the site as public until this is fixed: turn Access on for the Worker with All traffic, which also covers its preview URLs, or turn off both its workers.dev route and its preview URLs."
-          failed=1
-        fi
+        case "$MODE" in
+          private)
+            if ! bash "$check" "$TEAM" "${urls[@]}"; then
+              echo "::error::A hostname serving this Worker is NOT behind Access for $TEAM (see above). Treat the site as public until this is fixed: turn Access on for the Worker with All traffic, which also covers its preview URLs, or turn off both its workers.dev route and its preview URLs."
+              failed=1
+            fi
+            ;;
+          public)
+            if ! bash "$check" --public "${urls[@]}"; then
+              echo "::error::visibility is public, but a hostname serving this Worker did not serve the new build to an anonymous request (see above). If it redirected to Access, the site is gated: turn Access off for the Worker if it is meant to be public, or set visibility: private. A 404 means the hostname does not serve this build: check the Worker's workers.dev route and preview URLs."
+              failed=1
+            fi
+            ;;
+          *)
+            echo "::error::Unknown mode [$MODE]."
+            failed=1
+            ;;
+        esac
         exit "$failed"
 
     - name: Upload preview alias
@@ -344,23 +470,38 @@ runs:
         echo "✅ Uploaded $ALIAS_URL"
 
     # Preview URLs can be gated separately from production, so a gate that
-    # covers the Worker but not its previews would expose the alias.
-    - name: Check the Access gate on the alias
+    # covers the Worker but not its previews would expose the alias; and one
+    # that covers only previews would gate a public site's alias.
+    - name: Check who can see the alias
       id: gate-alias
-      if: inputs.alias != '' && inputs.require-access == 'true'
+      if: inputs.alias != '' && steps.inputs.outputs.mode != 'unchecked'
       shell: bash
       env:
+        MODE: ${{ steps.inputs.outputs.mode }}
         TEAM: ${{ steps.inputs.outputs.team-domain }}
         URL: ${{ steps.inputs.outputs.alias-url }}
         PROBE_PATH: ${{ steps.inputs.outputs.probe-path }}
+        PROBE_ROOT: ${{ steps.inputs.outputs.probe-root }}
       run: |
         set -uo pipefail
-        urls=("$URL/")
+        check="$GITHUB_ACTION_PATH/../scripts/check-access-gate.sh"
+        urls=()
+        [ "$PROBE_ROOT" != true ] || urls+=("$URL/")
         [ -z "$PROBE_PATH" ] || urls+=("$URL$PROBE_PATH")
-        if ! bash "$GITHUB_ACTION_PATH/../scripts/check-access-gate.sh" "$TEAM" "${urls[@]}"; then
-          echo "::error::The alias is uploaded but $URL is NOT behind Access for $TEAM. Treat it as public until this is fixed: set the Worker's Access to cover previews (All traffic)."
-          exit 1
-        fi
+        case "$MODE" in
+          private)
+            bash "$check" "$TEAM" "${urls[@]}" && exit 0
+            echo "::error::The alias is uploaded but $URL is NOT behind Access for $TEAM. Treat it as public until this is fixed: set the Worker's Access to cover previews (All traffic)."
+            ;;
+          public)
+            bash "$check" --public "${urls[@]}" && exit 0
+            echo "::error::The alias is uploaded, but visibility is public and $URL did not serve it to an anonymous request (see above). If it redirected to Access, the Worker's previews are gated: turn Access off for the Worker if the site is meant to be public, or set visibility: private."
+            ;;
+          *)
+            echo "::error::Unknown mode [$MODE]."
+            ;;
+        esac
+        exit 1
 
     # On push, schedule and workflow_dispatch there is no PR to comment on, so
     # the job summary is where the result is read. It runs on failure too:
@@ -370,10 +511,10 @@ runs:
       shell: bash
       env:
         WORKER_NAME: ${{ inputs.worker-name }}
+        MODE: ${{ steps.inputs.outputs.mode }}
         TEAM: ${{ steps.inputs.outputs.team-domain }}
         DEPLOY_URL: ${{ steps.inputs.outputs.deploy-url }}
         ALIAS_URL: ${{ steps.inputs.outputs.alias-url }}
-        REQUIRE_ACCESS: ${{ inputs.require-access }}
         INPUTS: ${{ steps.inputs.outcome }}
         GATE_BEFORE: ${{ steps.gate-before.outcome }}
         DEPLOY: ${{ steps.deploy.outcome }}
@@ -383,27 +524,38 @@ runs:
         GATE_ALIAS: ${{ steps.gate-alias.outcome }}
       run: |
         gate() {
-          case "$1" in
-            success) echo "✅ redirects to \`$TEAM\`" ;;
-            failure) echo "🚨 **not proven gated**, treat as public" ;;
-            *)       [ "$REQUIRE_ACCESS" = "true" ] && echo "not checked" || echo "⚠️ not checked (\`require-access: false\`)" ;;
+          case "$MODE:$1" in
+            public:success)  echo "✅ public, served anonymously" ;;
+            public:failure)  echo "🚨 **not served anonymously**, see the step log" ;;
+            *:success)       echo "✅ redirects to \`$TEAM\`" ;;
+            *:failure)       echo "🚨 **not proven gated**, treat as public" ;;
+            unchecked:*)     echo "⚠️ not checked (\`require-access: false\`)" ;;
+            *)               echo "not checked" ;;
           esac
         }
+        case "$MODE" in
+          private)   heading="🔒 deploy-cloudflare: \`$WORKER_NAME\`, a PRIVATE site, gated by \`$TEAM\`" ;;
+          public)    heading="🌐 deploy-cloudflare: \`$WORKER_NAME\`, a PUBLIC site, served anonymously" ;;
+          unchecked) heading="⚠️ deploy-cloudflare: \`$WORKER_NAME\`, UNCHECKED (\`require-access: false\`)" ;;
+          *)         heading="☁️ deploy-cloudflare: \`$WORKER_NAME\`" ;;
+        esac
         {
-          echo "### ☁️ deploy-cloudflare: \`$WORKER_NAME\`"
+          echo "### $heading"
           echo
           if [ "$INPUTS" != "success" ]; then
             echo "❌ Inputs rejected, nothing was deployed. See the step log."
+          elif [ "$GATE_BEFORE" = "failure" ] && [ "$MODE" = public ]; then
+            echo "⛔ **Refused.** $DEPLOY_URL did not answer an anonymous request as a public site, so nothing was uploaded."
           elif [ "$GATE_BEFORE" = "failure" ]; then
             echo "⛔ **Refused.** $DEPLOY_URL is not behind Access for \`$TEAM\`, so nothing was uploaded."
           elif [ "$DEPLOY" = "failure" ]; then
             echo "❌ **wrangler deploy failed.** The new build may already be live; see the step log."
             echo
-            echo "Production gate after the failure: $(gate "$GATE_AFTER")"
+            echo "Production check after the failure: $(gate "$GATE_AFTER")"
           elif [ "$DEPLOY" != "success" ]; then
             echo "❌ The deploy did not run. See the step log."
           else
-            echo "| | URL | Access gate |"
+            [ "$MODE" = public ] && echo "| | URL | Public |" || echo "| | URL | Access gate |"
             echo "|---|---|---|"
             echo "| Production | $DEPLOY_URL | $(gate "$GATE_AFTER") |"
             [ -z "$VERSION_URL" ] || echo "| This version | $VERSION_URL | $(gate "$GATE_AFTER") |"

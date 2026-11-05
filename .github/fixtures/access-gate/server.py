@@ -1,11 +1,12 @@
-"""Local stand-in for a Cloudflare Access gate, for the check-access-gate.sh harness job.
+"""Local stand-in for a Cloudflare Access gate, for the deploy-cloudflare harness jobs.
 
 Each path answers the way one real configuration would, so the probe can be run
 against every shape it must tell apart without a Cloudflare account:
 
   /gated/...      302 to the team's login domain (a correctly gated Worker)
   /wrong-org/...  302 to a different *.cloudflareaccess.com (wrong Access org)
-  /public/...     200 with content (the alarm case: the site is public)
+  /public/...     200 with content (a public site, or the alarm case for a
+                  private one)
   /same-host/...  307 back to this host (asset html_handling, not Access)
   /no-location    302 with no Location header
   /missing        404 (no Worker on this hostname)
@@ -14,9 +15,17 @@ against every shape it must tell apart without a Cloudflare account:
   /userinfo       302 whose real host is not the team domain, hidden behind
                   `\\@team-domain` userinfo
 
-Usage: python3 server.py <port>
+A request whose Host starts with `harness-<shape>.` is answered as
+/<shape><path>, so that a workers.dev hostname such as
+harness-gated.<subdomain>.workers.dev, pointed at this server in /etc/hosts,
+answers like that shape on every path. That is how the action itself, which
+only ever requests workers.dev hostnames, is run against a gated and a public
+Worker.
+
+Usage: python3 server.py <port> [<certfile> <keyfile>]   (TLS with both files)
 """
 
+import ssl
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -26,6 +35,9 @@ TEAM = "https://quantecon-harness.cloudflareaccess.com"
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path
+        label = self.headers.get("Host", "").split(":", 1)[0].split(".", 1)[0]
+        if label.startswith("harness-"):
+            path = "/" + label[len("harness-"):] + path
         if path.startswith("/gated"):
             self.reply(302, {"Location": f"{TEAM}/cdn-cgi/access/login/site?redirect_url={path}"})
         elif path.startswith("/wrong-org"):
@@ -54,8 +66,18 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def log_message(self, fmt, *args):
-        sys.stderr.write("server: " + (fmt % args) + "\n")
+        # No headers yet when the request line itself was malformed.
+        host = self.headers.get("Host", "") if getattr(self, "headers", None) else ""
+        sys.stderr.write(f"server: {host} " + (fmt % args) + "\n")
 
 
 if __name__ == "__main__":
-    ThreadingHTTPServer(("127.0.0.1", int(sys.argv[1])), Handler).serve_forever()
+    # A job that meant TLS must not get plain HTTP from a miscounted call.
+    if len(sys.argv) not in (2, 4):
+        sys.exit("usage: python3 server.py <port> [<certfile> <keyfile>]")
+    server = ThreadingHTTPServer(("127.0.0.1", int(sys.argv[1])), Handler)
+    if len(sys.argv) == 4:
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(sys.argv[2], sys.argv[3])
+        server.socket = context.wrap_socket(server.socket, server_side=True)
+    server.serve_forever()
