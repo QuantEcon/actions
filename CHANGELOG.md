@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-05
+
 ### Added
 - **`deploy-cloudflare`**: a `visibility` input, `private` or `public`, so the action publishes
   public sites as well as private ones, and checks either kind against what the workflow declares
@@ -84,6 +86,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its step summary as the rollback handle, and adds a tag unique to the build,
   `main-<date>-<time>-<sha>`. Main's own builds still move `:latest` before any test; that is
   phase 2. (#142)
+- **Container images**: `quantecon-book-theme` moves from 0.22.0 to 0.22.1 in both images,
+  through Dependabot's bump. The patch release stops registering `sphinx-book-theme.js`, which
+  every page requested and got a 404 for, and leaves out the View Source button, with its
+  `href="None"`, on generated pages. Both images were built and smoke-tested as `pr-223`
+  candidates before the merge, the first Dependabot bump to take that path. (#223)
 
 ### Deprecated
 - **`deploy-cloudflare`**: `require-access`, and leaving out both it and `visibility`, which relied
