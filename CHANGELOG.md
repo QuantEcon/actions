@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   builds and how to read a run, without the February 2026 results. No container size is written
   into the docs any more: like the user manual, the dev docs point at each `Test Container` run's
   size report (#201). `tests/README.md` and CONTRIBUTING's doc-update table follow. (#192)
+- **Getting started**: the alert that told `@v0` workflows to copy the templates from v0.14.0 is
+  gone, now that `v0` is on v0.15.0, which has the `mode` and `placeholder` inputs the templates
+  use. PLAN's release line says `@v0` is on v0.15.0. (#246)
 
 ## [0.15.0] - 2026-11-05
 

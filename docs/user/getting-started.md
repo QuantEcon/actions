@@ -57,14 +57,6 @@ Where the jobs run:
 
 To make release assets, uncomment the `release-assets` job and the build job's step that uploads the site for it, add a tag trigger, such as `tags: ['publish*']` under `on.push`, and allow that tag pattern under **Settings**, **Environments**, **github-pages**, **Deployment branches and tags**. Without that last step, the environment's protection rules reject the deploy on a tag. [Release assets](actions/publish-gh-pages.md#release-assets) describes what is attached.
 
-> [!IMPORTANT]
-> Two inputs the templates use arrive in v0.15.0 (see the [CHANGELOG](https://github.com/QuantEcon/actions/blob/main/CHANGELOG.md)), and v0.14.0 and earlier do not know them:
->
-> - `publish.yml` uses `publish-gh-pages`' `mode`. An earlier release ignores it, and both jobs then fail.
-> - `ci.yml`'s `placeholder` job uses the preview actions' `placeholder`. An earlier release runs the job as a deploy, with no token or site to deploy to, so it fails.
->
-> Until `@v0` has moved to v0.15.0, copy the two files from the tag your workflows use, such as [`v0.14.0`](https://github.com/QuantEcon/actions/tree/v0.14.0/templates), or leave the `placeholder` job out of `ci.yml`.
-
 The templates run in the full `quantecon` image. [Containers](containers.md) covers the lean `quantecon-build` image, and when to choose it.
 
 ## Setting up a new repository
