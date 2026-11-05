@@ -946,6 +946,12 @@ jobs:
     # jb build exits 0, and the page is published with the traceback on it.
     # build-lectures' error-outputs check is what fails it.
     #
+    # The cell raises inside display(), which is how a figure reaches the page
+    # (plt.show(), or the inline backend after the cell). Not as the cell's last
+    # value: since ipykernel 7.3.0 (ipython/ipykernel#1521) an error while the
+    # displayhook formats that value fails the cell, and -W catches it. An error
+    # inside display() still leaves the cell successful (ipykernel 7.4.0).
+    #
     # One fixture, four builds: fail, warn, ignore, and an invalid value. Only
     # the first executes anything. The later ones find every page up to date and
     # read nothing, but the check reads _build/jupyter_execute, which the first
@@ -975,14 +981,16 @@ jobs:
           cat >> harness/lectures/display_error.md <<'EOF'
 
           The cell below runs without error. IPython then raises while it
-          displays the result, which it prints as a traceback.
+          displays the object, which it prints as a traceback.
 
           ```{code-cell} python3
+          from IPython.display import display
+
           class DisplayFails:
               def _repr_html_(self):
                   raise ValueError("harness: deliberate display-time error")
 
-          DisplayFails()
+          display(DisplayFails())
           ```
 
           ```{code-cell} python3
