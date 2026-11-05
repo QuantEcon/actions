@@ -12,7 +12,7 @@ It deploys on `pull_request` events, and skips pull requests from forks and from
 
 ## When to use it
 
-Use it in a pull request's build job, after [`build-lectures`](build-lectures.md), in place of the Netlify step in [`ci.yml`](https://github.com/QuantEcon/actions/blob/main/templates/ci.yml), which carries this step as a comment.
+Use it in a job of its own that deploys a pull request's build, in place of the Netlify step in [`ci.yml`](https://github.com/QuantEcon/actions/blob/main/templates/ci.yml)'s `deploy` job, which carries this step as a comment. The build job runs [`build-lectures`](build-lectures.md) and uploads the site as an artifact, and the deploy job downloads it and runs this action, so that only the deploy job, which runs no notebook code, holds the Cloudflare token: see [A build job and a deploy job](#a-build-job-and-a-deploy-job). The action also works as a step after `build-lectures` in the same job, as it always has.
 
 - **Or on Netlify.** [`preview-netlify`](preview-netlify.md) does the same on Netlify, and is the one `ci.yml` uses. [Netlify or Cloudflare?](preview-netlify.md#netlify-or-cloudflare) compares the two.
 - **Not to publish the site.** [`publish-gh-pages`](publish-gh-pages.md) publishes to GitHub Pages, and [`deploy-cloudflare`](deploy-cloudflare.md) publishes a site that only members may see.
@@ -24,7 +24,7 @@ Use it in a pull request's build job, after [`build-lectures`](build-lectures.md
 - **Node.** 22 or later, which the pinned `wrangler` needs. The QuantEcon images carry Node 24. On a standard runner, set it up before this action with `actions/setup-node`, as in [preview-netlify's example](preview-netlify.md#on-a-standard-runner).
 - **Permissions.** `pull-requests: write`, for the comment. The job also needs `contents: read` for `actions/checkout`. A run outside a pull request posts no comment, so it needs only `contents: read`.
 - **Secrets.** `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, from [Setting up Cloudflare Pages](#setting-up-cloudflare-pages).
-- **Files in your repository.** None beyond the built site. The comment's lecture links compare the pull request's head with the commit where it branched off its base branch. A checkout with `fetch-depth: 0` has that commit, and nothing is fetched. From a shallow checkout, such as `actions/checkout`'s default of one commit, the action fetches history until it finds it, up to 1,024 commits behind the pull request's base and head: see [preview-netlify's Behaviour](preview-netlify.md#behaviour).
+- **Files in your repository.** None beyond the built site. The comment's lecture links compare the pull request's head with the commit where it branched off its base branch. A checkout with `fetch-depth: 0` has that commit, and nothing is fetched. From a shallow checkout, such as `actions/checkout`'s default of one commit, the action fetches history until it finds it, up to 1,024 commits behind the pull request's base and head: see [preview-netlify's Behaviour](preview-netlify.md#behaviour). That fetch uses whatever credentials `actions/checkout` left in the checkout, and with `persist-credentials: false`, as `ci.yml` sets, it has none. A public repository needs none. A private repository checks out with `fetch-depth: 0`, so that nothing is fetched.
 - **Setup outside GitHub.** A Cloudflare Pages project, once: see [Setting up Cloudflare Pages](#setting-up-cloudflare-pages).
 
 ## Setting up Cloudflare Pages
@@ -81,9 +81,9 @@ The previews then appear at:
 
 ## Examples
 
-### Minimal
+### A build job and a deploy job
 
-A pull request's build in a container, deployed as a preview:
+A pull request's build in a container, and its deploy as a preview from a second job, which is the only one that holds the token. The build runs notebook code, so it gets no secrets and only read access, and the deploy job runs no notebook or repository code. [preview-netlify's example](preview-netlify.md#a-build-job-and-a-deploy-job) explains each step.
 
 ```yaml
 name: Preview
@@ -91,30 +91,58 @@ on:
   pull_request:
 
 jobs:
-  preview:
+  build:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/quantecon/quantecon-build:latest
     permissions:
       contents: read
-      pull-requests: write   # the preview comment
       packages: read         # the image pull, as the templates grant it
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: quantecon/actions/setup-environment@v0
       - uses: quantecon/actions/build-lectures@v0
         id: build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: html
+          path: ${{ steps.build.outputs.build-path }}
+          include-hidden-files: true
+          if-no-files-found: error
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write   # the preview comment
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          # fetch-depth: 0   # a private repository: see Requirements
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@v8
+        with:
+          name: html
+          path: _build/html
       - uses: quantecon/actions/preview-cloudflare@v0
         with:
           cloudflare-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           cloudflare-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           project-name: my-lectures
-          build-dir: ${{ steps.build.outputs.build-path }}
+          build-dir: _build/html
 ```
+
+The deploy job is skipped when the build fails. A branch rule that requires the deploy to pass must therefore require `build` as well, because GitHub counts a skipped required check as passed.
 
 ### Outside a pull request
 
-A scheduled or dispatched run deploys only with `dispatch-alias` set, here to `https://dispatch-canary.my-lectures.pages.dev`, which always shows the newest such run. Check `deployed`: a run that deployed nothing still passes. In a workflow like [preview-netlify's](preview-netlify.md#outside-a-pull-request), the steps are:
+A scheduled or dispatched run deploys only with `dispatch-alias` set, here to `https://dispatch-canary.my-lectures.pages.dev`, which always shows the newest such run. Check `deployed`: a run that deployed nothing still passes. In a workflow like [preview-netlify's](preview-netlify.md#outside-a-pull-request), the deploy job's last steps are:
 
 ```yaml
 - uses: quantecon/actions/preview-cloudflare@v0
@@ -123,7 +151,7 @@ A scheduled or dispatched run deploys only with `dispatch-alias` set, here to `h
     cloudflare-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     cloudflare-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     project-name: my-lectures
-    build-dir: ${{ steps.build.outputs.build-path }}
+    build-dir: _build/html
     dispatch-alias: dispatch-canary
 - name: Fail unless the preview was deployed
   if: steps.preview.outputs.deployed != 'true'
@@ -134,7 +162,7 @@ A scheduled or dispatched run deploys only with `dispatch-alias` set, here to `h
 
 ### In the templates
 
-[`ci.yml`](https://github.com/QuantEcon/actions/blob/main/templates/ci.yml) carries this action as a commented alternative to its `preview-netlify` step. To use it, replace that step with the comment's, set `project-name`, and add the two secrets.
+[`ci.yml`](https://github.com/QuantEcon/actions/blob/main/templates/ci.yml) carries this action as a commented alternative to the `preview-netlify` step in its `deploy` job. To use it, replace that step with the comment's, set `project-name`, and add the two secrets. The `build` job stays as it is.
 
 ## Behaviour
 

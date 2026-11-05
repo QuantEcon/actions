@@ -1014,7 +1014,7 @@ jobs:
   # ==========================================================================
   #
   # The template's pdf-check job builds the PDF from the execution cache the
-  # preview job uploads, so it executes no notebook and needs no GPU. These two
+  # build job uploads, so it executes no notebook and needs no GPU. These two
   # jobs run that hand-off on the fixture and check what the template promises:
   # the HTML build passes LaTeX that the PDF build rejects; the cache arrives
   # (it is a hidden directory, which upload-artifact skips unless told to
@@ -1052,7 +1052,7 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
       options: --user root
-    # As templates/ci.yml's preview job.
+    # As templates/ci.yml's build job.
     outputs:
       pdf-check: ${{ env.PDF_CHECK }}
     steps:
@@ -1212,7 +1212,7 @@ jobs:
 
   # The 'false' path of the switch, in three small jobs. The first sets
   # PDF_CHECK 'false' at job level, overriding the workflow's 'true' as a site's
-  # own env: block would, and stands in for the preview job: its output and its
+  # own env: block would, and stands in for the build job: its output and its
   # gated upload step. The second stands in for pdf-check and must be skipped,
   # so it is not in harness-summary's needs:, which fails a skipped job; the
   # third checks that it was skipped. Each stand-in fails if it runs.
@@ -1263,6 +1263,151 @@ jobs:
           [ "$JOB_RESULT" = "skipped" ] \
             || { echo "::error::the stand-in for pdf-check finished as [$JOB_RESULT]; with PDF_CHECK 'false' it must be skipped"; exit 1; }
           echo "✅ PDF_CHECK 'false' reached the job output, and the dependent job was skipped"
+
+  # ==========================================================================
+  # templates/ci.yml deploy (#232) — the site handed to a job that builds nothing
+  # ==========================================================================
+  #
+  # The template builds the site in one job and deploys it from another. The
+  # deploy job holds the provider token, so it runs no notebook or repository
+  # code, and its checkout leaves no token in git's config. These two jobs run
+  # that hand-off and check what the template relies on:
+  #   - the site arrives whole, hidden files included: upload-artifact leaves
+  #     out a file whose name starts with a dot unless told to include it,
+  #     and Sphinx writes one, .buildinfo;
+  #   - from a depth-1 checkout with persist-credentials: false, change
+  #     detection still fetches the history it needs from github.com, with no
+  #     credentials, as a public repository's deploy job does, and lists the
+  #     files GitHub lists for the pull request. preview-change-detection
+  #     tests the script's logic against a local server; this is GitHub, and
+  #     the checkout the template makes. A private repository's fetch would
+  #     fail, and the script would warn: the template tells such a repository
+  #     to set fetch-depth: 0 instead.
+  # Keep the upload, checkout and download steps in step with templates/ci.yml.
+
+  preview-site-handoff:
+    name: 'templates/ci.yml deploy: the build job uploads the site, hidden files included'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    outputs:
+      manifest: ${{ steps.site.outputs.manifest }}
+    steps:
+      - name: Write a site with hidden files and a nested directory
+        id: site
+        run: |
+          set -euo pipefail
+          mkdir -p _build/html/_static/.hidden _build/html/sub
+          echo '<h1>harness</h1>' > _build/html/index.html
+          echo '<p>nested</p>' > _build/html/sub/page.html
+          echo "config: $SALT" > _build/html/.buildinfo
+          echo 'in a hidden directory' > _build/html/_static/.hidden/file.txt
+          # Every file's path and content, which the deploy side recomputes.
+          manifest=$(cd _build/html && find . -type f | LC_ALL=C sort | xargs sha256sum)
+          echo "$manifest"
+          echo "manifest=$(sha256sum <<< "$manifest" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      # As templates/ci.yml's "Upload the built site for deploy".
+      - name: Upload the built site
+        uses: actions/upload-artifact@v7
+        with:
+          name: harness-html
+          path: _build/html
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: true
+
+  preview-deploy-job:
+    name: 'templates/ci.yml deploy: the site arrives whole, and change detection fetches with no stored credentials'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: preview-site-handoff
+    permissions:
+      contents: read          # checkout
+      pull-requests: read     # pulls/{n}/files, GitHub's own list to compare with
+    steps:
+      # As templates/ci.yml's deploy job's checkout.
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # As templates/ci.yml's "Download the built site".
+      - name: Download the built site
+        uses: actions/download-artifact@v8
+        with:
+          name: harness-html
+          path: _build/html
+
+      - name: Assert the site arrived with every file the build job wrote
+        env:
+          WANT: ${{ needs.preview-site-handoff.outputs.manifest }}
+        run: |
+          set -euo pipefail
+          [ -n "$WANT" ] || { echo "::error::preview-site-handoff set no manifest output"; exit 1; }
+          if [ ! -f _build/html/.buildinfo ] || [ ! -f _build/html/_static/.hidden/file.txt ]; then
+            echo "::error::the hidden files did not arrive: the upload left them out, so the deploy would publish less than the build wrote"
+            ls -laR _build/html || true
+            exit 1
+          fi
+          manifest=$(cd _build/html && find . -type f | LC_ALL=C sort | xargs sha256sum)
+          echo "$manifest"
+          got=$(sha256sum <<< "$manifest" | cut -d' ' -f1)
+          [ "$got" = "$WANT" ] \
+            || { echo "::error::the downloaded site is not what the build job uploaded: manifest $got, expected $WANT"; exit 1; }
+          echo "✅ the site arrived in _build/html with every file the build job wrote, hidden ones included"
+
+      # Only a pull request has a base and a head to compare.
+      - name: Assert change detection lists the pull request's files, fetching with no stored credentials
+        if: github.event_name == 'pull_request'
+        env:
+          # Only for the API call below. The script runs without it, so no
+          # credential helper could hand it to git either.
+          API_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # What a fetch could authenticate with: the extraheader that
+          # actions/checkout leaves without persist-credentials: false, or a
+          # credential helper, which a hosted runner does not configure.
+          if creds=$(git config --show-origin --get-regexp '^(http\..*\.extraheader|credential\..*)$'); then
+            echo "::error::git has credentials configured, so this would not test a fetch without them: $creds"; exit 1
+          fi
+          [ "$(git rev-parse --is-shallow-repository)" = true ] \
+            || { echo "::error::the checkout is not shallow, so change detection would fetch nothing"; exit 1; }
+
+          # This repository has no lectures. The manual's pages stand in for
+          # them: they are .md files under one directory, as lectures are, and
+          # pull requests here often change them.
+          dir=docs
+          env -u API_TOKEN GITHUB_OUTPUT="$RUNNER_TEMP/detect.out" LECTURES_DIR="$dir" bash scripts/detect-changed-lectures.sh \
+            | tee "$RUNNER_TEMP/detect.log"
+          if grep -q '^::warning::' "$RUNNER_TEMP/detect.log"; then
+            echo "::error::change detection warned (above), so it could not fetch or compare the pull request's commits without credentials"; exit 1
+          fi
+          git rev-parse -q --verify refs/remotes/origin/pr-base > /dev/null \
+            || { echo "::error::change detection fetched nothing, so this did not test a fetch"; exit 1; }
+          got=$(awk '/^changed-files<<EOF$/ { on = 1; next } /^EOF$/ { on = 0 } on' "$RUNNER_TEMP/detect.out" | LC_ALL=C sort)
+
+          # GitHub's list of the pull request's files, filtered as the
+          # script filters: .md under the directory, not intro.md or _*, and
+          # present in the checkout.
+          want=$(GH_TOKEN="$API_TOKEN" gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files?per_page=100" \
+              --jq '.[] | select(.status != "removed") | .filename' \
+            | while IFS= read -r f; do
+                if [[ "$f" == "$dir"/*.md && "$f" != "$dir"/_* && "$f" != "$dir/intro.md" && -f "$f" ]]; then
+                  echo "$f"
+                fi
+              done | LC_ALL=C sort)
+          echo "change detection: [${got//$'\n'/ }]"
+          echo "GitHub:           [${want//$'\n'/ }]"
+          [ "$got" = "$want" ] \
+            || { echo "::error::change detection listed [${got//$'\n'/ }], but GitHub lists [${want//$'\n'/ }] under $dir/ for this pull request"; exit 1; }
+          echo "✅ with no credentials stored, change detection fetched the history it needed and listed $(grep -c . <<< "$got" || true) file(s) under $dir/, as GitHub does"
 
   # ==========================================================================
   # Container images — a pull request's candidates, built and smoke-tested (#142)
@@ -2954,6 +3099,8 @@ jobs:
       - pdf-check-build
       - pdf-check-switch-off
       - pdf-check-switch-verify
+      - preview-site-handoff
+      - preview-deploy-job
       - container-images
       - bjc-smoke
       - bjc-fail-guard

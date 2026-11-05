@@ -1,10 +1,22 @@
 # CI Workflow Template (Pull Request Preview + PDF Check)
 #
-# Provides fast PR feedback: restores cached builds, runs incremental HTML
-# build, and deploys a Netlify preview with links to changed pages. A second
-# job, pdf-check, then builds the PDF from the notebooks the preview job
-# executed, because malformed LaTeX can pass the HTML build and still break
-# the PDF build, and with it the publish. The preview never waits for it.
+# Provides fast PR feedback in three jobs:
+#   build      restores cached builds, runs an incremental HTML build, and
+#              uploads the site.
+#   deploy     deploys that site as a Netlify preview and comments on the PR
+#              with links to changed pages.
+#   pdf-check  builds the PDF from the notebooks the build job executed,
+#              because malformed LaTeX can pass the HTML build and still
+#              break the PDF build, and with it the publish. The preview
+#              never waits for it.
+#
+# Why the deploy has a job of its own: building the lectures runs code the
+# repository does not fully control (notebook cells, packages installed at
+# build time, network fetches), and code that runs earlier in a job can
+# affect the steps after it. So the Netlify token is only ever in the deploy
+# job, which runs no notebook or repository code, and the build job has no
+# secrets and only read access. No job leaves the checkout's token in git's
+# config for later steps (persist-credentials: false).
 #
 # Copy to your repository as .github/workflows/ci.yml
 #
@@ -12,13 +24,15 @@
 #   1. cache.yml workflow running on schedule/main (generates the build cache)
 #   2. Netlify site created for PR previews
 #   3. Repository secrets: NETLIFY_AUTH_TOKEN, NETLIFY_SITE_ID
+#   4. A private repository: set fetch-depth: 0 on the deploy job's checkout
+#      (see that step)
 #
 # PDF check: on by default. A site that publishes no PDF sets PDF_CHECK to
 # 'false' in the env: block below, and pdf-check is then reported as skipped.
 # To let a broken PDF block merges, make pdf-check a required status check
-# (Settings → Branches, or a ruleset), and make preview one too: GitHub
-# counts a skipped required check as passed, and pdf-check is skipped
-# whenever the preview job fails.
+# (Settings → Branches, or a ruleset), and make build one too: GitHub counts
+# a skipped required check as passed, and pdf-check is skipped whenever the
+# build job fails.
 #
 # Action versions: @v0 = latest 0.x release (floating); pin @v0.x.y for reproducibility. Latest at:
 #   https://github.com/quantecon/actions/releases
@@ -38,7 +52,7 @@ concurrency:
 # ─── PDF Check Switch ──────────────────────────────────────────────
 #   'true'  — pdf-check builds the PDF on every pull request (default).
 #   'false' — for a site that publishes no PDF: pdf-check is skipped, and
-#             the preview job uploads nothing for it.
+#             the build job uploads nothing for it.
 # It is set here, not as a repository variable, because a workflow run for
 # a pull request from a fork does not receive repository variables, so a
 # variable could not switch the check off for those.
@@ -46,7 +60,10 @@ env:
   PDF_CHECK: 'true'
 
 jobs:
-  preview:
+  # ─── Build ───────────────────────────────────────────────────────
+  # Builds the site and hands it to the deploy job as an artifact. It holds
+  # no secrets and only read access, because it runs the notebooks.
+  build:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/quantecon/quantecon:latest
@@ -59,7 +76,6 @@ jobs:
 
     permissions:
       contents: read
-      pull-requests: write      # Required for PR preview comments
       packages: read            # Required for container image pull
 
     # Tells pdf-check whether to run (job-level if: cannot read env).
@@ -69,6 +85,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # The build runs notebook code, so leave no token in git's config for it.
+          persist-credentials: false
 
       # ─── Environment Setup ───────────────────────────────────────
       - name: Setup environment
@@ -108,9 +127,84 @@ jobs:
           # html-copy-pdf: 'true'           # Stage PDFs for download (requires prior pdflatex build)
           # html-copy-notebooks: 'true'     # Stage notebooks for download (requires prior jupyter build)
 
+      # ─── Hand-off to deploy ──────────────────────────────────────
+      # The deploy job starts when this job has finished, and deploys
+      # exactly these files. include-hidden-files: upload-artifact skips
+      # files whose names start with a dot unless told otherwise, and the
+      # site is deployed with every file the build wrote.
+      - name: Upload the built site for deploy
+        uses: actions/upload-artifact@v7
+        with:
+          name: html
+          path: _build/html
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1         # Later, re-run all jobs, not deploy alone
+          overwrite: true           # A re-run of this job replaces it
+
+      # ─── Hand-off to pdf-check ───────────────────────────────────
+      # The execution cache now holds every lecture's outputs: those the
+      # restored build cache had, and those this build executed. pdf-check
+      # builds the PDF from it, so it executes nothing. .jupyter_cache is a
+      # hidden directory, which upload-artifact skips without
+      # include-hidden-files.
+      - name: Upload executed notebooks for pdf-check
+        if: env.PDF_CHECK == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: jupyter-cache
+          path: _build/.jupyter_cache
+          include-hidden-files: true
+          retention-days: 1         # Later, re-run all jobs, not pdf-check alone
+          overwrite: true           # A re-run of this job replaces it
+
+  # ─── Deploy ──────────────────────────────────────────────────────
+  # Deploys the build job's site to Netlify and posts a comment on the PR
+  # with the preview URL and links to changed lecture pages.
+  #
+  # The only job that holds the Netlify token, so it runs no notebook or
+  # repository code: no container, no setup-environment, no build. It checks
+  # out the repository only so that the preview action can work out which
+  # lectures the PR changed, from git. It needs no GPU, so it stays on
+  # ubuntu-latest wherever the build job runs. It is skipped when the build
+  # job fails. The preview action itself skips pull requests from forks and
+  # from Dependabot, whose runs get no secrets.
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read            # Required for checkout
+      pull-requests: write      # Required for PR preview comments
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          # Change detection fetches the history it needs to compare the PR
+          # with its base branch. A public repository fetches it without
+          # credentials. A private repository cannot, and gets no lecture
+          # links, so it fetches everything here instead:
+          # fetch-depth: 0
+
+      # The runner's own Node may be older than the deploy CLI needs.
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          # No npm cache, which setup-node turns on by itself when the
+          # repository's package.json names npm. The preview action installs
+          # its own pinned CLI from its lockfile, so this job needs no cache.
+          package-manager-cache: false
+
+      - name: Download the built site
+        uses: actions/download-artifact@v8
+        with:
+          name: html
+          path: _build/html
+
       # ─── PR Preview ──────────────────────────────────────────────
-      # Deploys the built site to Netlify and posts a comment on the
-      # PR with the preview URL and links to changed lecture pages.
       - name: Deploy PR preview
         uses: quantecon/actions/preview-netlify@v0
         with:
@@ -132,41 +226,24 @@ jobs:
       #     build-dir: '_build/html'
       #     lectures-dir: 'lectures'
 
-      # ─── Hand-off to pdf-check ───────────────────────────────────
-      # The execution cache now holds every lecture's outputs: those the
-      # restored build cache had, and those this build executed. pdf-check
-      # builds the PDF from it, so it executes nothing. This runs after the
-      # deploy, so it does not delay the preview link. .jupyter_cache is a
-      # hidden directory, which upload-artifact skips without
-      # include-hidden-files.
-      - name: Upload executed notebooks for pdf-check
-        if: env.PDF_CHECK == 'true'
-        uses: actions/upload-artifact@v7
-        with:
-          name: jupyter-cache
-          path: _build/.jupyter_cache
-          include-hidden-files: true
-          retention-days: 1         # Later, re-run all jobs, not pdf-check alone
-          overwrite: true           # A re-run of this job replaces it
-
   # ─── PDF Check ───────────────────────────────────────────────────
   # Builds the PDF and fails the PR's checks when the LaTeX build fails.
   #
-  # It starts once the preview job has finished, so the preview never waits
-  # for it, and it takes the preview job's execution cache instead of
-  # executing the notebooks again. Executing them here would double the cost,
-  # and on a GPU site need a second GPU runner; this job needs no GPU, so it
-  # stays on ubuntu-latest wherever the preview job runs. That relies on
-  # `execute_notebooks: cache` in _config.yml, which the build cache needs
-  # too. It is skipped when PDF_CHECK is 'false', or when the preview job
-  # fails.
+  # It starts once the build job has finished, beside the deploy job, so the
+  # preview never waits for it, and it takes the build job's execution cache
+  # instead of executing the notebooks again. Executing them here would
+  # double the cost, and on a GPU site need a second GPU runner; this job
+  # needs no GPU, so it stays on ubuntu-latest wherever the build job runs.
+  # That relies on `execute_notebooks: cache` in _config.yml, which the build
+  # cache needs too. It is skipped when PDF_CHECK is 'false', or when the
+  # build job fails.
   pdf-check:
-    needs: preview
-    if: needs.preview.outputs.pdf-check == 'true'
+    needs: build
+    if: needs.build.outputs.pdf-check == 'true'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/quantecon/quantecon:latest
-      # Standard runner: remove the 'container' block, as for the preview job.
+      # Standard runner: remove the 'container' block, as for the build job.
 
     permissions:
       contents: read
@@ -175,8 +252,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
-      # Give it the preview job's 'with' block, so the PDF is built with
+      # Give it the build job's 'with' block, so the PDF is built with
       # the same packages.
       - name: Setup environment
         uses: quantecon/actions/setup-environment@v0

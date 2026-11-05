@@ -62,6 +62,9 @@ jobs:
           # Full history: each page's "Last changed" date and changelog come
           # from git log. A shallow clone dates every page to the checkout commit.
           fetch-depth: 0
+          # The build runs notebook code, and git log needs only the history
+          # fetched here, so leave no token in git's config for it.
+          persist-credentials: false
 
       # Build all requested formats and save cache.
       # Only saves if ALL builds succeed — preserves existing cache on failure.
