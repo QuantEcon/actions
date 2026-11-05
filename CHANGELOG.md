@@ -129,6 +129,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `${{ }}` in `run:` scripts, not seven, and item 15 lists #238 as left and #243 as done. The rows
   for #222, #227 and #230 record their closure, and #232, #233, #236, #238, #239, #243, #246 and
   #247 get rows. (#246)
+- **User manual** (#178): the cross-cutting chapters, in `docs/user/`. `getting-started.md` sets
+  up a lecture repository from the templates, gives what each job of `ci.yml` and `publish.yml`
+  does and holds, covers the changes a site makes to them (downloads, the PDF check, release
+  assets, a standard runner, a custom domain, Cloudflare Pages), and moves an existing repository
+  over, cache first, with its rollback. `composition.md` follows the chain from the cache build to
+  a preview or publish, what passes between the steps, and the settings that must agree.
+  `containers.md` covers the two images: what each holds, which to use, how to use and pin one,
+  and when they change, now that nothing rebuilds them on a schedule (#235). It does not call
+  them public, since an anonymous pull is refused (#129), and points at each `Test Container`
+  run's size report rather than quote sizes that drift. `versioning.md` covers `@v0` against an
+  exact release, how a release reaches a repository, and that `build-jupyter-cache` runs its two
+  siblings at `@v0` whatever it is pinned to. `security.md` covers fork pull requests and
+  `pull_request_target`, what each template job can reach, the deploy jobs of #232 and #233, and
+  what the actions themselves do. `templates/README.md` and the three container READMEs become
+  signposts, and the container READMEs' build, update and test sections move to a new
+  `docs/dev/CONTAINERS.md`. `docs/MIGRATION-GUIDE.md` and `docs/CONTAINER-GUIDE.md` are removed:
+  their content is in these chapters, and the per-repository migration notes are in PLAN's
+  rollout section. The root README points at the manual, and CONTRIBUTING's doc-update table
+  names each chapter. (#191)
+- **`SECURITY.md`**: how to report a vulnerability, privately through the repository's Security
+  tab, and what is in scope: the actions, the templates and the container images. The harness
+  gate treats a root `SECURITY.md` as documentation, as it does the README, so a change to it
+  alone does not run the harness. (#191)
+- **`docs/dev/PLAN.md`**: backlog item 6 is done (#253, #258), and the rows for #232, #233, #235,
+  #239 and #247 record their closure. (#191)
 
 ### Fixed
 - **`build-lectures`, `build-jupyter-cache`**: the failure artifacts hold the hidden directories

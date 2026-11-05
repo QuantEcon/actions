@@ -326,9 +326,7 @@ quantecon/actions/
 │   └── build-containers.yml       # Image builds on merge
 │
 └── docs/
-    ├── CONTAINER-GUIDE.md         # Container build and usage guide
-    ├── MIGRATION-GUIDE.md         # How to migrate lecture repos
-    ├── user/                      # The user manual: a chapter for each action
+    ├── user/                      # The user manual: a chapter for each action, and the guides
     └── dev/                       # Developer docs: this file, testing, plan, GPU AMI
 ```
 
@@ -479,9 +477,9 @@ lecture-python-intro/
 
 ## Related Documentation
 
-- [CONTAINER-GUIDE.md](../CONTAINER-GUIDE.md) - Container build and usage guide
-- [MIGRATION-GUIDE.md](../MIGRATION-GUIDE.md) - How to migrate lecture repos
 - [User manual](../user/README.md) - What each action does, how to set it up, and every input and output
+- [Containers](../user/containers.md) - Using the two images; [CONTAINERS.md](CONTAINERS.md) - building, testing and updating them
+- [Getting started](../user/getting-started.md) - Setting up and migrating a lecture repository
 
 ---
 

@@ -98,8 +98,8 @@ Known limits:
   that chain untested until `v0` moves.
 - Steps 2-3 never run `publish-gh-pages` (the canary's `publish.yml` fires only on a `publish*`
   tag) or `setup-environment` at the candidate ref.
-- Repositories pinned to an exact tag get a Dependabot bump PR as soon as the tag exists;
-  merging it stays a human decision.
+- Repositories pinned to an exact tag get a Dependabot bump PR on each repository's own
+  Dependabot schedule, not when the tag is pushed; merging it stays a human decision.
 - Container images stage only on pull requests. A pull request that changes an image builds it
   as a `:pr-<N>` candidate and smoke-tests it before merge (#142, phase 1). The merge's own
   build and any dispatch of `build-containers.yml` still push `:latest` before any test runs
@@ -195,7 +195,11 @@ Update these docs when adding features:
 | The action's `action.yml` descriptions, then run `python3 scripts/generate-docs.py` | Any input or output change |
 | The action's chapter, `docs/user/actions/<action>.md` | A change in what the action does |
 | A chapter for it, from `docs/dev/CHAPTER-TEMPLATE.md`, and its place in `ORDER` in `scripts/generate-docs.py` | A new action |
-| `docs/MIGRATION-GUIDE.md` | Workflow patterns change |
+| `docs/user/getting-started.md` | A template changes: its triggers, jobs, permissions or secrets, or how to adopt it |
+| `docs/user/composition.md` | What one action hands to the next changes, or a new action joins the chain |
+| `docs/user/containers.md` | What an image holds, or when and how it is rebuilt |
+| `docs/user/versioning.md` | The release process, or how a release reaches the repositories that use it |
+| `docs/user/security.md` | What a job or an action can reach: its permissions, its secrets, the events it runs on |
 | `docs/dev/PLAN.md` | A backlog item or tracked issue opens, closes or changes scope; a consumer changes the ref it pins |
 
 ## Questions?

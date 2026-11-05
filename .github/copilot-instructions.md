@@ -15,8 +15,8 @@ This repository provides **reusable GitHub Actions** for building QuantEcon lect
 |-------|----------|
 | **Migration roadmap & current priorities** | [docs/dev/PLAN.md](../docs/dev/PLAN.md) |
 | **Architecture & design decisions** | [docs/dev/ARCHITECTURE.md](../docs/dev/ARCHITECTURE.md) |
-| **How to migrate lecture repos** | [docs/MIGRATION-GUIDE.md](../docs/MIGRATION-GUIDE.md) |
-| **Container usage** | [docs/CONTAINER-GUIDE.md](../docs/CONTAINER-GUIDE.md) |
+| **How to migrate lecture repos** | [docs/user/getting-started.md](../docs/user/getting-started.md) |
+| **Container usage** | [docs/user/containers.md](../docs/user/containers.md) |
 | **GPU AMI setup** | [docs/dev/GPU-AMI-SETUP.md](../docs/dev/GPU-AMI-SETUP.md) |
 | **Testing validation** | [docs/dev/TESTING.md](../docs/dev/TESTING.md) |
 | **Using the actions, one chapter each** | [docs/user/README.md](../docs/user/README.md) |
