@@ -8,6 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **`templates/ci.yml`**: a new `pdf-check` job builds the PDF on every pull request and fails
+  its checks when the LaTeX build fails. Malformed LaTeX can pass the HTML build and still break
+  the PDF build, and with it the publish, and previews are moving to HTML only (#148). The job
+  starts when the preview job has finished, so the preview link never waits for it, and builds
+  from the `_build/.jupyter_cache` the preview job uploads as an artifact, so it executes no
+  notebooks and needs no GPU runner. A site that publishes no PDF sets `PDF_CHECK: 'false'` in the
+  workflow's `env:` block, and the job is reported as skipped. The switch is in the file, not a
+  repository variable, because a run for a fork's pull request does not receive repository
+  variables. Harness jobs run the hand-off on the fixture in the lean image, through the
+  template's switch, and check that `PDF_CHECK: 'false'` skips both the upload and the job.
+  (#230)
+
+## [0.13.0] - 2026-11-05
+
+### Changed
+- **`preview-netlify`, `preview-cloudflare`, `deploy-cloudflare`**: the pinned deploy CLIs move
+  from v0.12.0's wrangler 4.136.3 and netlify-cli 27.8.1 to wrangler 4.156.0 and netlify-cli
+  27.16.1, through Dependabot's lockfile bumps. The harness installs both from their lockfiles
+  and runs them. (#207, #219)
 - **Containers**: both images move to the **Anaconda 2026.07** baseline, which every lecture repo
   in the validation matrix already pins (#188). The full image's metapackage goes to
   `anaconda=2026.07`. The lean image's pin set is re-derived from the 2026.07 linux-64 py313 MKL
@@ -31,19 +50,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pushes both `:latest` images, or re-runs the container test workflows that follow the build.
   The Dockerfiles copy only `environment.yml`, so a README cannot change an image. Other Markdown
   under `containers/` still triggers a build: the smoke-test fixture's pages are Markdown. (#178)
-- **`templates/ci.yml`**: a new `pdf-check` job builds the PDF on every pull request and fails
-  its checks when the LaTeX build fails. Malformed LaTeX can pass the HTML build and still break
-  the PDF build, and with it the publish, and previews are moving to HTML only (#148). The job
-  starts when the preview job has finished, so the preview link never waits for it, and builds
-  from the `_build/.jupyter_cache` the preview job uploads as an artifact, so it executes no
-  notebooks and needs no GPU runner. A site that publishes no PDF sets `PDF_CHECK: 'false'` in the
-  workflow's `env:` block, and the job is reported as skipped. The switch is in the file, not a
-  repository variable, because a run for a fork's pull request does not receive repository
-  variables. Harness jobs run the hand-off on the fixture in the lean image, through the
-  template's switch, and check that `PDF_CHECK: 'false'` skips both the upload and the job.
-  (#230)
 
 ### Documentation
+- **`docs/dev/PLAN.md`, `CONTRIBUTING.md`**: caught up with the v0.12.0 follow-ups, which have
+  landed. The canary runs `preview-cloudflare` (QuantEcon/test-actions-lecture-intro#67), so
+  Staged Releases loses its known limit about it, and step 2 says the canary PR deploys to both
+  preview providers. The six consumers that passed `cname` have dropped it, so PLAN's follow-up
+  list is gone. PLAN also records the 2026-11-04 decisions, none of them implemented yet: the
+  release gate is a `gate.yml` in the canary that tests a candidate checkout, with its fixture in
+  its own folder there and no `v0-next` tag (#135, #136, #143); the preview actions are to deploy
+  outside a pull request only when asked (#227); HTML-only previews keep a parallel PDF check
+  (#146, #230); and scheduled image rebuilds give way to a digest-pinned base that Dependabot
+  moves (#234, #235). Stale facts are corrected: every exact pin is on `v0.12.0`, branch hygiene
+  (item 16) is done, the container smoke fixture does exercise plotly export, and items 6, 15
+  and 18 point at #153, #229 and #228. (#202)
 - **User manual** (#178): every action has its chapter. `build-lectures`, `build-jupyter-cache`,
   `restore-jupyter-cache`, `preview-netlify`, `preview-cloudflare`, `publish-gh-pages` and
   `deploy-cloudflare` get theirs in `docs/user/actions/`, and their READMEs become generated
