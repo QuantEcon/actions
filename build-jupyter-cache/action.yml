@@ -414,11 +414,15 @@ runs:
       # uploaded nothing, whereas artifact-id is empty in that case as well as
       # when the step is skipped. So the issue never names an artifact that was
       # not produced.
+      #
+      # include-hidden-files, or the "whole _build tree" leaves out .jupyter_cache
+      # and .doctrees: upload-artifact skips every hidden path (#243).
       if: inputs.upload-artifact == 'true' && steps.status.outputs.all-passed != 'true'
       uses: actions/upload-artifact@v7
       with:
         name: build-cache-${{ github.run_id }}
         path: _build
+        include-hidden-files: true
         retention-days: ${{ inputs.artifact-retention-days }}
         if-no-files-found: warn
 

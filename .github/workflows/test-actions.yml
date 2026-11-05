@@ -874,6 +874,9 @@ jobs:
 
       # Expect ::error:: annotations from build-lectures' own failure reporter
       # in this job's log — they are the action working correctly.
+      # The artifact is named for this job: bjc-fail-guard's build-lectures@v0
+      # uploads execution-reports-html in the same run, and a name can be used
+      # only once in a run.
       - name: Build lectures (expected to fail)
         id: build
         continue-on-error: true
@@ -882,6 +885,8 @@ jobs:
           builder: 'html'
           source-dir: 'harness/lectures'
           output-dir: 'harness'
+          upload-failure-reports: 'true'
+          failure-artifact-name: 'build-fail-guard-reports'
 
       - name: Assert the build failure propagated
         env:
@@ -912,6 +917,26 @@ jobs:
             || { echo "::error::$REPORT is not the failure this job stages (missing the fixture's assertion message)"; sed -n '1,60p' "$REPORT"; exit 1; }
 
           echo "✅ a failing build fails the step, and the red is the staged CellExecutionError ($REPORT)"
+
+      # #243: upload-artifact skips hidden paths unless include-hidden-files is
+      # set, even a path it is given by name, so the artifact used to hold the
+      # reports alone. The upload finished in an earlier step, so a download in
+      # the same job finds it.
+      - name: Download the failure artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: build-fail-guard-reports
+          path: ${{ runner.temp }}/failure-reports
+
+      - name: Assert the failure artifact holds the reports and the execution cache
+        run: |
+          # The artifact's root is harness/_build, the paths' common ancestor.
+          DIR="$RUNNER_TEMP/failure-reports"
+          [ -f "$DIR/html/reports/broken.err.log" ] \
+            || { echo "::error::the failure artifact has no html/reports/broken.err.log"; find "$DIR" -maxdepth 3 | sort; exit 1; }
+          [ -f "$DIR/.jupyter_cache/global.db" ] \
+            || { echo "::error::the failure artifact has no .jupyter_cache/global.db: upload-failure-reports promises the execution cache, and upload-artifact leaves out hidden paths unless include-hidden-files is set (#243)"; find "$DIR" -maxdepth 3 | sort; exit 1; }
+          echo "✅ the failure artifact holds the staged err.log and the execution cache"
 
   # ==========================================================================
   # setup-environment — container mode, in the real lean image
@@ -1356,6 +1381,8 @@ jobs:
             || { echo "::error::fixture setup failed — broken.md has no failing cell"; exit 1; }
 
       # create-issue-on-failure is false on purpose — see the note above.
+      # upload-artifact is on, so the last two steps can check what the
+      # build-cache artifact holds.
       - name: Build and cache (expected to fail)
         id: bjc
         continue-on-error: true
@@ -1365,7 +1392,8 @@ jobs:
           environment: 'harness/environment.yml'
           source-dir: 'harness/lectures'
           create-issue-on-failure: 'false'
-          upload-artifact: 'false'
+          upload-artifact: 'true'
+          artifact-retention-days: '1'
 
       - name: Assert the failure propagated and nothing was cached
         env:
@@ -1381,6 +1409,29 @@ jobs:
           # overwrite the last good one.
           [ "$CACHE_SAVED" = "false" ] || { echo "::error::cache-saved: expected [false] — a failed build must not overwrite the good cache, got [$CACHE_SAVED]"; exit 1; }
           echo "✅ a failing cache build fails the step and saves no cache"
+
+      # #243, as in build-fail-guard. This checks the build-cache artifact, which
+      # build-jupyter-cache uploads itself. The execution-reports-html artifact
+      # here comes from build-lectures@v0, so build-fail-guard checks that one
+      # against ./build-lectures instead.
+      - name: Download the build-cache artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: build-cache-${{ github.run_id }}
+          path: ${{ runner.temp }}/build-cache
+
+      - name: Assert the build-cache artifact holds the whole _build tree
+        run: |
+          DIR="$RUNNER_TEMP/build-cache"
+          [ -f "$DIR/html/reports/broken.err.log" ] \
+            || { echo "::error::the build-cache artifact has no html/reports/broken.err.log"; find "$DIR" -maxdepth 2 | sort; exit 1; }
+          # .jupyter_cache and .doctrees are hidden, which upload-artifact leaves
+          # out unless include-hidden-files is set.
+          for hidden in .jupyter_cache/global.db .doctrees/environment.pickle; do
+            [ -f "$DIR/$hidden" ] \
+              || { echo "::error::the build-cache artifact has no $hidden: upload-artifact describes it as the whole _build directory (#243)"; find "$DIR" -maxdepth 2 | sort; exit 1; }
+          done
+          echo "✅ the build-cache artifact holds the reports, the execution cache and the doctrees"
 
   bjc-abort-guard:
     # #123: the failure path is only reachable when something else is already

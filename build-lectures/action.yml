@@ -313,6 +313,8 @@ runs:
           echo ""
         fi
 
+    # include-hidden-files, or .jupyter_cache is left out: upload-artifact skips
+    # every hidden path, even one named in the list (#243).
     - name: Upload execution reports on failure
       if: inputs.upload-failure-reports == 'true' && failure()
       uses: actions/upload-artifact@v7
@@ -323,6 +325,7 @@ runs:
           ${{ inputs.output-dir }}/_build/latex/reports
           ${{ inputs.output-dir }}/_build/jupyter/reports
           ${{ inputs.output-dir }}/_build/.jupyter_cache
+        include-hidden-files: true
         if-no-files-found: ignore
         retention-days: 7
 
