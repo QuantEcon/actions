@@ -7,8 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-05
+
 ### Added
-- **`build-lectures`**: an `error-outputs` input, `fail`, `warn` or `ignore`, and an
+- ⚠️ **BREAKING** **`build-lectures`**: an `error-outputs` input, `fail`, `warn` or `ignore`, and an
   `error-output-count` output. After a build that passes, the action reads the notebooks myst-nb
   wrote to `_build/jupyter_execute`, outputs included, and reports every `error` output in them:
   an annotation on the source file, the traceback in a log group, and a table in the step
@@ -25,7 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Notebooks with no source under `source-dir`, which a restored build cache can carry, are
   skipped. `build-jupyter-cache` gets the same `error-outputs` input and passes it to each build.
   The new harness job `build-display-error-guard` stages a display-time error and a
-  `raises-exception` control, and builds under each value. (#247)
+  `raises-exception` control, and builds under each value. A site whose pages carry such a
+  traceback now fails its build: fix the cell, tag a deliberate one `raises-exception`, or set
+  `error-outputs: 'warn'` while it does. (#247)
 - **`publish-gh-pages`**: a `mode` input, so the upload, the deploy and the release assets can
   each run in a job of their own, and only the job that deploys holds the Pages permissions
   (finding M1 of the 2026-10-06 review). The action used to upload, deploy and release in one
@@ -72,6 +76,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   inputs, through each action.
 
 ### Changed
+- **`preview-cloudflare`, `deploy-cloudflare`**: the pinned wrangler moves from 4.156.0 to
+  4.156.1, through Dependabot's lockfile bump. The harness installs it from both lockfiles and
+  runs it. (#259)
 - **`templates/publish.yml`**: builds and deploys in separate jobs, as `ci.yml` does since #232.
   `build` builds in the container with `contents: read` and ends with `publish-gh-pages`
   `mode: upload`. `deploy` needs `build`, runs on `ubuntu-latest` with no checkout or container,
@@ -119,6 +126,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   weekly build used to trigger, now runs weekly on a schedule of its own against `:latest`
   (Monday 02:00 UTC), so drift in the lecture repos against an unchanged image is still caught.
   (#235)
+
+### Deprecated
+- **`deploy-cloudflare`**: `require-access`, and leaving out both it and `visibility`, are still
+  accepted in this release, with the same warning on every run. v0.14.0 said they would become
+  errors in this release; that moves to v0.16.0, so that sites have a release's notice. Add
+  `visibility` now. (#177)
 
 ### Documentation
 - **`docs/dev/PLAN.md`**: caught up with wave 1 of #246 and the v0.13.0 and v0.14.0 releases.
