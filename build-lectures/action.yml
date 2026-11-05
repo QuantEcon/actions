@@ -1,7 +1,8 @@
 name: 'Build Lectures'
 description: >-
-  Builds the lectures with Jupyter Book, as the website, the PDF or notebooks. When the build
-  fails it prints each failing notebook's traceback, and can upload the execution reports.
+  Builds the lectures with Jupyter Book, as the website, the PDF or notebooks, then checks the
+  executed notebooks for tracebacks that would be published. When the build fails it prints each
+  failing notebook's traceback, and can upload the execution reports.
 author: 'QuantEcon'
 
 # Each description below is copied verbatim into the user manual
@@ -33,10 +34,24 @@ inputs:
     description: >-
       Further arguments for `jb build`. They are split on whitespace, so a quoted value that
       contains a space cannot be passed. Setting this replaces the default, so keep `-W` in it:
-      without `-W`, a notebook that raises an exception is only a warning, and the build
-      succeeds.
+      without `-W`, a warning does not fail the build, and a notebook that raises an exception
+      is only a warning. `error-outputs` still finds the traceback that the exception leaves on
+      the page.
     required: false
     default: '-W --keep-going'
+  error-outputs:
+    description: >-
+      What to do, after a build that passes, about an executed notebook that holds an error
+      output: a traceback that the page shows. `-W` misses one whose exception was raised while
+      IPython displayed output, such as a figure that failed to draw, because the kernel reports
+      that cell as successful. `fail` fails the step, `warn` annotates each one and
+      passes, and `ignore` skips the check. Empty, the default, means `fail`. Either way the log
+      and the step summary name each notebook and cell, with its traceback. An error is allowed
+      in a cell tagged `raises-exception`, in a notebook whose `mystnb` metadata sets
+      `execution_allow_errors`, and anywhere in a book whose `_config.yml` sets
+      `execute.allow_errors`.
+    required: false
+    default: ''
   html-copy-pdf:
     description: >-
       With `builder: html`: `'true'` copies each PDF under `<output-dir>/_build/latex` into
@@ -80,10 +95,41 @@ outputs:
       directory above the one that builder wrote to. With the default `output-dir` it starts
       with `./`, as in `./_build/html`. Set whether or not the build succeeds.
     value: ${{ steps.build.outputs.build-path }}
+  error-output-count:
+    description: >-
+      How many error outputs the `error-outputs` check reported, not counting those it allows:
+      `0` when it found none. Set with `warn` as well as `fail`. Empty when the check did not
+      run: with `ignore`, or after a build that failed.
+    value: ${{ steps.error-outputs.outputs.count }}
 
 runs:
   using: "composite"
   steps:
+    # Before the build, so a typo fails in seconds rather than after it. The
+    # default is resolved here and nowhere else: build-jupyter-cache passes its
+    # own error-outputs through, empty unless its caller set it, and an explicit
+    # '' reaches this action as '' rather than as a declared default.
+    - name: Check the error-outputs input
+      id: error-outputs-mode
+      shell: bash
+      env:
+        ERROR_OUTPUTS: ${{ inputs.error-outputs }}
+      run: |
+        mode=${ERROR_OUTPUTS:-fail}
+        case "$mode" in
+          fail|warn|ignore) echo "mode=$mode" >> "$GITHUB_OUTPUT" ;;
+          *)
+            # Escaped as a workflow command's data, so the value stays in this
+            # one annotation: a newline in it would otherwise start a new line
+            # that the runner could read as a command.
+            shown=${ERROR_OUTPUTS//'%'/'%25'}
+            shown=${shown//$'\r'/'%0D'}
+            shown=${shown//$'\n'/'%0A'}
+            echo "::error::error-outputs must be fail, warn or ignore (or empty, for fail), got '$shown'"
+            exit 1
+            ;;
+        esac
+
     - name: Stage PDF for HTML build
       if: inputs.builder == 'html' && inputs.html-copy-pdf == 'true'
       shell: bash
@@ -237,8 +283,34 @@ runs:
         # why production container builds never hit this.
         (exit "$BUILD_EXIT_CODE")
 
+    # #247. An exception raised while IPython displays output (a figure, say)
+    # is printed as an error output, but the kernel's reply says the cell
+    # succeeded, so nbclient does not raise, myst-nb renders the traceback
+    # without a warning, and -W has nothing to fail on. myst-nb writes every
+    # notebook it renders, outputs included, to <outdir>/../jupyter_execute
+    # whether it executed it or took it from the cache, so the check reads
+    # those, for any builder. The implicit success() is deliberate: a failed
+    # build has already failed the step and printed its tracebacks.
+    #
+    # A login shell, as for the build, so this is the Python that ran jb (and
+    # has PyYAML, for _config.yml). The script's status is the step's: it is the
+    # last command, and the exit builtin is avoided here for the reason given at
+    # the end of the build step.
+    - name: Check executed notebooks for error outputs
+      id: error-outputs
+      if: steps.error-outputs-mode.outputs.mode != 'ignore'
+      shell: bash -l {0}
+      env:
+        MODE: ${{ steps.error-outputs-mode.outputs.mode }}
+        SOURCE_DIR: ${{ inputs.source-dir }}
+        OUTPUT_DIR: ${{ inputs.output-dir }}
+      run: python "$GITHUB_ACTION_PATH/check-error-outputs.py" "$MODE" "$SOURCE_DIR" "$OUTPUT_DIR"
+
+    # Only for a failed jb build. After the check above fails, jb build has
+    # passed and the check has already named each notebook and cell; after an
+    # invalid error-outputs, nothing was built.
     - name: Report build failure
-      if: failure()
+      if: failure() && steps.build.outcome == 'failure'
       shell: bash
       env:
         BUILDER: ${{ inputs.builder }}
@@ -315,8 +387,10 @@ runs:
 
     # include-hidden-files, or .jupyter_cache is left out: upload-artifact skips
     # every hidden path, even one named in the list (#243).
+    # After the error-outputs check fails too: the execution cache holds the
+    # executed notebooks, outputs and all.
     - name: Upload execution reports on failure
-      if: inputs.upload-failure-reports == 'true' && failure()
+      if: inputs.upload-failure-reports == 'true' && failure() && (steps.build.outcome == 'failure' || steps.error-outputs.outcome == 'failure')
       uses: actions/upload-artifact@v7
       with:
         name: ${{ inputs.failure-artifact-name != '' && inputs.failure-artifact-name || format('execution-reports-{0}', inputs.builder) }}

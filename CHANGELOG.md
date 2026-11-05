@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`build-lectures`**: an `error-outputs` input, `fail`, `warn` or `ignore`, and an
+  `error-output-count` output. After a build that passes, the action reads the notebooks myst-nb
+  wrote to `_build/jupyter_execute`, outputs included, and reports every `error` output in them:
+  an annotation on the source file, the traceback in a log group, and a table in the step
+  summary. `fail`, the default (an empty value), then fails the step, and `warn` passes it.
+  `-W` misses these tracebacks when the exception is raised while IPython displays output, such
+  as a figure that fails to draw: the kernel reports the cell as successful, nbclient does not
+  raise, and myst-nb renders the traceback without a warning. So `jb build` exits 0 and the page
+  is published with the traceback on it, as the Black–Litterman lecture on
+  python-advanced.quantecon.org was from August until its fix in November. ipykernel 7.3.0 fails
+  a cell whose last value cannot be displayed, but output shown through `display()`, which is how
+  a figure reaches the page, still passes. Errors are allowed where nbclient and myst-nb allow a
+  cell to raise: a cell tagged `raises-exception`, a notebook whose `mystnb` metadata sets
+  `execution_allow_errors`, and a book whose `_config.yml` sets `execute.allow_errors`.
+  Notebooks with no source under `source-dir`, which a restored build cache can carry, are
+  skipped. `build-jupyter-cache` gets the same `error-outputs` input and passes it to each build.
+  The new harness job `build-display-error-guard` stages a display-time error and a
+  `raises-exception` control, and builds under each value. (#247)
+
 ### Changed
 - **`templates/ci.yml`, `templates/cache.yml`, `templates/publish.yml`**: the pull request preview
   is deployed from a job that runs no notebook code, and no template leaves the job's token in

@@ -19,7 +19,7 @@ Use it in any job that builds lectures, after [`setup-environment`](setup-enviro
 
 ## Requirements
 
-- **Runner.** Any job where a login shell finds `jb`: a QuantEcon container, whose images carry Jupyter Book 1 and LaTeX, or a GitHub-hosted runner after `setup-environment`, whose environment file must then install `jupyter-book` 1.x and every extension the book's `_config.yml` loads. The `pdflatex` builder needs LaTeX: on a standard runner, pass `install-latex: 'true'` to `setup-environment`.
+- **Runner.** Any job where a login shell finds `jb`, and the `python` it runs on, which checks the executed notebooks: a QuantEcon container, whose images carry Jupyter Book 1 and LaTeX, or a GitHub-hosted runner after `setup-environment`, whose environment file must then install `jupyter-book` 1.x and every extension the book's `_config.yml` loads. The `pdflatex` builder needs LaTeX: on a standard runner, pass `install-latex: 'true'` to `setup-environment`.
 - **Node.** None.
 - **Permissions.** None of its own: the action calls no GitHub API. The job needs `contents: read` for `actions/checkout`.
 - **Secrets.** None.
@@ -35,7 +35,8 @@ Use it in any job that builds lectures, after [`setup-environment`](setup-enviro
 | `builder` | no | `html` | What to build: `html`, the default, builds the website into `<output-dir>/_build/html`; `pdflatex` builds the PDF into `<output-dir>/_build/latex`, and needs LaTeX; `jupyter` builds notebooks into `<output-dir>/_build/jupyter`. Any other value is passed to `jb build` as `--builder <value>`, which writes into a directory under `<output-dir>/_build`. |
 | `source-dir` | no | `lectures` | The book to build: the directory that holds its `_config.yml` and `_toc.yml`, relative to the workspace. |
 | `output-dir` | no | `.` | The directory the build is written under, passed to `jb build` as `--path-output`, so the output lands in `<output-dir>/_build`. The cache actions read and write `_build` at the workspace root, so keep the default, `.`, in a job that uses them. |
-| `extra-args` | no | `-W --keep-going` | Further arguments for `jb build`. They are split on whitespace, so a quoted value that contains a space cannot be passed. Setting this replaces the default, so keep `-W` in it: without `-W`, a notebook that raises an exception is only a warning, and the build succeeds. |
+| `extra-args` | no | `-W --keep-going` | Further arguments for `jb build`. They are split on whitespace, so a quoted value that contains a space cannot be passed. Setting this replaces the default, so keep `-W` in it: without `-W`, a warning does not fail the build, and a notebook that raises an exception is only a warning. `error-outputs` still finds the traceback that the exception leaves on the page. |
+| `error-outputs` | no | `''` | What to do, after a build that passes, about an executed notebook that holds an error output: a traceback that the page shows. `-W` misses one whose exception was raised while IPython displayed output, such as a figure that failed to draw, because the kernel reports that cell as successful. `fail` fails the step, `warn` annotates each one and passes, and `ignore` skips the check. Empty, the default, means `fail`. Either way the log and the step summary name each notebook and cell, with its traceback. An error is allowed in a cell tagged `raises-exception`, in a notebook whose `mystnb` metadata sets `execution_allow_errors`, and anywhere in a book whose `_config.yml` sets `execute.allow_errors`. |
 | `html-copy-pdf` | no | `false` | With `builder: html`: `'true'` copies each PDF under `<output-dir>/_build/latex` into `<output-dir>/_build/html/_pdf/` before the build, so the site offers it for download. The PDF comes from a `pdflatex` build earlier in the job, or from a restored build cache; if that directory does not exist, a warning says so and the site is built without it. Ignored by the other builders. |
 | `html-copy-notebooks` | no | `false` | With `builder: html`: `'true'` copies each notebook under `<output-dir>/_build/jupyter` into `<output-dir>/_build/html/_notebooks/` before the build, so the site offers them for download. The notebooks come from a `jupyter` build earlier in the job, or from a restored build cache; if that directory does not exist, a warning says so and the site is built without them. Ignored by the other builders. |
 | `upload-failure-reports` | no | `false` | `'true'` uploads an artifact when the build fails, holding the `reports` directories in `_build/html`, `_build/latex` and `_build/jupyter`, and `_build/.jupyter_cache`, all under `output-dir`, kept for 7 days. `'false'`, the default, uploads nothing. For the `html`, `pdflatex` and `jupyter` builders the log shows each failing notebook's traceback either way. |
@@ -52,6 +53,7 @@ Paths are relative to the workspace, which is the repository root after `actions
 | Output | Description |
 |---|---|
 | `build-path` | The directory the builder wrote to: `<output-dir>/_build/html`, `_build/latex` or `_build/jupyter` for those three builders. For any other it is `<output-dir>/_build`, the directory above the one that builder wrote to. With the default `output-dir` it starts with `./`, as in `./_build/html`. Set whether or not the build succeeds. |
+| `error-output-count` | How many error outputs the `error-outputs` check reported, not counting those it allows: `0` when it found none. Set with `warn` as well as `fail`. Empty when the check did not run: with `ignore`, or after a build that failed. |
 
 <!-- END GENERATED -->
 
@@ -165,17 +167,23 @@ In `ci.yml` this action runs in the `build` job, which holds no secrets, and the
    | any other | `--builder <builder>` | a directory under `<output-dir>/_build`, which is what `build-path` gives |
 
    The log shows the full command in its "Build Command" group.
-4. **On failure**, the action prints a summary of the builder, source and output. For the `html`, `pdflatex` and `jupyter` builders it then prints each failed notebook's traceback, from `reports/*.err.log` in the build's output directory: the last 200 lines of each, in a log group named after the report. With `upload-failure-reports: 'true'` it uploads the reports and the execution cache as an artifact.
-5. **On success**, the log ends with a "Build Summary" group and a listing of the output directory, in "Build Artifacts". Nothing is uploaded.
+4. **Error outputs.** After a build that passes, unless `error-outputs` is `ignore`, the action reads every notebook that myst-nb wrote to `<output-dir>/_build/jupyter_execute`, outputs included, whether the build executed it or took it from the cache. It skips a notebook with no source under `source-dir`, since a restored build cache keeps the notebooks of lectures since removed. Each `error` output it finds gets an annotation on the source file, at the cell's `{code-cell}` line in a MyST Markdown source, and its traceback in a log group. The step summary lists them all, and `error-output-count` gives how many. With `fail` the step then fails, and with `warn` it passes. A notebook that cannot be read is reported the same way, and fails the step with `fail` too, since it went unchecked. An error output is allowed where nbclient and myst-nb allow a cell to raise:
+   - in a cell tagged `raises-exception`;
+   - in a notebook whose frontmatter sets `execution_allow_errors: true` under `mystnb:`;
+   - anywhere in a book whose `_config.yml` sets `allow_errors: true` under `execute:`.
+5. **When `jb build` fails**, the action prints a summary of the builder, source and output. For the `html`, `pdflatex` and `jupyter` builders it then prints each failed notebook's traceback, from `reports/*.err.log` in the build's output directory: the last 200 lines of each, in a log group named after the report. With `upload-failure-reports: 'true'` it uploads the reports and the execution cache as an artifact, and after a failed error-output check it uploads them too.
+6. **On success**, the log ends with a "Build Summary" group and a listing of the output directory, in "Build Artifacts". Nothing is uploaded.
 
 ### What fails the job
 
 `jb build` exiting with an error. With `-W`, which the default `extra-args` passes, that includes every warning, so a notebook cell that raises an exception fails the build.
 
+After a build that passes, an executed notebook that holds an error output, with `error-outputs` at its default, `fail`. `-W` cannot see an exception raised while IPython displays output, such as a figure that fails to draw. The kernel reports that cell as successful, so myst-nb renders the traceback on the page without a warning, and `jb build` exits 0.
+
 A second build over the same `_build`, after one that failed with `-W --keep-going`, reads nothing, warns about nothing and passes: Sphinx's saved state counts every page as up to date. To see the failures again, rebuild with `--all` in `extra-args`.
 
 > [!WARNING]
-> Keep `-W` in any `extra-args` you set. A cell that raises is not an error to Jupyter Book: myst-nb logs it as a warning and carries on, and only `-W` turns that into a failed build. Without it the build exits 0 over a broken lecture, and the job goes on to deploy it. `--keep-going` makes the build report every such warning before it fails, instead of stopping at the first; without `-W` it does nothing.
+> Keep `-W` in any `extra-args` you set. A cell that raises is not an error to Jupyter Book: myst-nb logs it as a warning and carries on, and only `-W` turns that into a failed build. Without it `jb build` exits 0 over a broken lecture. With `error-outputs: fail`, the step still fails on the traceback that the exception leaves in the notebook, but every other warning passes unseen. `--keep-going` makes the build report every such warning before it fails, instead of stopping at the first; without `-W` it does nothing.
 >
 > Setting `raise_on_error: true` under `execute:` in `_config.yml` also fails the build, but at the first failing notebook, before any `reports/*.err.log` is written. Prefer `-W`.
 
@@ -183,7 +191,9 @@ A second build over the same `_build`, after one that failed with `-W --keep-goi
 
 **`❌ BUILD FAILED - Jupyter Book build encountered errors`.** The groups below it hold each failed notebook's traceback. To reproduce the failure locally, run the command from the "Build Command" group, for example `jb build lectures -W --keep-going`.
 
-**The build passed, but a notebook failed.** `extra-args` is set without `-W`. Add it back.
+**`…: <error>. The kernel reported this cell as successful, so -W did not catch it, and the page shows the traceback`.** The cell's code ran, but displaying its output raised, so the page shows a traceback where the output should be. The log group named after the cell holds the traceback. A common cause is a deprecation that expires inside a figure's drawing: under NumPy 2.4, for example, Matplotlib rejects a length-1 array passed to `ax.text` as a coordinate. Fix the cell, or tag it `raises-exception` if the error is meant to be shown. `error-outputs: 'warn'` lets the build pass while you fix it.
+
+**The build passed, but a notebook failed.** `extra-args` is set without `-W`, and `error-outputs` is `warn` or `ignore`. Add `-W` back.
 
 **`jb: command not found`.** On a standard runner, `setup-environment` has not run, or its environment file does not install `jupyter-book`. In a container, check the job's `container:` image.
 
