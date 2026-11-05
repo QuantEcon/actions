@@ -149,7 +149,7 @@ A scheduled or dispatched run deploys only with `dispatch-alias` set, here to `h
 
    `<branch>` is `pr-<number>` or `dispatch-alias`, as step 1 decided. `<commit>` is the pull request's head commit, or the commit a dispatched or scheduled run is on, and `<short commit>` is its first 7 characters. `<run>` is `PR #<number>`, or the event and branch, such as `workflow_dispatch on main`. The token and the account ID reach the CLI through the environment. A branch other than the project's production branch makes the deployment a preview, so the production site is untouched. wrangler's output is in the "Deployment Output" log group.
 5. **The URLs.** `deploy-url` is not read from wrangler's output but built from the inputs: `https://<branch>.<project-name>.pages.dev` is the alias Cloudflare gives the newest deployment of the branch, as long as the project's own address is `<project-name>.pages.dev`. Both kinds of branch are already in the form Cloudflare uses for an alias, lowercase letters, digits and dashes, so the alias is the branch name unchanged. `deployment-url` is the first other `pages.dev` address in wrangler's output. Outside a pull request, the preview's URL also goes in a notice, on the run's summary page.
-6. **The comment**, on a pull request only. Among the pull request's first 30 comments, the action looks for one that contains `## ☁️ Cloudflare Preview Ready!`, and updates it; if there is none, it posts a new one. Its lecture links are built as in preview-netlify's.
+6. **The comment**, on a pull request only. The action finds its own comment among all of the pull request's comments, and updates it, as [preview-netlify](preview-netlify.md#behaviour) does; if it has none, it posts a new one. Its own is a comment by `github-actions[bot]` that contains the hidden line `<!-- quantecon-preview:cloudflare -->`, or that starts with `## ☁️ Cloudflare Preview Ready!`, as its comments did before that line was added. It never edits anyone else's comment. Its lecture links are built as in preview-netlify's. Under Build Info, a "This deployment" line gives `deployment-url`, when wrangler's output named one.
 
 To know whether a preview was deployed, check `deployed`. A scheduled or dispatched check should fail unless it is `'true'`, as in [Outside a pull request](#outside-a-pull-request): otherwise a run that deployed nothing, because `dispatch-alias` was left out, say, passes having tested nothing.
 
@@ -182,8 +182,6 @@ Previews of pull requests from forks are not supported, and the action skips the
 **`Resource not accessible by integration`, when commenting.** The job lacks `pull-requests: write`.
 
 **The comment lists no changed lectures, lists one the pull request did not change, or a link leads to a missing page.** See [preview-netlify's troubleshooting](preview-netlify.md#troubleshooting): the two actions detect and link lectures the same way.
-
-**A new preview comment on every push.** The pull request has more than 30 comments before the preview's, so the action does not find its own comment, and posts another.
 
 **The comment has no "This deployment" line.** wrangler's output named no per-deployment URL, so `deployment-url` is empty. The preview URL is not affected.
 

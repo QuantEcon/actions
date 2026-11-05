@@ -208,11 +208,12 @@ jobs:
    ```
 
    `<alias>` is `pr-<number>` or `dispatch-alias`, as step 1 decided. `<run>` is `PR #<number>`, or the event and branch, such as `workflow_dispatch on main`. `<short commit>` is the first 7 characters of the pull request's head commit, or of the commit a dispatched or scheduled run is on. The token and the site ID reach the CLI through the environment. `--no-build` stops Netlify from running a build of its own, and without `--prod` the deploy is a preview, so the site's production deploy is untouched. Netlify's output is in the "Deployment Output" log group. Outside a pull request, the preview's URL also goes in a notice, on the run's summary page.
-5. **The comment**, on a pull request only. Among the pull request's first 30 comments, the action looks for one that contains `## 📖 Netlify Preview Ready!`, and updates it; if there is none, it posts a new one. Each changed lecture links to `<deploy-url>/<path>.html`. `<path>` is the file's path without `.md`, and also without the `lectures-dir/` in front when `_toc.yml` is in `lectures-dir`, because Jupyter Book then builds the pages relative to it.
+5. **The comment**, on a pull request only. The action reads all of the pull request's comments, and updates its own; if it has none, it posts a new one. Its own is a comment by `github-actions[bot]` that contains the hidden line `<!-- quantecon-preview:netlify -->`, or that starts with `## 📖 Netlify Preview Ready!`, as its comments did before that line was added. If there are several, it updates the newest. It never edits anyone else's comment, even one that quotes the preview's. Each changed lecture links to `<deploy-url>/<path>.html`. `<path>` is the file's path without `.md`, and also without the `lectures-dir/` in front when `_toc.yml` is in `lectures-dir`, because Jupyter Book then builds the pages relative to it.
 
-   For a pull request that changes two lectures, the comment's Markdown is:
+   For a pull request that changes two lectures, the comment's Markdown is as follows. GitHub does not show its first line.
 
    ````markdown
+   <!-- quantecon-preview:netlify -->
    ## 📖 Netlify Preview Ready!
 
    **Preview URL:** https://pr-5--<site>.netlify.app
@@ -276,8 +277,6 @@ Check also that `build-dir` exists.
 **A lecture link leads to a missing page.** The links assume Jupyter Book's layout: pages relative to `lectures-dir` when `_toc.yml` is inside it, and relative to the repository root when it is not.
 
 **Two comments on each pull request, one of them from Netlify.** The Netlify project is linked to the repository: see the end of [Setting up Netlify](#setting-up-netlify).
-
-**A new preview comment on every push.** The pull request has more than 30 comments before the preview's, so the action does not find its own comment, and posts another.
 
 **A pull request from a fork got no preview.** Expected: its runs get no secrets, so the action skips them. See [Security](#security).
 

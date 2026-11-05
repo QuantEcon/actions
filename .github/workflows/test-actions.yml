@@ -145,9 +145,9 @@ jobs:
           [ -n "$DIRS" ] || { echo "::error::gate self-test: no 'uses: ./<action>' found in the harness — refusing to decide"; exit 1; }
           # Listed by hand, since the loop below adds only each action's
           # action.yml: the lockfiles, which preview-cli-install tests, and the
-          # scripts the preview actions share, which preview-change-detection
-          # and preview-decide run on their own.
-          MUST_RUN=".github/workflows/test-actions.yml .github/fixtures/mini-lectures/environment.yml preview-cloudflare/package-lock.json preview-netlify/package-lock.json scripts/detect-changed-lectures.sh scripts/preview-decide.sh"
+          # scripts the preview actions share, which preview-change-detection,
+          # preview-decide and preview-comment run on their own.
+          MUST_RUN=".github/workflows/test-actions.yml .github/fixtures/mini-lectures/environment.yml preview-cloudflare/package-lock.json preview-netlify/package-lock.json scripts/detect-changed-lectures.sh scripts/preview-decide.sh scripts/preview-comment.cjs"
           for d in $DIRS; do MUST_RUN="$MUST_RUN $d/action.yml"; done
           # The container-images job decides for itself which images to build,
           # but runs only when this gate says relevant: an IGNORED that matched
@@ -2725,6 +2725,58 @@ jobs:
           [ "$bad" -eq 0 ]
           echo "✅ preview-decide.sh deploys only on pull_request, or on workflow_dispatch or schedule with a valid dispatch-alias ($n cases)"
 
+  preview-comment:
+    # #153, and finding M2 of the 2026-10-06 review: both preview actions post
+    # their comment with scripts/preview-comment.cjs. The comment step runs
+    # only after a real deploy, so preview-wiring below never reaches it.
+    # This job reads each action's own comment steps from its action.yml and
+    # runs them against a stand-in for the GitHub API, with no token:
+    #   - the bash step that finds the script, from the action's directory;
+    #   - the github-script body, called as actions/github-script calls it,
+    #     with the step's env.
+    # It asserts that each comment renders as v0.14.0's inline scripts
+    # rendered it, after one hidden marker line (the fixtures are their
+    # bodies), and that the action updates its own comment however many come
+    # before it, and never anyone else's. test.cjs lists the cases.
+    name: 'preview-*: each action renders its comment as before, and updates only its own'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # The Node that actions/github-script@v9 runs on.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      # PyYAML, at the pin in scripts/requirements.txt, as the gate installs it.
+      - name: Read each action's comment steps
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --disable-pip-version-check --quiet -r scripts/requirements.txt
+          "$RUNNER_TEMP/venv/bin/python" - preview-netlify preview-cloudflare > "$RUNNER_TEMP/comment-steps.json" <<'PY'
+          import json, os, sys, yaml
+          steps = {}
+          for d in sys.argv[1:]:
+              with open(os.path.join(d, 'action.yml')) as f:
+                  by_id = {s['id']: s for s in yaml.safe_load(f)['runs']['steps'] if 'id' in s}
+              resolve, comment = by_id['comment-script'], by_id['comment']
+              steps[d] = {
+                  'dir': os.path.abspath(d),
+                  'resolve': {'shell': resolve['shell'], 'run': resolve['run']},
+                  'comment': {'uses': comment['uses'], 'env': comment['env'], 'with': comment['with']},
+              }
+          json.dump(steps, sys.stdout)
+          PY
+
+      - name: Run them against a stand-in GitHub API
+        run: node .github/fixtures/preview-comment/test.cjs "$RUNNER_TEMP/comment-steps.json"
+
   preview-wiring:
     # What preview-decide above cannot see: that each action follows the
     # decision. An invalid dispatch-alias must stop it before its CLI is
@@ -2917,6 +2969,7 @@ jobs:
       - preview-cli-install
       - preview-change-detection
       - preview-decide
+      - preview-comment
       - preview-wiring
     steps:
       # This is the job intended to be the single required status check, so it

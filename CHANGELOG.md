@@ -17,6 +17,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `.jupyter_cache` and `.doctrees`. Both uploads now set `include-hidden-files: true`. The
   harness's `build-fail-guard` and `bjc-fail-guard` jobs now download each artifact and check it
   for those directories. (#243)
+- **`preview-netlify`, `preview-cloudflare`**: each action now finds its own comment on a pull
+  request with more than 30 comments, and never edits anyone else's (finding M2 of the
+  2026-10-06 review). Both looked for their earlier comment with one unpaginated `listComments`
+  call, which returns the first 30, so on a pull request that already had 30 comments before its
+  first preview, every push posted another. They also took any comment that contained the
+  heading, a person's included. The two copies of the comment script are now one,
+  `scripts/preview-comment.cjs`, loaded from a path resolved from `$GITHUB_ACTION_PATH`, so it
+  loads in a container job too. It reads every page of comments, and updates only one by
+  `github-actions[bot]` that carries a hidden first line, `<!-- quantecon-preview:netlify -->` or
+  `<!-- quantecon-preview:cloudflare -->`, or that starts with the heading, as comments posted
+  before this change do, so an open pull request keeps its comment. Where several match, it
+  updates the newest. The comment otherwise renders exactly as before. A new harness job,
+  `preview-comment`, runs each action's own comment steps against a stand-in for the GitHub API.
+  It checks each body against the one the old scripts rendered for the same inputs, and that the
+  action finds its comment after 150 others and passes over a person's or another app's. (#153)
 
 ## [0.14.0] - 2026-11-05
 
