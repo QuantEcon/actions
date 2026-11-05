@@ -50,7 +50,9 @@ inputs:
     description: >-
       With `create-release-assets: 'true'` or `mode: release`: the start of each asset's file
       name. Empty, the default, uses the repository's name followed by `-html`, as in
-      `<repository>-html`.
+      `<repository>-html`. Only letters, digits, `.`, `_` and `-`: any other character fails the
+      job before anything runs, in every mode, since a name with a backslash, say, would give a
+      checksum file that `sha256sum --check` cannot read.
     required: false
     default: ''
   github-token:
@@ -87,6 +89,7 @@ runs:
         BUILD_DIR: ${{ inputs.build-dir }}
         CNAME: ${{ inputs.cname }}
         CREATE_RELEASE_ASSETS: ${{ inputs.create-release-assets }}
+        ASSET_NAME: ${{ inputs.asset-name }}
       run: |
         case "$MODE" in
           all|upload|deploy|release) ;;
@@ -108,6 +111,12 @@ runs:
         # only deploys should not hold.
         if [ "$CREATE_RELEASE_ASSETS" = true ] && { [ "$MODE" = upload ] || [ "$MODE" = deploy ]; }; then
           echo "::error::create-release-assets does nothing with mode: $MODE. Make the release assets in a job of their own, with mode: release and contents: write"
+          exit 1
+        fi
+        # Every file name the release step writes starts with it. In every
+        # mode, so that a bad name shows before the first tag.
+        if [ -n "$ASSET_NAME" ] && ! [[ "$ASSET_NAME" =~ ^[A-Za-z0-9._-]+$ ]]; then
+          echo "::error::asset-name [$ASSET_NAME] must be letters, digits, '.', '_' and '-' only"
           exit 1
         fi
         echo "mode: $MODE"

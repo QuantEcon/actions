@@ -47,7 +47,7 @@ Use it to publish a public site, after [`build-lectures`](build-lectures.md), as
 | `build-dir` | no | `''` | The directory that holds the built site, such as `_build/html`, which `build-lectures` gives in its `build-path` output. Required in every `mode` but `deploy`, which fails if it is given. The job fails if it does not exist. |
 | `cname` | no | `''` | A domain to write into `build-dir` as a `CNAME` file, which also lands in the release archive. It does not set the site's custom domain, and a warning says so: a GitHub Actions Pages deploy ignores `CNAME` files, so set the domain under Settings, Pages. Empty, the default, writes no file. `mode: deploy` fails if it is given. |
 | `create-release-assets` | no | `false` | `'true'` also attaches the site to the GitHub release of the tag the run was triggered by, creating the release if there is none: an archive, its SHA-256 checksum and a manifest. It needs `github-token`, and a run triggered by a tag: any other run skips it, with a warning. `'false'`, the default, attaches nothing. It applies to `mode: all`; `mode: release` always makes them. |
-| `asset-name` | no | `''` | With `create-release-assets: 'true'` or `mode: release`: the start of each asset's file name. Empty, the default, uses the repository's name followed by `-html`, as in `<repository>-html`. |
+| `asset-name` | no | `''` | With `create-release-assets: 'true'` or `mode: release`: the start of each asset's file name. Empty, the default, uses the repository's name followed by `-html`, as in `<repository>-html`. Only letters, digits, `.`, `_` and `-`: any other character fails the job before anything runs, in every mode, since a name with a backslash, say, would give a checksum file that `sha256sum --check` cannot read. |
 | `github-token` | no | `''` | With `create-release-assets: 'true'` or `mode: release`: a token that can write the repository's releases, such as `secrets.GITHUB_TOKEN` in a job with `contents: write`. On a run triggered by a tag, the job fails if it is empty. The Pages deploy does not use it. |
 
 <!-- END GENERATED -->
@@ -182,7 +182,7 @@ The `github-pages` environment must also allow the tags to deploy: under **Setti
 
 ## Behaviour
 
-1. **Inputs.** Before anything else, the action checks that `mode` is `all`, `upload`, `deploy` or `release`; that `build-dir` is given in every mode but `deploy`, and that `deploy` is given neither `build-dir` nor `cname`; and that `create-release-assets: 'true'` does not come with `upload` or `deploy`, whose jobs should not hold `contents: write`. Any of these fails the job with nothing uploaded or deployed, and leaves the `mode` output empty.
+1. **Inputs.** Before anything else, the action checks that `mode` is `all`, `upload`, `deploy` or `release`; that `build-dir` is given in every mode but `deploy`, and that `deploy` is given neither `build-dir` nor `cname`; that `create-release-assets: 'true'` does not come with `upload` or `deploy`, whose jobs should not hold `contents: write`; and that `asset-name`, if given, holds only letters, digits, `.`, `_` and `-`. Any of these fails the job with nothing uploaded or deployed, and leaves the `mode` output empty.
 2. **Checks**, in every mode but `deploy`. `build-dir` must exist. The action prints how many files it holds and its size.
 3. **`cname`**, in every mode but `deploy`. When set, the domain is written to `<build-dir>/CNAME`, with a warning that the deploy ignores it.
 4. **The upload**, with `all` or `upload`. upload-pages-artifact packs `build-dir` as the run's `github-pages` artifact. It leaves out files and directories whose names start with a dot, as it always has.
@@ -268,6 +268,8 @@ The [migration guide](../../MIGRATION-GUIDE.md) moves a whole lecture repository
 **`mode: deploy deploys the github-pages artifact that an earlier job's mode: upload made, so it takes no build-dir or cname`.** Move `build-dir` and `cname` to the `upload` step in the build job. The deploy job publishes whatever that step uploaded.
 
 **`create-release-assets does nothing with mode: …`.** Release assets need `contents: write`, which neither the build job nor the deploy job should hold. Make them in a job of their own with `mode: release`: see [With release assets](#with-release-assets).
+
+**`asset-name […] must be letters, digits, '.', '_' and '-' only`.** Every asset's file name starts with `asset-name`, and a name with a backslash, say, would give a checksum file that `sha256sum --check` cannot read. Use a name such as `lecture-python-html`.
 
 **`No artifacts named "github-pages" were found`, or similar, from deploy-pages.** With `mode: deploy`, nothing in this run uploaded the site. Check that the build job ends with `mode: upload`, and that the deploy job `needs:` it. An artifact from an earlier run, or from another workflow, is not used.
 

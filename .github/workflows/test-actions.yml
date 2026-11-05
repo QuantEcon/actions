@@ -2761,9 +2761,11 @@ jobs:
             || { fail "the manifest does not match the manual's fields, types and values"; cat "$out/$manifest"; }
 
           # An asset-name that JSON must escape: the manifest still parses,
-          # with the name intact. (Its checksum line is not checked: for a
-          # name with a backslash, sha256sum writes an escaped line, which the
-          # runner's own sha256sum --check rejects.)
+          # with the name intact. The action refuses such a name before this
+          # script runs (publish-modes checks that), since for a name with a
+          # backslash sha256sum writes an escaped checksum line that the
+          # runner's own sha256sum --check rejects. So this is the script's
+          # second line of defence, and its checksum is not checked here.
           odd='harness "quoted" \ name'
           mkdir "$RUNNER_TEMP/odd"
           GITHUB_OUTPUT="$RUNNER_TEMP/odd.out" BUILD_DIR="$site" ASSET_NAME="$odd" TAG_NAME=publish-harness \
@@ -2881,6 +2883,17 @@ jobs:
         with:
           mode: 'release'
 
+      # Refused in mode upload too, before the upload, so a bad name shows
+      # before the first tag.
+      - name: 'refused: an asset-name with a backslash'
+        id: bad-asset-name
+        continue-on-error: true
+        uses: ./publish-gh-pages
+        with:
+          mode: 'upload'
+          build-dir: 'harness-site'
+          asset-name: 'harness\html'
+
       - name: 'mode upload'
         id: upload
         continue-on-error: true
@@ -2917,6 +2930,7 @@ jobs:
             refused|upload-nodir|${{ steps.upload-nodir.outcome }}|${{ steps.upload-nodir.outputs.mode }}|${{ steps.upload-nodir.outputs.page-url }}
             refused|upload-release|${{ steps.upload-release.outcome }}|${{ steps.upload-release.outputs.mode }}|${{ steps.upload-release.outputs.page-url }}
             refused|release-nodir|${{ steps.release-nodir.outcome }}|${{ steps.release-nodir.outputs.mode }}|${{ steps.release-nodir.outputs.page-url }}
+            refused|bad-asset-name|${{ steps.bad-asset-name.outcome }}|${{ steps.bad-asset-name.outputs.mode }}|${{ steps.bad-asset-name.outputs.page-url }}
             upload|upload|${{ steps.upload.outcome }}|${{ steps.upload.outputs.mode }}|${{ steps.upload.outputs.page-url }}
             release|release|${{ steps.release.outcome }}|${{ steps.release.outputs.mode }}|${{ steps.release.outputs.page-url }}
         run: |
@@ -2939,7 +2953,7 @@ jobs:
               echo "✓ $id: outcome=$outcome mode=${mode:-(refused before anything ran)}"
             fi
           done <<< "$RESULTS"
-          [ "$n" -eq 9 ] || { echo "::error::expected 9 cases, read $n"; exit 1; }
+          [ "$n" -eq 10 ] || { echo "::error::expected 10 cases, read $n"; exit 1; }
 
           [ "$DOWNLOAD" = success ] \
             || { echo "::error::no github-pages artifact to download, so mode upload uploaded nothing"; exit 1; }
