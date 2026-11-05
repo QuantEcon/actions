@@ -2760,18 +2760,27 @@ jobs:
               ' "$out/$manifest" > /dev/null \
             || { fail "the manifest does not match the manual's fields, types and values"; cat "$out/$manifest"; }
 
-          # An asset-name that JSON must escape, and an OUT_DIR given as a
-          # relative path: the manifest still parses, with the name intact,
-          # and the checksum lands beside the archive and verifies.
+          # An asset-name that JSON must escape: the manifest still parses,
+          # with the name intact. (Its checksum line is not checked: for a
+          # name with a backslash, sha256sum writes an escaped line, which the
+          # runner's own sha256sum --check rejects.)
           odd='harness "quoted" \ name'
           mkdir "$RUNNER_TEMP/odd"
-          ( cd "$RUNNER_TEMP" && GITHUB_OUTPUT="$RUNNER_TEMP/odd.out" BUILD_DIR="$site" ASSET_NAME="$odd" \
-              TAG_NAME=publish-harness OUT_DIR=odd COMMIT_SHA="$GITHUB_SHA" REPOSITORY="$GITHUB_REPOSITORY" \
-              SIZE_MB="$size_mb" FILE_COUNT="$count" bash "$GITHUB_WORKSPACE/scripts/package-release-assets.sh" ) > /dev/null \
-            || fail "packing with asset-name [$odd] and a relative OUT_DIR failed"
+          GITHUB_OUTPUT="$RUNNER_TEMP/odd.out" BUILD_DIR="$site" ASSET_NAME="$odd" TAG_NAME=publish-harness \
+            OUT_DIR="$RUNNER_TEMP/odd" COMMIT_SHA="$GITHUB_SHA" REPOSITORY="$GITHUB_REPOSITORY" \
+            SIZE_MB="$size_mb" FILE_COUNT="$count" bash scripts/package-release-assets.sh > /dev/null \
+            || fail "packing with asset-name [$odd] failed"
           jq -e --arg name "$odd" '.name == $name' "$RUNNER_TEMP/odd/$odd-manifest.json" > /dev/null \
             || fail "asset-name [$odd] gave a manifest that does not parse, or lost the name"
-          ( cd "$RUNNER_TEMP/odd" && sha256sum --check --strict "$odd-checksum.txt" ) > /dev/null \
+
+          # An OUT_DIR given as a relative path: the checksum, written from
+          # inside it, lands beside the archive and verifies.
+          mkdir "$RUNNER_TEMP/rel"
+          ( cd "$RUNNER_TEMP" && GITHUB_OUTPUT="$RUNNER_TEMP/rel.out" BUILD_DIR="$site" ASSET_NAME=harness-rel \
+              TAG_NAME=publish-harness OUT_DIR=rel COMMIT_SHA="$GITHUB_SHA" REPOSITORY="$GITHUB_REPOSITORY" \
+              SIZE_MB="$size_mb" FILE_COUNT="$count" bash "$GITHUB_WORKSPACE/scripts/package-release-assets.sh" ) > /dev/null \
+            || fail "packing with a relative OUT_DIR failed"
+          ( cd "$RUNNER_TEMP/rel" && sha256sum --check --strict harness-rel-checksum.txt ) > /dev/null \
             || fail "with a relative OUT_DIR, the checksum is not beside the archive, or does not verify"
 
           # Refused, and nothing written: an OUT_DIR inside BUILD_DIR, where
