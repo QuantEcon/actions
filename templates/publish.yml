@@ -1,8 +1,19 @@
 # Publish Workflow (GitHub Pages)
 #
-# Builds and deploys the lecture site to GitHub Pages when changes
-# are pushed to main. Restores the build cache first so only changed
-# notebooks are re-executed.
+# Builds the lecture site and deploys it to GitHub Pages when changes are
+# pushed to main, in two jobs:
+#   build   restores the build cache, so only changed notebooks are
+#           re-executed, builds the site, and uploads it as the run's
+#           github-pages artifact.
+#   deploy  deploys that artifact to GitHub Pages.
+#
+# Why two jobs: building the lectures runs code the repository does not fully
+# control (notebook cells, packages installed at build time, network
+# fetches), and code that runs earlier in a job can affect the steps after
+# it. So the Pages permissions are only in the deploy job, which runs no
+# notebook or repository code, and the build job has only read access.
+# Release assets need contents: write, so they get a third job of their own,
+# at the end of this file.
 #
 # Copy to your repository as .github/workflows/publish.yml
 #
@@ -22,7 +33,7 @@ on:
   push:
     branches:
       - main
-  
+
   workflow_dispatch:
     # Manual trigger for re-deployment without code changes
 
@@ -32,7 +43,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  publish:
+  # ─── Build ───────────────────────────────────────────────────────
+  # Builds the site and uploads it for the deploy job. It holds only read
+  # access, because it runs the notebooks.
+  build:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/quantecon/quantecon:latest
@@ -43,13 +57,7 @@ jobs:
 
     permissions:
       contents: read
-      pages: write              # Required for GitHub Pages deployment
-      id-token: write           # Required for GitHub Pages OIDC
       packages: read            # Required for container image pull
-
-    environment:
-      name: github-pages
-      url: ${{ steps.publish.outputs.page-url }}
 
     steps:
       - name: Checkout
@@ -109,28 +117,91 @@ jobs:
           # html-copy-pdf: 'true'           # Enable if pdflatex build runs above
           # html-copy-notebooks: 'true'     # Enable if jupyter build runs above
 
-      # ─── Publish ─────────────────────────────────────────────────
-      - name: Publish to GitHub Pages
-        id: publish
+      # ─── Hand-off to release-assets (optional) ───────────────────
+      # Uncomment with the release-assets job at the end of this file. It
+      # comes before the Pages upload, which writes any `cname` into the
+      # site, so the release job measures the site as the build left it.
+      # include-hidden-files: upload-artifact skips files whose names start
+      # with a dot unless told otherwise, and the archive holds every file.
+      # - name: Upload the site for release assets
+      #   if: github.ref_type == 'tag'
+      #   uses: actions/upload-artifact@v7
+      #   with:
+      #     name: html
+      #     path: _build/html
+      #     include-hidden-files: true
+      #     if-no-files-found: error
+      #     retention-days: 1
+
+      # ─── Upload ──────────────────────────────────────────────────
+      - name: Upload the site for GitHub Pages
         uses: quantecon/actions/publish-gh-pages@v0
         with:
+          mode: 'upload'            # The deploy job below deploys it
           build-dir: '_build/html'
           # Custom domain: set it in Settings → Pages (see Prerequisites).
           # The `cname` input just writes a CNAME file, which this deploy ignores.
 
-          # ─── Release Assets (optional) ───────────────────────────
-          # Create downloadable archives on tagged releases. As shipped,
-          # this file cannot; it needs three changes first:
-          #   1. A tag trigger. The action skips release assets (with a
-          #      warning) unless the run's ref is a tag, and this file
-          #      runs only on pushes to main and manual dispatch. Add,
-          #      e.g., `tags: ['publish*']` under `on.push`.
-          #   2. `contents: write` in the job's permissions above, which
-          #      grant only `contents: read`; the release upload needs it.
-          #   3. The tag pattern (e.g. `publish*`) allowed under Settings →
-          #      Environments → github-pages → Deployment branches and tags.
-          #      By default only the default branch may deploy there, so
-          #      environment protection rejects a tag run before it starts.
-          # create-release-assets: 'true'
-          # asset-name: 'lecture-python-html'
-          # github-token: ${{ secrets.GITHUB_TOKEN }}
+  # ─── Deploy ──────────────────────────────────────────────────────
+  # Deploys the build job's github-pages artifact to GitHub Pages. It is the
+  # only job that holds the Pages permissions, so it runs nothing but the
+  # deploy: no checkout, no container. It needs no GPU, so it stays on
+  # ubuntu-latest wherever the build job runs. It is skipped when the build
+  # job fails.
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+
+    permissions:
+      pages: write              # Required for GitHub Pages deployment
+      id-token: write           # Required for GitHub Pages OIDC
+
+    environment:
+      name: github-pages
+      url: ${{ steps.publish.outputs.page-url }}
+
+    steps:
+      - name: Publish to GitHub Pages
+        id: publish
+        uses: quantecon/actions/publish-gh-pages@v0
+        with:
+          mode: 'deploy'
+
+  # ─── Release Assets (optional) ───────────────────────────────────
+  # Attaches the site to the tag's GitHub release, as an archive, its
+  # checksum and a manifest, once the deploy has succeeded. It is a job of
+  # its own because the release upload needs contents: write, which neither
+  # job above should hold. As shipped, this file makes none; it needs four
+  # changes first:
+  #   1. A tag trigger. Add, e.g., `tags: ['publish*']` under `on.push`.
+  #   2. The tag pattern (e.g. `publish*`) allowed under Settings →
+  #      Environments → github-pages → Deployment branches and tags.
+  #      By default only the default branch may deploy there, so environment
+  #      protection rejects the deploy job on a tag run.
+  #   3. The build job's "Upload the site for release assets" step,
+  #      uncommented.
+  #   4. This job, uncommented. A site that passes `cname` to the upload
+  #      passes it here too, so that the archive holds the CNAME file.
+  #
+  # release-assets:
+  #   needs: [build, deploy]
+  #   if: github.ref_type == 'tag'
+  #   runs-on: ubuntu-latest
+  #
+  #   permissions:
+  #     contents: write         # Required for the release upload
+  #
+  #   steps:
+  #     - name: Download the site
+  #       uses: actions/download-artifact@v8
+  #       with:
+  #         name: html
+  #         path: _build/html
+  #
+  #     - name: Attach the site to the release
+  #       uses: quantecon/actions/publish-gh-pages@v0
+  #       with:
+  #         mode: 'release'
+  #         build-dir: '_build/html'
+  #         asset-name: 'lecture-python-html'
+  #         github-token: ${{ secrets.GITHUB_TOKEN }}

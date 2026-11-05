@@ -26,8 +26,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   skipped. `build-jupyter-cache` gets the same `error-outputs` input and passes it to each build.
   The new harness job `build-display-error-guard` stages a display-time error and a
   `raises-exception` control, and builds under each value. (#247)
+- **`publish-gh-pages`**: a `mode` input, so the upload, the deploy and the release assets can
+  each run in a job of their own, and only the job that deploys holds the Pages permissions
+  (finding M1 of the 2026-10-06 review). The action used to upload, deploy and release in one
+  composite step, so a caller had to grant `pages: write` and `id-token: write` to the job that
+  executed the notebooks. `all`, the default, is that behaviour, unchanged. `upload` uploads
+  `build-dir` as the run's `github-pages` artifact and needs only read access. `deploy` deploys
+  that artifact, from a later job of the same run, with `pages: write` and `id-token: write`, and
+  takes no `build-dir` or `cname`. `release` makes the release assets from `build-dir`, in a job
+  with `contents: write`, on a tag as before. `build-dir` is no longer a required input, since
+  `deploy` takes none. The action checks its inputs first, and fails before anything is uploaded
+  on an unknown mode, a missing `build-dir`, `build-dir` or `cname` with `deploy`,
+  `create-release-assets: 'true'` with `upload` or `deploy`, or an `asset-name` with a character
+  other than a letter, digit, `.`, `_` or `-`. A name with a backslash gave a checksum file that
+  `sha256sum --check` rejects; the eight consumers that make release assets all use names
+  inside that set. A new `mode` output gives the mode, and is empty when the inputs were
+  refused. The release assets are unchanged, except that the manifest's strings are now
+  escaped, so a tag with a `"`, which git allows, gives valid JSON, where it used to give a
+  manifest no parser could read. Their packing moved into `scripts/package-release-assets.sh`,
+  which the action runs. In CI, as decision 5 on
+  #143 asks, `publish-release-packaging` runs that script with a stand-in tag and checks each
+  part of the manual's contract: the file names, an archive of the whole site with `./` paths and
+  hidden files, a checksum that `sha256sum --check` accepts, and a manifest with exactly the
+  documented fields and types. `publish-modes` runs the action with `contents: read` alone. It
+  asserts that `upload` uploads the site, that `release` skips off a tag, and that each refused
+  combination fails with an empty `mode`, before anything is uploaded. A real deploy and a
+  release upload are the staged canary's to prove. (#233)
 
 ### Changed
+- **`templates/publish.yml`**: builds and deploys in separate jobs, as `ci.yml` does since #232.
+  `build` builds in the container with `contents: read` and ends with `publish-gh-pages`
+  `mode: upload`. `deploy` needs `build`, runs on `ubuntu-latest` with no checkout or container,
+  holds only `pages: write` and `id-token: write`, and runs `mode: deploy` in the `github-pages`
+  environment. The optional release assets move to a commented `release-assets` job with
+  `contents: write`, which runs `mode: release` on a tag once the deploy has succeeded. It takes
+  the site from an `html` artifact that a commented step in `build` uploads before the Pages
+  upload, hidden files included, so the archive holds what it did. The template needs the release
+  that adds `mode`: an earlier `@v0` ignores the input, and both jobs fail. (#233)
 - **`templates/ci.yml`, `templates/cache.yml`, `templates/publish.yml`**: the pull request preview
   is deployed from a job that runs no notebook code, and no template leaves the job's token in
   git's config for later steps (finding M1 of the 2026-10-06 review). Building the lectures runs

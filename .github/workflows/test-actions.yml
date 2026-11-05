@@ -144,10 +144,11 @@ jobs:
           DIRS=$(grep -oE '^[[:space:]]*uses: \./[A-Za-z0-9_-][A-Za-z0-9_.-]*' .github/workflows/test-actions.yml | sed 's|.*\./||' | sort -u)
           [ -n "$DIRS" ] || { echo "::error::gate self-test: no 'uses: ./<action>' found in the harness — refusing to decide"; exit 1; }
           # Listed by hand, since the loop below adds only each action's
-          # action.yml: the lockfiles, which preview-cli-install tests, and the
+          # action.yml: the lockfiles, which preview-cli-install tests, the
           # scripts the preview actions share, which preview-change-detection,
-          # preview-decide and preview-comment run on their own.
-          MUST_RUN=".github/workflows/test-actions.yml .github/fixtures/mini-lectures/environment.yml preview-cloudflare/package-lock.json preview-netlify/package-lock.json scripts/detect-changed-lectures.sh scripts/preview-decide.sh scripts/preview-comment.cjs"
+          # preview-decide and preview-comment run on their own, and
+          # publish-gh-pages' packing script, which publish-release-packaging runs.
+          MUST_RUN=".github/workflows/test-actions.yml .github/fixtures/mini-lectures/environment.yml preview-cloudflare/package-lock.json preview-netlify/package-lock.json scripts/detect-changed-lectures.sh scripts/preview-decide.sh scripts/preview-comment.cjs scripts/package-release-assets.sh"
           for d in $DIRS; do MUST_RUN="$MUST_RUN $d/action.yml"; done
           # The container-images job decides for itself which images to build,
           # but runs only when this gate says relevant: an IGNORED that matched
@@ -2664,6 +2665,305 @@ jobs:
           echo "✅ wrangler $("$wrangler" --version | tail -1) accepts the generated config for deploy and versions upload"
 
   # ==========================================================================
+  # publish-gh-pages — the release assets' contract, and the modes (#233)
+  # ==========================================================================
+  #
+  # A real Pages deploy needs the github-pages environment and Pages
+  # permissions, and a release needs a tag: none of that belongs in a pull
+  # request's run, so the deploy and the release upload are the staged
+  # canary's to prove. What these two jobs can check here is what the action
+  # packs, and how it reads its inputs.
+
+  publish-release-packaging:
+    # Decision 5 on #143: release-asset packaging is tested in this harness.
+    # The three files are a contract other tools rely on ("Release assets" in
+    # docs/user/actions/publish-gh-pages.md). The action packs only on a run
+    # triggered by a tag, which no run of this workflow is, so this job runs
+    # the packing script the action runs, scripts/package-release-assets.sh,
+    # with a stand-in tag, and checks each thing the manual promises: the file
+    # names, an archive of the whole site with paths relative to it, hidden
+    # files included, a checksum in sha256sum's format that verifies, and a
+    # manifest with exactly the documented fields, of the documented types,
+    # that parses whatever asset-name it is given. It also checks that a
+    # relative OUT_DIR works, and that an OUT_DIR inside the site, or a
+    # control character in a name, is refused before anything is written.
+    name: 'publish-gh-pages: release assets keep their documented names, layout, checksum and manifest'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Pack a site, and check the three files against the manual
+        run: |
+          set -euo pipefail
+          site="$RUNNER_TEMP/site"
+          out="$RUNNER_TEMP/assets"
+          mkdir -p "$site/sub" "$site/_static/.hidden" "$out"
+          echo '<h1>harness</h1>' > "$site/index.html"
+          echo '<p>nested</p>' > "$site/sub/page.html"
+          echo 'config: harness' > "$site/.buildinfo"
+          echo 'in a hidden directory' > "$site/_static/.hidden/file.txt"
+          # Measured as the action's prepare step measures them.
+          size_mb=$(du -sm "$site" | cut -f1)
+          count=$(find "$site" -type f | wc -l)
+
+          GITHUB_OUTPUT="$RUNNER_TEMP/pack.out" BUILD_DIR="$site" ASSET_NAME=harness-html \
+            TAG_NAME=publish-harness OUT_DIR="$out" COMMIT_SHA="$GITHUB_SHA" \
+            REPOSITORY="$GITHUB_REPOSITORY" SIZE_MB="$size_mb" FILE_COUNT="$count" \
+            bash scripts/package-release-assets.sh
+
+          bad=0
+          fail() { echo "::error::$*"; bad=1; }
+          archive=harness-html-publish-harness.tar.gz
+          checksum=harness-html-checksum.txt
+          manifest=harness-html-manifest.json
+
+          # The names, and the outputs the upload step reads.
+          got=$(ls "$out" | LC_ALL=C sort | paste -sd' ' -)
+          [ "$got" = "$checksum $manifest $archive" ] \
+            || fail "the script wrote [$got], not [$checksum $manifest $archive]"
+          for pair in "archive-name=$archive" "checksum-name=$checksum" "manifest-name=$manifest"; do
+            grep -qxF "${pair%%=*}=$out/${pair#*=}" "$RUNNER_TEMP/pack.out" \
+              || fail "no ${pair%%=*} output naming $out/${pair#*=}"
+          done
+
+          # The archive: the whole site, hidden files included, as ./ paths.
+          tar -tzf "$out/$archive" > "$RUNNER_TEMP/list"
+          grep -qx './index.html' "$RUNNER_TEMP/list" \
+            || fail "the archive has no ./index.html, so its paths are not relative to build-dir"
+          mkdir "$RUNNER_TEMP/unpacked"
+          tar -xzf "$out/$archive" -C "$RUNNER_TEMP/unpacked"
+          diff -r "$site" "$RUNNER_TEMP/unpacked" \
+            || fail "the archive does not hold exactly the site (diff above)"
+
+          # The checksum: one line, sha256sum's format, naming the archive alone.
+          line=$(cat "$out/$checksum")
+          if ! [[ "$line" =~ ^[0-9a-f]{64}\ \ (.*)$ ]] || [ "${BASH_REMATCH[1]}" != "$archive" ]; then
+            fail "the checksum file reads [$line], not '<sha256>  $archive'"
+          fi
+          ( cd "$out" && sha256sum --check --strict "$checksum" ) \
+            || fail "sha256sum --check fails on the checksum file"
+
+          # The manifest: exactly the documented fields, with their types and values.
+          jq -e --arg sha "$GITHUB_SHA" --arg repo "$GITHUB_REPOSITORY" \
+              --argjson size "$size_mb" --argjson count "$count" '
+                keys == ["commit", "file_count", "name", "repository", "size_mb", "tag", "timestamp"]
+                and .name == "harness-html" and .tag == "publish-harness"
+                and .commit == $sha and .repository == $repo
+                and (.size_mb | type) == "number" and .size_mb == $size
+                and (.file_count | type) == "number" and .file_count == $count
+                and (.timestamp | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$"))
+              ' "$out/$manifest" > /dev/null \
+            || { fail "the manifest does not match the manual's fields, types and values"; cat "$out/$manifest"; }
+
+          # An asset-name that JSON must escape: the manifest still parses,
+          # with the name intact. The action refuses such a name before this
+          # script runs (publish-modes checks that), since for a name with a
+          # backslash sha256sum writes an escaped checksum line that the
+          # runner's own sha256sum --check rejects. So this is the script's
+          # second line of defence, and its checksum is not checked here.
+          odd='harness "quoted" \ name'
+          mkdir "$RUNNER_TEMP/odd"
+          GITHUB_OUTPUT="$RUNNER_TEMP/odd.out" BUILD_DIR="$site" ASSET_NAME="$odd" TAG_NAME=publish-harness \
+            OUT_DIR="$RUNNER_TEMP/odd" COMMIT_SHA="$GITHUB_SHA" REPOSITORY="$GITHUB_REPOSITORY" \
+            SIZE_MB="$size_mb" FILE_COUNT="$count" bash scripts/package-release-assets.sh > /dev/null \
+            || fail "packing with asset-name [$odd] failed"
+          jq -e --arg name "$odd" '.name == $name' "$RUNNER_TEMP/odd/$odd-manifest.json" > /dev/null \
+            || fail "asset-name [$odd] gave a manifest that does not parse, or lost the name"
+
+          # An OUT_DIR given as a relative path: the checksum, written from
+          # inside it, lands beside the archive and verifies.
+          mkdir "$RUNNER_TEMP/rel"
+          ( cd "$RUNNER_TEMP" && GITHUB_OUTPUT="$RUNNER_TEMP/rel.out" BUILD_DIR="$site" ASSET_NAME=harness-rel \
+              TAG_NAME=publish-harness OUT_DIR=rel COMMIT_SHA="$GITHUB_SHA" REPOSITORY="$GITHUB_REPOSITORY" \
+              SIZE_MB="$size_mb" FILE_COUNT="$count" bash "$GITHUB_WORKSPACE/scripts/package-release-assets.sh" ) > /dev/null \
+            || fail "packing with a relative OUT_DIR failed"
+          ( cd "$RUNNER_TEMP/rel" && sha256sum --check --strict harness-rel-checksum.txt ) > /dev/null \
+            || fail "with a relative OUT_DIR, the checksum is not beside the archive, or does not verify"
+
+          # Refused, and nothing written: an OUT_DIR inside BUILD_DIR, where
+          # the archive would take in itself, and a control character that a
+          # manifest cannot hold.
+          for case in inside control; do
+            dir="$RUNNER_TEMP/out-$case" name=harness-html
+            if [ "$case" = inside ]; then dir="$site/_static"; else mkdir "$dir"; name=$'harness\x01html'; fi
+            before=$(find "$dir" | wc -l)
+            if GITHUB_OUTPUT="$RUNNER_TEMP/$case.out" BUILD_DIR="$site" ASSET_NAME="$name" TAG_NAME=publish-harness \
+                OUT_DIR="$dir" COMMIT_SHA="$GITHUB_SHA" REPOSITORY="$GITHUB_REPOSITORY" SIZE_MB="$size_mb" \
+                FILE_COUNT="$count" bash scripts/package-release-assets.sh > "$RUNNER_TEMP/$case.log" 2>&1; then
+              fail "$case: the script packed when it should have refused"
+            fi
+            [ "$(find "$dir" | wc -l)" -eq "$before" ] || fail "$case: the script refused, but wrote into $dir first"
+          done
+
+          [ "$bad" -eq 0 ] || exit 1
+          echo "✅ the release assets have the documented names, layout, checksum and manifest"
+
+  publish-modes:
+    # #233: mode splits the publish across jobs. Here, with contents: read
+    # alone, mode: upload must upload the site and nothing more. Every
+    # combination the action refuses must fail at its first step, so its
+    # mode output must be empty. Those cases run before the good upload: one
+    # that got as far as uploading would take the github-pages name, and the
+    # good upload would then fail on it. mode: release off a tag must skip,
+    # with a warning, and need no token.
+    name: 'publish-gh-pages: mode upload uploads with read access alone, and a mode it cannot carry out fails first'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Create a site
+        run: |
+          mkdir -p harness-site
+          echo '<h1>harness</h1>' > harness-site/index.html
+
+      - name: 'refused: an unknown mode'
+        id: bad-mode
+        continue-on-error: true
+        uses: ./publish-gh-pages
+        with:
+          mode: 'Upload'
+          build-dir: 'harness-site'
+
+      - name: 'refused: mode deploy with build-dir'
+        id: deploy-dir
+        continue-on-error: true
+        uses: ./publish-gh-pages
+        with:
+          mode: 'deploy'
+          build-dir: 'harness-site'
+
+      - name: 'refused: mode deploy with cname'
+        id: deploy-cname
+        continue-on-error: true
+        uses: ./publish-gh-pages
+        with:
+          mode: 'deploy'
+          cname: 'lectures.example.org'
+
+      - name: 'refused: mode deploy with create-release-assets'
+        id: deploy-release
+        continue-on-error: true
+        uses: ./publish-gh-pages
+        with:
+          mode: 'deploy'
+          create-release-assets: 'true'
+
+      - name: 'refused: mode upload without build-dir'
+        id: upload-nodir
+        continue-on-error: true
+        uses: ./publish-gh-pages
+        with:
+          mode: 'upload'
+
+      - name: 'refused: mode upload with create-release-assets'
+        id: upload-release
+        continue-on-error: true
+        uses: ./publish-gh-pages
+        with:
+          mode: 'upload'
+          build-dir: 'harness-site'
+          create-release-assets: 'true'
+
+      - name: 'refused: mode release without build-dir'
+        id: release-nodir
+        continue-on-error: true
+        uses: ./publish-gh-pages
+        with:
+          mode: 'release'
+
+      # Refused in mode upload too, before the upload, so a bad name shows
+      # before the first tag.
+      - name: 'refused: an asset-name with a backslash'
+        id: bad-asset-name
+        continue-on-error: true
+        uses: ./publish-gh-pages
+        with:
+          mode: 'upload'
+          build-dir: 'harness-site'
+          asset-name: 'harness\html'
+
+      - name: 'mode upload'
+        id: upload
+        continue-on-error: true
+        uses: ./publish-gh-pages
+        with:
+          mode: 'upload'
+          build-dir: 'harness-site'
+
+      - name: 'mode release, with no token'
+        id: release
+        continue-on-error: true
+        uses: ./publish-gh-pages
+        with:
+          mode: 'release'
+          build-dir: 'harness-site'
+
+      - name: Download what mode upload uploaded
+        id: download
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: github-pages
+          path: ${{ runner.temp }}/pages
+
+      - name: Assert each step did what its mode says, and refused ones did nothing
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          DOWNLOAD: ${{ steps.download.outcome }}
+          RESULTS: |
+            refused|bad-mode|${{ steps.bad-mode.outcome }}|${{ steps.bad-mode.outputs.mode }}|${{ steps.bad-mode.outputs.page-url }}
+            refused|deploy-dir|${{ steps.deploy-dir.outcome }}|${{ steps.deploy-dir.outputs.mode }}|${{ steps.deploy-dir.outputs.page-url }}
+            refused|deploy-cname|${{ steps.deploy-cname.outcome }}|${{ steps.deploy-cname.outputs.mode }}|${{ steps.deploy-cname.outputs.page-url }}
+            refused|deploy-release|${{ steps.deploy-release.outcome }}|${{ steps.deploy-release.outputs.mode }}|${{ steps.deploy-release.outputs.page-url }}
+            refused|upload-nodir|${{ steps.upload-nodir.outcome }}|${{ steps.upload-nodir.outputs.mode }}|${{ steps.upload-nodir.outputs.page-url }}
+            refused|upload-release|${{ steps.upload-release.outcome }}|${{ steps.upload-release.outputs.mode }}|${{ steps.upload-release.outputs.page-url }}
+            refused|release-nodir|${{ steps.release-nodir.outcome }}|${{ steps.release-nodir.outputs.mode }}|${{ steps.release-nodir.outputs.page-url }}
+            refused|bad-asset-name|${{ steps.bad-asset-name.outcome }}|${{ steps.bad-asset-name.outputs.mode }}|${{ steps.bad-asset-name.outputs.page-url }}
+            upload|upload|${{ steps.upload.outcome }}|${{ steps.upload.outputs.mode }}|${{ steps.upload.outputs.page-url }}
+            release|release|${{ steps.release.outcome }}|${{ steps.release.outputs.mode }}|${{ steps.release.outputs.page-url }}
+        run: |
+          set -euo pipefail
+          bad=0 n=0
+          while IFS='|' read -r want id outcome mode url; do
+            [ -n "$want" ] || continue
+            n=$((n + 1))
+            case "$want" in
+              refused) expect="failure|" ;;
+              upload) expect="success|upload" ;;
+              # Off a tag it skips with a warning. On a tag, a dispatch of this
+              # workflow, it gets as far as the token check, and fails there.
+              release) if [ "$REF_TYPE" = tag ]; then expect="failure|release"; else expect="success|release"; fi ;;
+            esac
+            if [ "$outcome|$mode" != "$expect" ] || [ -n "$url" ]; then
+              echo "::error::$id: expected outcome and mode [$expect] and no page-url, got [$outcome|$mode] and page-url [$url]"
+              bad=1
+            else
+              echo "✓ $id: outcome=$outcome mode=${mode:-(refused before anything ran)}"
+            fi
+          done <<< "$RESULTS"
+          [ "$n" -eq 10 ] || { echo "::error::expected 10 cases, read $n"; exit 1; }
+
+          [ "$DOWNLOAD" = success ] \
+            || { echo "::error::no github-pages artifact to download, so mode upload uploaded nothing"; exit 1; }
+          tar -tf "$RUNNER_TEMP/pages/artifact.tar" | grep -qx './index.html' \
+            || { echo "::error::the github-pages artifact holds no ./index.html"; tar -tf "$RUNNER_TEMP/pages/artifact.tar" || true; exit 1; }
+
+          [ "$bad" -eq 0 ]
+          echo "✅ mode upload uploaded the site with contents: read alone, mode release skipped off a tag, and every refused combination failed before anything ran"
+
+  # ==========================================================================
   # preview-* — the pinned CLIs and the deploy decision (a real deploy needs
   # provider secrets, so none succeeds here)
   # ==========================================================================
@@ -3276,6 +3576,8 @@ jobs:
       - dc-inputs
       - dc-wrangler-config
       - dc-refuses-mismatch
+      - publish-release-packaging
+      - publish-modes
       - preview-cli-install
       - preview-change-detection
       - preview-decide

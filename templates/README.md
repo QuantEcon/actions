@@ -16,7 +16,7 @@ Reference GitHub Actions workflows for QuantEcon lecture repositories. Copy thes
 |----------|---------|---------|
 | [ci.yml](ci.yml) | Pull requests | Restore cache → incremental build, then a Netlify preview from its own job, and a PDF check |
 | [cache.yml](cache.yml) | Weekly / manual / env change | Full build → save cache for CI and publish |
-| [publish.yml](publish.yml) | Push to main | Restore cache → build → deploy to GitHub Pages |
+| [publish.yml](publish.yml) | Push to main | Restore cache → build, then a GitHub Pages deploy from its own job |
 
 Also here: [latex-requirements.txt](latex-requirements.txt), an example LaTeX package list for PDF builds on a standard runner (see [Using a Standard Runner](#using-a-standard-runner-no-container)).
 
@@ -54,12 +54,20 @@ Runs weekly on Sunday, on manual dispatch, and when `environment.yml` changes on
 
 ### [publish.yml](publish.yml) — GitHub Pages Deployment
 
-Runs on push to `main`. Restores the build cache, builds HTML, and deploys to GitHub Pages using native deployment (no `gh-pages` branch needed).
+Runs on push to `main`. Restores the build cache, builds HTML, and deploys to GitHub Pages using native deployment (no `gh-pages` branch needed), in two jobs, with a third for release assets:
+
+| Job | What it does | What it holds |
+|---|---|---|
+| `build` | Restores the build cache, builds the site, and uploads it as the run's `github-pages` artifact (`publish-gh-pages` with `mode: upload`) | `contents: read` |
+| `deploy` | Deploys that artifact to GitHub Pages (`mode: deploy`), in the `github-pages` environment | `pages: write`, `id-token: write` |
+| `release-assets` (commented) | On a tag, attaches the site to the tag's release (`mode: release`) | `contents: write` |
+
+The split is the one `ci.yml` makes, for the same reason: the build runs notebook code, so the Pages permissions, and the release's `contents: write`, are each held only by a job that runs nothing else. See [Why the preview deploys from its own job](#why-the-preview-deploys-from-its-own-job).
 
 **Key features:**
-- Native GitHub Pages deployment (OIDC, no tokens)
+- Native GitHub Pages deployment (OIDC, no tokens), from a job that runs no notebook code
 - Custom domain via Settings → Pages (the `cname` input has no effect on this deploy)
-- Optional release asset creation for tagged releases
+- Optional release asset creation for tagged releases, in a job of its own
 - Optional PDF and notebook download staging
 
 ## How They Work Together
@@ -79,16 +87,16 @@ Runs on push to `main`. Restores the build cache, builds HTML, and deploys to Gi
 ┌─────────────────────┐ ┌─────────────────────────────────┐
 │  ci.yml (PRs)       │ │  publish.yml (push to main)     │
 │                     │ │                                 │
-│  build:             │ │  restore cache                  │
-│   restore cache     │ │  build HTML                     │
-│   build HTML        │ │  deploy to GitHub Pages         │
-│   upload site and   │ │                                 │
-│   exec cache        │ │                                 │
-│  then side by side: │ │                                 │
-│   ├─ deploy:        │ │                                 │
-│   │   Netlify       │ │                                 │
-│   │   preview       │ │                                 │
-│   └─ pdf-check:     │ │                                 │
+│  build:             │ │  build:                         │
+│   restore cache     │ │   restore cache                 │
+│   build HTML        │ │   build HTML                    │
+│   upload site and   │ │   upload site                   │
+│   exec cache        │ │  then deploy:                   │
+│  then side by side: │ │   deploy to GitHub Pages        │
+│   ├─ deploy:        │ │  then, optional, on a tag:      │
+│   │   Netlify       │ │   release-assets:               │
+│   │   preview       │ │    attach the site to           │
+│   └─ pdf-check:     │ │    the tag's release            │
 │       build PDF     │ │                                 │
 └─────────────────────┘ └─────────────────────────────────┘
 ```
@@ -152,7 +160,7 @@ To run `pdf-check` again, use **Re-run all jobs** once the hand-off artifact has
 
 ### Using a Standard Runner (No Container)
 
-Remove the `container:` block from each job that has one and uncomment the standard runner `with:` block under `setup-environment`. See comments in each template. `ci.yml`'s `deploy` job already runs on a standard runner.
+Remove the `container:` block from each job that has one and uncomment the standard runner `with:` block under `setup-environment`. See comments in each template. The `deploy` jobs in `ci.yml` and `publish.yml`, and `publish.yml`'s `release-assets` job, already run on a standard runner.
 
 A `pdflatex` build on a standard runner installs LaTeX from `latex-requirements.txt` at the repository root, and fails if that file is missing. Copy [latex-requirements.txt](latex-requirements.txt) there to start: it lists the TeX packages and build tools the two container images have in common.
 
