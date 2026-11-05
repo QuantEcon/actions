@@ -6,6 +6,14 @@ The actions are built for QuantEcon's lecture repositories, and are on 0.x, wher
 
 > This describes `main`. For the version you pin, open the manual at that tag. Changes not yet released are under `[Unreleased]` in the [CHANGELOG](https://github.com/QuantEcon/actions/blob/main/CHANGELOG.md).
 
+## Guides
+
+- [Getting started](getting-started.md): setting up a lecture repository with the workflow templates, and moving an existing one onto the actions.
+- [How the actions compose](composition.md): the chain from the cache build to a preview or publish, and what passes between the steps.
+- [Containers](containers.md): the two images, what is in them, when they change, and how to pin one.
+- [Versioning](versioning.md): `@v0` against an exact release, and how a release reaches your repository.
+- [Security](security.md): fork pull requests, secrets, and what each job of the templates can reach.
+
 ## Actions
 
 A workflow step uses an action as `quantecon/actions/<action>@v0`.
@@ -25,10 +33,6 @@ A workflow step uses an action as `quantecon/actions/<action>@v0`.
 
 <!-- END GENERATED -->
 
-## Other guides
-
-- [Workflow templates](https://github.com/QuantEcon/actions/tree/main/templates): the standard CI, cache and publish workflows for a lecture repository.
-- [Container guide](../CONTAINER-GUIDE.md): the two images, and moving a workflow onto them.
-- [Migration guide](../MIGRATION-GUIDE.md): moving a lecture repository onto these actions.
+The [workflow templates](https://github.com/QuantEcon/actions/tree/main/templates) are the standard cache, CI and publish workflows for a lecture repository; [Getting started](getting-started.md) walks through them.
 
 How the project itself is designed, tested and maintained is in the [developer docs](../dev/README.md).

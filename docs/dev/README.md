@@ -6,6 +6,7 @@ How QuantEcon Actions is designed, tested and maintained. For using the actions,
 |---|---|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | The design: containers, composite actions and two-layer caching |
 | [TESTING.md](TESTING.md) | The action harness, local fixtures and how changes are validated |
+| [CONTAINERS.md](CONTAINERS.md) | Building, testing and updating the two container images |
 | [CONTAINER-VALIDATION.md](CONTAINER-VALIDATION.md) | Lecture-repo builds on both container images |
 | [GPU-AMI-SETUP.md](GPU-AMI-SETUP.md) | Building the RunsOn GPU AMI |
 | [PLAN.md](PLAN.md) | Priorities, backlog, dependency policy, consumers and rollout |

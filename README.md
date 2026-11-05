@@ -1,214 +1,33 @@
 # QuantEcon Actions
 
-Reusable composite GitHub Actions for building QuantEcon lecture repositories.
+Composite GitHub Actions, workflow templates and container images that build, preview and publish QuantEcon's lecture sites. One weekly cache build executes every lecture, so pull-request and publish builds re-execute only the lectures that changed.
 
-## Overview
-
-This repository provides a set of composite actions that standardize and optimize the build process for QuantEcon lecture websites. These actions include intelligent caching strategies that significantly reduce build times.
-
-**Status:** Stable; current release `v0.12.0` (see the [CHANGELOG](./CHANGELOG.md)).
-
-📋 **See:** [docs/CONTAINER-GUIDE.md](./docs/CONTAINER-GUIDE.md) for quick start, [docs/dev/ARCHITECTURE.md](./docs/dev/ARCHITECTURE.md) for design overview.
-
-## Available Actions
-
-### 🚀 [`setup-environment`](./setup-environment) **[Recommended]**
-**Flexible environment setup** with optional Conda, LaTeX, and ML libraries.
-
-**Time Savings:** ~5-6 minutes per run (container mode or cached Conda)
-
-**Features:**
-- **Container-aware**: Auto-detects QuantEcon container and optimizes setup
-- Single action replaces both `setup-lecture-env` and `setup-latex`
-- Conda environment caching for fast restores
-- Simplified workflow configuration
-
-### 📚 [`build-lectures`](./build-lectures)
-Builds Jupyter Book lectures (HTML, PDF, notebooks) with unified error handling.
-
-**Features:** Multi-format builds, asset assembly (PDF/notebooks into HTML), execution reports on failure
-
-### 🌐 [`preview-netlify`](./preview-netlify)
-Deploys preview builds to Netlify for pull requests with smart PR comments.
-
-**Features:** Automatic changed-file detection, PR preview URLs, security-aware (skips forks)
-
-### ☁️ [`preview-cloudflare`](./preview-cloudflare)
-Deploys preview builds to Cloudflare Pages for pull requests.
-
-**Features:** Free for public & private repos, predictable URLs (`pr-N.project.pages.dev`), changed lecture detection, smart PR comments
-
-### 🔒 [`deploy-cloudflare`](./deploy-cloudflare)
-Publishes members-only sites to a Cloudflare Worker behind Cloudflare Access, from `push`, `schedule` or `workflow_dispatch`.
-
-**Features:** Proves the site is gated before and after every deploy (an anonymous request must redirect to your Access team's login) and refuses to upload otherwise, optional permanent preview alias per build, pinned wrangler, job-summary report
-
-### 🚀 [`publish-gh-pages`](./publish-gh-pages)
-Publishes production builds to GitHub Pages using native artifact-based deployment.
-
-**Features:** Native GitHub Pages deployment (no gh-pages branch), optional release assets; custom domains are set in Settings → Pages
-
-### 💾 [`build-jupyter-cache`](./build-jupyter-cache)
-Weekly cache generation for main branch builds.
-
-**Features:** Multi-format builds (html, pdflatex, jupyter), validates all builds pass before saving, creates GitHub issues on failure, unique cache keys for safe updates
-
-### 📥 [`restore-jupyter-cache`](./restore-jupyter-cache)
-Cache restore for PR workflows.
-
-**Features:** Read-only by default (optional `save-cache` saves a PR-scoped cache, which cannot affect `main` or other PRs), prefix matching for latest cache, detailed status logging, optional `fail-on-miss`
-
-## Quick Start
-
-### Example: CI Workflow with Cache
-
-```yaml
-name: Build Preview
-on: [pull_request]
-
-jobs:
-  preview:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/quantecon/quantecon-build:latest
-    permissions:
-      contents: read
-      pull-requests: write  # preview-netlify's PR comment
-      packages: read
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      
-      # Restore cache from main branch builds
-      - uses: quantecon/actions/restore-jupyter-cache@v0
-        with:
-          cache-type: 'build'
-      
-      # Build (uses restored cache for incremental build)
-      - uses: quantecon/actions/build-lectures@v0
-        id: build
-      
-      - uses: quantecon/actions/preview-netlify@v0
-        with:
-          netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
-          build-dir: ${{ steps.build.outputs.build-path }}
-```
-
-### Example: Cache Generation Workflow
-
-Run weekly on main branch to generate cache for PRs:
-
-```yaml
-name: Build Cache
-on:
-  schedule:
-    - cron: '0 2 * * 1'  # Weekly Monday 2am UTC
-  workflow_dispatch:
-
-jobs:
-  cache:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/quantecon/quantecon:latest
-    permissions:
-      contents: read
-      issues: write
-      packages: read
-    steps:
-      - uses: actions/checkout@v7
-      
-      - uses: quantecon/actions/build-jupyter-cache@v0
-        with:
-          builders: 'html'
-          create-issue-on-failure: true
-```
-
-### Example: Standard Mode (No Container)
-
-For projects with custom environment.yml that need full control:
-
-```yaml
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      
-      - uses: quantecon/actions/setup-environment@v0
-        with:
-          python-version: '3.13'
-          environment: 'environment.yml'  # Full installation from scratch
-          install-latex: 'true'
-          latex-requirements-file: 'latex-requirements.txt'
-      
-      - uses: quantecon/actions/build-lectures@v0
-```
-
-## Performance Architecture
-
-### Container-Based Setup
-- Pre-built container images with LaTeX and Python environment
-- `ghcr.io/quantecon/quantecon:latest` - Full image (8.60 GB on disk, 3.33 GB compressed pull)
-- `ghcr.io/quantecon/quantecon-build:latest` - Lean image (7.32 GB on disk, 2.93 GB compressed pull); drops the full Anaconda metapackage, so it's only modestly smaller
-- Setup time: ~2-3 minutes (container pull + lecture-specific packages)
-- No scheduled rebuilds: an image changes only through a reviewed pull request, which builds and tests it before `:latest` moves. The Ubuntu 24.04 base is pinned by digest, so OS updates arrive when that pin moves, through a Dependabot pull request each time Canonical republishes the base (every few weeks). What this leaves unpinned for an exact rebuild is [#129](https://github.com/QuantEcon/actions/issues/129)
-
-### Jupyter Book Execution Caching
-Use `build-jupyter-cache` and `restore-jupyter-cache` actions for execution caching:
-
-| Scenario | Build Time | Details |
-|----------|-----------|---------|
-| Full build (no cache) | ~17 minutes | All notebooks executed |
-| Incremental build (cached) | ~3-4 minutes | Only changed notebooks executed |
-| Time saved | **~13 minutes** | ~80% reduction |
-
-**How it works:**
-1. Weekly `build-jupyter-cache` runs on main branch (e.g., Monday 2am UTC)
-2. PR workflows use `restore-jupyter-cache` to get the cached execution state
-3. Jupyter Book only re-executes notebooks that have changed since the cache
-
-## Usage by Repository
-
-The lecture repositories that consume these actions are tracked centrally in [QuantEcon/meta#321](https://github.com/QuantEcon/meta/issues/321) (avoids maintaining a duplicate list here).
-
-## Versioning
-
-We're in the `0.x` development phase (pre-1.0.0). Reference the actions with:
-
-- `@v0` - Latest `0.x` release (recommended; floating tag, moved to each new release)
-- `@v0.8.0` - Specific version (maximum reproducibility)
-- `@main` - Latest development (use for testing only)
-
-> ⚠️ During `0.x`, minor releases (`0.x.0`) may include breaking changes, so the floating
-> `@v0` tag can move across a breaking change. Pin to an exact `@v0.x.y` tag if you need
-> a guaranteed-stable reference. Floating major tags (`@v1`, `@v2`) will be introduced
-> after the 1.0.0 release.
+The actions are built for QuantEcon's lecture repositories, and are on 0.x, where a minor release can change what an action does. Using them elsewhere is fine, but unsupported. Releases are listed in the [CHANGELOG](CHANGELOG.md) and on the [releases page](https://github.com/QuantEcon/actions/releases); `@v0` follows the latest.
 
 ## Documentation
 
-- **[docs/user/](./docs/user/README.md)** - User manual: what each action does, how to set it up, and every input and output
-- **[docs/CONTAINER-GUIDE.md](./docs/CONTAINER-GUIDE.md)** - Quick start with containers
-- **[docs/MIGRATION-GUIDE.md](./docs/MIGRATION-GUIDE.md)** - Migrating lecture repositories
-- **[docs/dev/](./docs/dev/README.md)** - Developer docs: design, testing, container validation, the GPU AMI, and the work plan
+**The [user manual](docs/user/README.md)** covers using the actions. Its [index](docs/user/README.md#actions) lists every action, each has a chapter with every input and output, and a step uses one as `quantecon/actions/<action>@v0`. These guides cover the rest:
 
-## Getting Started
+- [Getting started](docs/user/getting-started.md): setting up a lecture repository with the [workflow templates](templates/), and moving an existing one onto the actions.
+- [How the actions compose](docs/user/composition.md): the chain from the cache build to a preview or publish.
+- [Containers](docs/user/containers.md): the two images, `ghcr.io/quantecon/quantecon` and `ghcr.io/quantecon/quantecon-build`.
+- [Versioning](docs/user/versioning.md): `@v0` against an exact release.
+- [Security](docs/user/security.md): fork pull requests, secrets, and what each job can reach.
 
-See [docs/MIGRATION-GUIDE.md](./docs/MIGRATION-GUIDE.md) for step-by-step instructions on migrating a lecture repository to use these actions.
+**The [developer docs](docs/dev/README.md)** cover how the project is designed, tested and maintained, and the work plan.
 
-## Testing
+## Who uses them
 
-See [docs/dev/TESTING.md](./docs/dev/TESTING.md) for our testing strategy and validation procedures.
+The lecture repositories that use these actions are tracked in [QuantEcon/meta#321](https://github.com/QuantEcon/meta/issues/321), and the versions they pin in the [work plan](docs/dev/PLAN.md#consumers-in-production).
 
 ## Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for the development workflow, how to test a change by pointing a lecture repository at your branch, and the release steps, including moving the floating `v0` tag.
+[CONTRIBUTING.md](CONTRIBUTING.md) covers the development workflow, testing a change from a lecture repository, and the release steps, including the staged release and moving `v0`.
 
 ## License
 
-MIT License - see LICENSE file for details
+MIT: see [LICENSE](LICENSE).
 
 ## Support
 
-For issues or questions, please open an issue in this repository or contact the QuantEcon development team.
+Open an issue in this repository. To report a security vulnerability, follow [SECURITY.md](SECURITY.md) instead.

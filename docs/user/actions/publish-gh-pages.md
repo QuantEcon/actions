@@ -257,7 +257,7 @@ A repository that publishes by pushing to a branch, with peaceiris/actions-gh-pa
 5. Set the custom domain under **Settings**, **Pages**: a `CNAME` file in the site no longer applies.
 6. Once the new deploy is live, delete the `gh-pages` branch, if you like, to shrink the repository.
 
-The [migration guide](../../MIGRATION-GUIDE.md) moves a whole lecture repository onto these actions, publishing included.
+[Migrating an existing repository](../getting-started.md#migrating-an-existing-repository) moves a whole lecture repository onto these actions, publishing included.
 
 ## Troubleshooting
 

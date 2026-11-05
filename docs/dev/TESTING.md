@@ -362,6 +362,6 @@ Track before/after migration:
 
 ## See Also
 
-- [docs/CONTAINER-GUIDE.md](../CONTAINER-GUIDE.md) - Container usage
-- [docs/MIGRATION-GUIDE.md](../MIGRATION-GUIDE.md) - Migration steps
+- [Containers](../user/containers.md) - Container usage
+- [Getting started](../user/getting-started.md) - Setting up and migrating a lecture repository
 - [containers/quantecon/README.md](../../containers/quantecon/README.md) - Container details
