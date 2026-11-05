@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **`templates/ci.yml`**: a new `pdf-check` job builds the PDF on every pull request and fails
+  its checks when the LaTeX build fails. Malformed LaTeX can pass the HTML build and still break
+  the PDF build, and with it the publish, and previews are moving to HTML only (#148). The job
+  starts when the preview job has finished, so the preview link never waits for it, and builds
+  from the `_build/.jupyter_cache` the preview job uploads as an artifact, so it executes no
+  notebooks and needs no GPU runner. A site that publishes no PDF sets `PDF_CHECK: 'false'` in the
+  workflow's `env:` block, and the job is reported as skipped. The switch is in the file, not a
+  repository variable, because a run for a fork's pull request does not receive repository
+  variables. Harness jobs run the hand-off on the fixture in the lean image, through the
+  template's switch, and check that `PDF_CHECK: 'false'` skips both the upload and the job.
+  (#230)
+
 ## [0.13.0] - 2026-11-05
 
 ### Changed
