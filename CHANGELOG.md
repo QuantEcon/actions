@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+- **Developer docs** (#178): `docs/dev` describes the project as it is. `ARCHITECTURE.md` is the
+  current design: the parts, and why the actions are composite, the environment an image, the
+  caches keyed as they are, deploys kept in jobs of their own, installs pinned, inputs passed
+  through `env:`, failures alerted and the manual generated. The pitch, the performance targets,
+  the migration plan, the resolved questions and the success criteria are gone. `TESTING.md` is
+  how testing works now: the harness's gate and summary, its fixtures, what each action's jobs
+  cover, the container checks, the canary, local checks, and what nothing covers. It said the
+  preview actions and `publish-gh-pages` had no tests, which the harness's `preview-*`,
+  `publish-release-packaging` and `publish-modes` jobs had made untrue. `PLAN.md` keeps the
+  current state, consumers, open priorities, dependency policy, open issues and rollout, and
+  drops the closed items and the history. A root `AGENTS.md`, which Copilot code review and other
+  agents read, replaces `.github/copilot-instructions.md`, pointing at `docs/dev` instead of
+  repeating it. No container size is written into the docs any more: `CONTAINER-VALIDATION.md`,
+  like the user manual, points at each `Test Container` run's size report (#201). `tests/README.md`
+  and CONTRIBUTING's doc-update table follow. (#192)
+
 ## [0.15.0] - 2026-11-05
 
 ### Added

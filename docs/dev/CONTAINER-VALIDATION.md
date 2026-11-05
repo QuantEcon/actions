@@ -16,10 +16,12 @@ Both run only after a build has already moved `:latest`. Before that, a pull req
 
 ## Containers
 
-| Container | Image | Size | Description |
-|-----------|-------|------|-------------|
-| **quantecon** (full) | `ghcr.io/quantecon/quantecon:latest` | 3.33 GB compressed, 8.60 GB on disk | Full Anaconda + TexLive |
-| **quantecon-build** (lean) | `ghcr.io/quantecon/quantecon-build:latest` | 2.93 GB compressed, 7.32 GB on disk | Miniconda + explicit package list (no Anaconda metapackage) + the same TexLive minus `texlive-luatex` |
+| Container | Image | Description |
+|-----------|-------|-------------|
+| **quantecon** (full) | `ghcr.io/quantecon/quantecon:latest` | Full Anaconda + TexLive |
+| **quantecon-build** (lean) | `ghcr.io/quantecon/quantecon-build:latest` | Miniconda + explicit package list (no Anaconda metapackage) + the same TexLive minus `texlive-luatex` |
+
+Each [`Test Container`](https://github.com/QuantEcon/actions/actions/workflows/test-container.yml) run reports both images' sizes, compressed and on disk, in the summaries of its `Image size` jobs.
 
 ## Lecture Repositories
 
