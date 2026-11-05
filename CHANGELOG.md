@@ -20,6 +20,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   template's switch, and check that `PDF_CHECK: 'false'` skips both the upload and the job.
   (#230)
 
+### Fixed
+- **`preview-netlify`, `preview-cloudflare`**: the comment's changed lectures, and the
+  `changed-files` output, are the lectures the pull request added or modified.
+  `scripts/detect-changed-lectures.sh` compared the base branch's tip with the head
+  (`BASE..HEAD`), so every lecture changed on the base branch after the pull request branched off
+  was listed too. It now compares from the merge base (`BASE...HEAD`), which the checkout must
+  have:
+  - A checkout with `fetch-depth: 0` has it, and nothing is fetched. The script used to fetch the
+    two commits on every run.
+  - In a shallow checkout the fetch is now bounded (#147). Fetching the two commits with no depth,
+    as the script did, pulled their entire history into a depth-1 checkout. It now fetches 64
+    commits behind each, and deepens, doubling, until it finds the merge base. If it has not
+    found it 1,024 commits behind each, it warns and compares from the base branch's tip, as
+    before. `--depth` is used only for a commit the checkout lacks: on one it has, it cuts the
+    history behind it to that depth. The fetches skip git's automatic maintenance, which runs in
+    the background and can rewrite `.git/shallow` during the next deepen, making git abort it.
+  - A git failure is a warning carrying git's own message. Every git call ended in
+    `2>/dev/null || true` or `|| echo ""`, so a failure listed no lectures without a word. It
+    still never fails the step: the deploy is worth more than the links.
+
+  A second, per-file `git diff`, which repeated the first comparison, is gone. A new harness job,
+  `preview-change-detection`, runs the script against a scratch repository checked out as
+  `actions/checkout` checks out a pull request: in full, and 1, 2 and 50 commits deep, with a
+  rename, a merge base just inside the cap and one past it, a remote that cannot be fetched from,
+  and no repository at all. (#215)
+
 ## [0.13.0] - 2026-11-05
 
 ### Changed

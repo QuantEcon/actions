@@ -23,7 +23,7 @@ Use it in a pull request's build job, after [`build-lectures`](build-lectures.md
 - **Node.** 22 or later, which the pinned `wrangler` needs. The QuantEcon images carry Node 24. On a standard runner, set it up before this action with `actions/setup-node`, as in [preview-netlify's example](preview-netlify.md#on-a-standard-runner).
 - **Permissions.** `pull-requests: write`, for the comment. The job also needs `contents: read` for `actions/checkout`.
 - **Secrets.** `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, from [Setting up Cloudflare Pages](#setting-up-cloudflare-pages).
-- **Files in your repository.** None beyond the built site. The comment's lecture links need the pull request's base and head commits, which the action fetches if the checkout lacks them.
+- **Files in your repository.** None beyond the built site. The comment's lecture links compare the pull request's head with the commit where it branched off its base branch. A checkout with `fetch-depth: 0` has that commit, and nothing is fetched. From a shallow checkout, such as `actions/checkout`'s default of one commit, the action fetches history until it finds it, up to 1,024 commits behind the pull request's base and head: see [preview-netlify's Behaviour](preview-netlify.md#behaviour).
 - **Setup outside GitHub.** A Cloudflare Pages project, once: see [Setting up Cloudflare Pages](#setting-up-cloudflare-pages).
 
 ## Setting up Cloudflare Pages
@@ -59,7 +59,7 @@ The previews then appear at:
 | `cloudflare-account-id` | yes | none | The ID of the Cloudflare account that owns the Pages project, from a repository secret such as `secrets.CLOUDFLARE_ACCOUNT_ID`. |
 | `project-name` | yes | none | The Cloudflare Pages project to deploy to, which must already exist. Its name is part of every preview URL, as in `<project-name>.pages.dev`. |
 | `build-dir` | yes | none | The directory that holds the built site, such as `_build/html`, which `build-lectures` gives in its `build-path` output. |
-| `lectures-dir` | no | `lectures` | The directory of lecture `.md` files that change detection looks in, as a path from the repository root such as `lectures`, with no `./` or trailing slash: each lecture that differs from the base branch gets a link in the comment, and is listed in `changed-files`. Empty turns change detection off, and the comment gives only the preview URL. |
+| `lectures-dir` | no | `lectures` | The directory of lecture `.md` files that change detection looks in, as a path from the repository root such as `lectures`, with no `./` or trailing slash: each lecture the pull request added or modified gets a link in the comment, and is listed in `changed-files`. Empty turns change detection off, and the comment gives only the preview URL. |
 
 <!-- END GENERATED -->
 
@@ -71,7 +71,7 @@ The previews then appear at:
 |---|---|
 | `deploy-url` | The pull request's preview URL, `https://pr-<number>.<project-name>.pages.dev`, which always shows its newest push, so use it for anything a person will follow. Empty when nothing was deployed: on an event other than `pull_request`, and for a pull request from a fork or by Dependabot. |
 | `deployment-url` | The URL of this one deployment, `https://<hash>.<project-name>.pages.dev`, which goes on showing this push after later ones. Empty when wrangler's output does not name it, and when nothing was deployed. |
-| `changed-files` | The lecture files under `lectures-dir` that were added or modified between the tip of the pull request's base branch and its head, one path per line, so a lecture changed on the base branch since the pull request branched off is listed too. Empty when there are none, with `lectures-dir: ''`, on an event other than `pull_request`, and for a pull request from a fork or by Dependabot. |
+| `changed-files` | The lecture files under `lectures-dir` that the pull request added or modified, one path per line, compared from the commit where it branched off. When a shallow checkout's history does not reach that commit within 1,024 commits, the comparison starts from the base branch's tip instead, with a warning, so a lecture changed only on the base branch is listed too. When git fails, the action warns and lists none. Empty when there are none, with `lectures-dir: ''`, on an event other than `pull_request`, and for a pull request from a fork or by Dependabot. |
 
 <!-- END GENERATED -->
 
@@ -115,7 +115,7 @@ jobs:
 ## Behaviour
 
 1. **Who gets a preview.** A run by Dependabot, or for a pull request from a fork, stops here: it prints `⚠️ Cloudflare deployment skipped (untrusted actor or fork PR)`, deploys nothing, and passes.
-2. **Changed lectures.** On a `pull_request` event with `lectures-dir` set, the action lists the lectures that differ between the pull request's base, which is the tip of its base branch, and its head, by the same rules as [preview-netlify](preview-netlify.md#behaviour). That includes a lecture changed on the base branch since the pull request branched off ([#215](https://github.com/QuantEcon/actions/issues/215)).
+2. **Changed lectures.** On a `pull_request` event with `lectures-dir` set, the action lists the lectures the pull request added or modified, compared from the commit where it branched off its base branch, by the same rules as [preview-netlify](preview-netlify.md#behaviour). That section also says how much history a shallow checkout fetches, and what the action does when git fails.
 3. **The CLI.** The `wrangler` version pinned in the action's [`package.json`](https://github.com/QuantEcon/actions/blob/main/preview-cloudflare/package.json) is installed with `npm ci`, into a temporary directory, and its `wrangler` command is added to the `PATH` of the job's later steps.
 4. **The deploy**, on `pull_request` events only:
 

@@ -38,7 +38,7 @@ Both deploy the files `build-lectures` built, with no build on the provider's si
 - **Node.** 22.13 or later, which the pinned `netlify-cli` needs. The QuantEcon images carry Node 24. On a standard runner, set it up before this action with `actions/setup-node`; see [On a standard runner](#on-a-standard-runner).
 - **Permissions.** `pull-requests: write`, for the comment. The job also needs `contents: read` for `actions/checkout`.
 - **Secrets.** `NETLIFY_AUTH_TOKEN` and `NETLIFY_SITE_ID`, from [Setting up Netlify](#setting-up-netlify).
-- **Files in your repository.** None beyond the built site. The comment's lecture links need the pull request's base and head commits, which the action fetches if the checkout lacks them.
+- **Files in your repository.** None beyond the built site. The comment's lecture links compare the pull request's head with the commit where it branched off its base branch. A checkout with `fetch-depth: 0` has that commit, and nothing is fetched. From a shallow checkout, such as `actions/checkout`'s default of one commit, the action fetches history until it finds it, up to 1,024 commits behind the pull request's base and head: see [Behaviour](#behaviour).
 - **Setup outside GitHub.** A Netlify project, once: see [Setting up Netlify](#setting-up-netlify).
 
 ## Setting up Netlify
@@ -76,7 +76,7 @@ All three settings are in the project's configuration:
 | `netlify-auth-token` | yes | none | A Netlify personal access token, from a repository secret such as `secrets.NETLIFY_AUTH_TOKEN`. It reaches `netlify-cli` through the environment, never on its command line. |
 | `netlify-site-id` | yes | none | The ID of the Netlify site to deploy to, from a repository secret such as `secrets.NETLIFY_SITE_ID`. |
 | `build-dir` | yes | none | The directory that holds the built site, such as `_build/html`, which `build-lectures` gives in its `build-path` output. |
-| `lectures-dir` | no | `lectures` | The directory of lecture `.md` files that change detection looks in, as a path from the repository root such as `lectures`, with no `./` or trailing slash: each lecture that differs from the base branch gets a link in the comment, and is listed in `changed-files`. Empty turns change detection off, and the comment gives only the preview URL. |
+| `lectures-dir` | no | `lectures` | The directory of lecture `.md` files that change detection looks in, as a path from the repository root such as `lectures`, with no `./` or trailing slash: each lecture the pull request added or modified gets a link in the comment, and is listed in `changed-files`. Empty turns change detection off, and the comment gives only the preview URL. |
 
 <!-- END GENERATED -->
 
@@ -87,7 +87,7 @@ All three settings are in the project's configuration:
 | Output | Description |
 |---|---|
 | `deploy-url` | The preview's URL, `https://pr-<number>--<site>.netlify.app`, the same for every push to the pull request. Empty when nothing was deployed: on an event other than `pull_request`, and for a pull request from a fork or by Dependabot. |
-| `changed-files` | The lecture files under `lectures-dir` that were added or modified between the tip of the pull request's base branch and its head, one path per line, so a lecture changed on the base branch since the pull request branched off is listed too. Empty when there are none, with `lectures-dir: ''`, on an event other than `pull_request`, and for a pull request from a fork or by Dependabot. |
+| `changed-files` | The lecture files under `lectures-dir` that the pull request added or modified, one path per line, compared from the commit where it branched off. When a shallow checkout's history does not reach that commit within 1,024 commits, the comparison starts from the base branch's tip instead, with a warning, so a lecture changed only on the base branch is listed too. When git fails, the action warns and lists none. Empty when there are none, with `lectures-dir: ''`, on an event other than `pull_request`, and for a pull request from a fork or by Dependabot. |
 
 <!-- END GENERATED -->
 
@@ -145,8 +145,9 @@ Set up Node first:
 ## Behaviour
 
 1. **Who gets a preview.** A run by Dependabot, or for a pull request from a fork, stops here: it prints `⚠️ Netlify deployment skipped (untrusted actor or fork PR)`, deploys nothing, and passes.
-2. **Changed lectures.** On a `pull_request` event with `lectures-dir` set, the action compares two commits: the pull request's base, which is the tip of its base branch, and its head. It lists each `.md` file under `lectures-dir` that was added or modified between them, except `<lectures-dir>/intro.md` and files whose path within `lectures-dir` starts with `_`. A renamed lecture counts as added; a deleted one is not listed.
-   - Because the comparison starts from the base branch's tip, not from where the pull request branched off, a lecture changed on the base branch since then is listed too, although the pull request did not touch it. See [#215](https://github.com/QuantEcon/actions/issues/215).
+2. **Changed lectures.** On a `pull_request` event with `lectures-dir` set, the action compares the pull request's head with the commit where it branched off its base branch, the merge base, as `git diff <base>...<head>` does. It lists each `.md` file under `lectures-dir` that was added or modified between them, except `<lectures-dir>/intro.md` and files whose path within `lectures-dir` starts with `_`. A renamed lecture counts as added; a deleted one is not listed. A lecture changed only on the base branch, after the pull request branched off, is not listed.
+   - A shallow checkout may not have the merge base. The action then fetches the history behind the pull request's base and head, 64 commits behind each and then twice as many each time, until it finds the merge base. If it has not found it 1,024 commits behind each, or cannot fetch more, it logs a warning and compares from the tip of the base branch instead, so a lecture changed only on the base branch is listed too. A checkout that has the merge base, such as one with `fetch-depth: 0`, fetches nothing.
+   - If git cannot read the checkout, fetch the two commits, or compare them, the action logs a warning with git's own message, lists no lectures, and goes on to deploy.
    - `lectures-dir` is matched against paths from the repository root, as git writes them: give it as `lectures`, not `./lectures` or `lectures/`, which match nothing. Lectures at the repository root cannot be listed.
 3. **The CLI.** The `netlify-cli` version pinned in the action's [`package.json`](https://github.com/QuantEcon/actions/blob/main/preview-netlify/package.json) is installed with `npm ci`, into a temporary directory, and its `netlify` command is added to the `PATH` of the job's later steps.
 4. **The deploy**, on `pull_request` events only:
@@ -213,9 +214,10 @@ Check also that `build-dir` exists.
 
 - The pull request adds or modifies no lecture that is listed: see [Behaviour](#behaviour) for the files it skips, `<lectures-dir>/intro.md` and paths within `lectures-dir` that start with `_`.
 - `lectures-dir` names the wrong directory, or is written as `./lectures` or `lectures/`: give it as `lectures`.
-- git cannot read the checkout, which makes change detection find nothing without a word. That happens in a container job whose image does not trust every directory; both QuantEcon images do. `build-lectures` makes git trust the checkout for the rest of the job, so run this action after it, or trust the workspace yourself with `git config --global --add safe.directory "$GITHUB_WORKSPACE"`.
+- git cannot read the checkout, and the log has the warning `git cannot read the checkout, so no changed lectures are listed`, followed by git's message, such as `detected dubious ownership`. That happens in a container job whose image does not trust every directory; both QuantEcon images do. `build-lectures` makes git trust the checkout for the rest of the job, so run this action after it, or trust the workspace yourself with `git config --global --add safe.directory "$GITHUB_WORKSPACE"`.
+- git cannot fetch the pull request's commits, and the log has the warning `Could not fetch the pull request's base and head commits`, followed by git's message. The action fetches with the credentials `actions/checkout` leaves in the checkout, so a shallow checkout of a private repository made with `persist-credentials: false` cannot fetch.
 
-**The comment lists a lecture the pull request did not change.** The lecture was changed on the base branch after the pull request branched off: see [Behaviour](#behaviour).
+**The comment lists a lecture the pull request did not change.** The log has the warning `Found no merge base within 1024 commits of the pull request's base and head`. The checkout is shallow, and the pull request branched off its base branch too long ago for the action to find where, so it compared from the base branch's tip: see [Behaviour](#behaviour). Update the pull request's branch from its base branch, or check out with `fetch-depth: 0`. With the warning `The pull request's base and head share no history`, the two have no commit in common.
 
 **A lecture link leads to a missing page.** The links assume Jupyter Book's layout: pages relative to `lectures-dir` when `_toc.yml` is inside it, and relative to the repository root when it is not.
 
