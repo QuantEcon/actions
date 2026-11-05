@@ -12,6 +12,8 @@ The HTML stage is tried twice. Several lectures fetch a dataset from raw GitHub 
 
 A companion workflow, [`test-container.yml`](../../.github/workflows/test-container.yml), smoke-tests the freshly built images (XeLaTeX compile + a minimal Jupyter Book HTML/PDF build).
 
+Both run only after a build has already moved `:latest`. Before that, a pull request that changes an image builds it as a `:pr-<N>` candidate and runs the same smoke test on it, through [`validate-containers.yml`](../../.github/workflows/validate-containers.yml), which the action harness calls so that its result is part of the required check (#142). This matrix is not run on candidates: at up to three hours a leg it stays a check after the push, not a gate.
+
 ## Containers
 
 | Container | Image | Size | Description |

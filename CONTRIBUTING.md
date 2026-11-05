@@ -100,8 +100,10 @@ Known limits:
   tag) or `setup-environment` at the candidate ref.
 - Repositories pinned to an exact tag get a Dependabot bump PR as soon as the tag exists;
   merging it stays a human decision.
-- Container images do not stage: a merge touching `containers/**` rebuilds and pushes `:latest`
-  immediately.
+- Container images stage only on pull requests. A pull request that changes an image builds it
+  as a `:pr-<N>` candidate and smoke-tests it before merge (#142, phase 1). The merge's own
+  build, a scheduled rebuild and any dispatch of `build-containers.yml` still push `:latest`
+  before any test runs (phase 2).
 
 **Rollback:** point `v0` back at the previous release and force-push it.
 
@@ -109,6 +111,22 @@ Known limits:
 git tag -f v0 "v0.x.w^{}"   # v0.x.w = the previous release
 git push origin v0 --force
 ```
+
+**Rolling back a container image:** every `build-containers.yml` run writes to its step summary
+the digest it pushed, the digest `:latest` held before it, and the command that restores the
+latter. Each build is also tagged `main-<YYYYMMDD>-<HHMMSS>-<sha>`, so an earlier image can be
+found by date in GHCR as well. With a token that can write the package (`docker login ghcr.io`),
+point `:latest` back at the previous digest:
+
+```bash
+docker buildx imagetools create --tag ghcr.io/quantecon/<image>:latest \
+  ghcr.io/quantecon/<image>@sha256:<previous digest>
+```
+
+This moves the tag without rebuilding, so consumers get back the exact image they had. Check it
+with `docker buildx imagetools inspect ghcr.io/quantecon/<image>:latest`. The next build moves
+`:latest` again, whether from a merge touching `containers/**` or a scheduled rebuild (until
+#235 drops the schedule), so revert or fix the change before then.
 
 ## CI
 

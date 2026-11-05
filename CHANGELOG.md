@@ -68,6 +68,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `workflow_dispatch` run without `dispatch-alias`, used to spend 25-45 s on `npm ci` of the
   pinned CLI and then skip the deploy. The trusted-actor check is now part of the shared decision,
   and its skip message, which was plain log text, is a notice. (#193)
+- **Container images**: a pull request that changes an image now builds and tests it before it
+  merges. Until now the merge that first built a changed image was also the push that moved
+  `:latest`, and the smoke test ran only after that. The action harness now calls the new
+  `validate-containers.yml`, which builds each image the pull request changes (cached from
+  `:latest`), pushes it as a candidate tagged `pr-<N>` and `pr-<N>-<date>-<time>-<sha>`, never
+  `:latest`, and runs `test-container.yml`'s smoke test and size report on it in a real
+  `container:` job. Its result is part of `Action harness: all checks`, so a pull request that
+  changes only `containers/**` can no longer pass the required check without its image being built.
+  A fork's pull request that changes an image fails the check, since its token cannot push a
+  candidate. Candidates are deleted when the pull request closes. `test-container.yml` takes
+  `images` and `tag` inputs, on dispatch as well as on a call (#150), and opens a tracking issue
+  when its run after a build fails: without one, #222 went unseen for three weeks. Each
+  `build-containers.yml` run writes the digest it pushed, and the one `:latest` held before it, to
+  its step summary as the rollback handle, and adds a tag unique to the build,
+  `main-<date>-<time>-<sha>`. Main's own builds still move `:latest` before any test; that is
+  phase 2. (#142)
 
 ### Deprecated
 - **`deploy-cloudflare`**: `require-access`, and leaving out both it and `visibility`, which relied
@@ -78,6 +94,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `visibility` becomes required, so add it now. The chapter's "Moving from `require-access`" table
   gives the change for each form; note that `visibility: public` checks the site rather than skip
   the checks.
+
+### Documentation
+- **`CONTRIBUTING.md`**: Staged Releases says how to roll back a container image: retag `:latest`
+  to the digest it held before, which each `build-containers.yml` run now records in its step
+  summary, with `docker buildx imagetools create`. Its known limit on container images now says
+  that they stage on pull requests only: the merge's own build and scheduled rebuilds still push
+  `:latest` untested. (#142)
 
 ### Fixed
 - **`preview-netlify`, `preview-cloudflare`**: the comment's changed lectures, and the
@@ -104,6 +127,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `actions/checkout` checks out a pull request: in full, and 1, 2 and 50 commits deep, with a
   rename, a merge base just inside the cap and one past it, a remote that cannot be fetched from,
   and no repository at all. (#215)
+- **`test-container.yml`**: the image-size job failed on every run once `ubuntu-latest` became
+  ubuntu-26.04, whose Docker 29.4 uses the containerd image store: there `docker image inspect`
+  reports the compressed content size, and the job's guard (#172) refuses to print that as the
+  on-disk size. The job now switches the runner's daemon back to the classic store
+  (`features.containerd-snapshotter=false`) before it pulls, so the on-disk figure is still the
+  unpacked layers on overlay2, comparable with every earlier report. The guard stays and fails
+  the job if the switch does not hold. (#142)
 
 ## [0.13.0] - 2026-11-05
 
