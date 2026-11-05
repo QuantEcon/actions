@@ -38,8 +38,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `deploy` takes none. The action checks its inputs first, and fails before anything is uploaded
   on an unknown mode, a missing `build-dir`, `build-dir` or `cname` with `deploy`, or
   `create-release-assets: 'true'` with `upload` or `deploy`. A new `mode` output gives the mode,
-  and is empty when the inputs were refused. The release assets are unchanged. Their packing
-  moved into `scripts/package-release-assets.sh`, which the action runs. In CI, as decision 5 on
+  and is empty when the inputs were refused. The release assets are unchanged, except that the
+  manifest's strings are now escaped, so an `asset-name` or tag with a `"` or `\` gives valid
+  JSON, where it used to give a manifest no parser could read. Their packing moved into
+  `scripts/package-release-assets.sh`, which the action runs. In CI, as decision 5 on
   #143 asks, `publish-release-packaging` runs that script with a stand-in tag and checks each
   part of the manual's contract: the file names, an archive of the whole site with `./` paths and
   hidden files, a checksum that `sha256sum --check` accepts, and a manifest with exactly the

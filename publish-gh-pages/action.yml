@@ -237,6 +237,9 @@ runs:
             echo "✅ Deployment successful!"
             echo "📍 Page URL: $PAGE_URL"
             ;;
+          release)
+            [ "$ASSETS_CREATED" == "true" ] || echo "No release assets: this run was not triggered by a tag"
+            ;;
         esac
         if [ -n "$CNAME" ]; then
           echo "🌐 CNAME file: $CNAME (the custom domain itself is set in Settings -> Pages)"

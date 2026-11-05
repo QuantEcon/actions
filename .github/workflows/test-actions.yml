@@ -2683,7 +2683,10 @@ jobs:
     # with a stand-in tag, and checks each thing the manual promises: the file
     # names, an archive of the whole site with paths relative to it, hidden
     # files included, a checksum in sha256sum's format that verifies, and a
-    # manifest with exactly the documented fields, of the documented types.
+    # manifest with exactly the documented fields, of the documented types,
+    # that parses whatever asset-name it is given. It also checks that a
+    # relative OUT_DIR works, and that an OUT_DIR inside the site, or a
+    # control character in a name, is refused before anything is written.
     name: 'publish-gh-pages: release assets keep their documented names, layout, checksum and manifest'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -2756,6 +2759,35 @@ jobs:
                 and (.timestamp | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$"))
               ' "$out/$manifest" > /dev/null \
             || { fail "the manifest does not match the manual's fields, types and values"; cat "$out/$manifest"; }
+
+          # An asset-name that JSON must escape, and an OUT_DIR given as a
+          # relative path: the manifest still parses, with the name intact,
+          # and the checksum lands beside the archive and verifies.
+          odd='harness "quoted" \ name'
+          mkdir "$RUNNER_TEMP/odd"
+          ( cd "$RUNNER_TEMP" && GITHUB_OUTPUT="$RUNNER_TEMP/odd.out" BUILD_DIR="$site" ASSET_NAME="$odd" \
+              TAG_NAME=publish-harness OUT_DIR=odd COMMIT_SHA="$GITHUB_SHA" REPOSITORY="$GITHUB_REPOSITORY" \
+              SIZE_MB="$size_mb" FILE_COUNT="$count" bash "$GITHUB_WORKSPACE/scripts/package-release-assets.sh" ) > /dev/null \
+            || fail "packing with asset-name [$odd] and a relative OUT_DIR failed"
+          jq -e --arg name "$odd" '.name == $name' "$RUNNER_TEMP/odd/$odd-manifest.json" > /dev/null \
+            || fail "asset-name [$odd] gave a manifest that does not parse, or lost the name"
+          ( cd "$RUNNER_TEMP/odd" && sha256sum --check --strict "$odd-checksum.txt" ) > /dev/null \
+            || fail "with a relative OUT_DIR, the checksum is not beside the archive, or does not verify"
+
+          # Refused, and nothing written: an OUT_DIR inside BUILD_DIR, where
+          # the archive would take in itself, and a control character that a
+          # manifest cannot hold.
+          for case in inside control; do
+            dir="$RUNNER_TEMP/out-$case" name=harness-html
+            if [ "$case" = inside ]; then dir="$site/_static"; else mkdir "$dir"; name=$'harness\x01html'; fi
+            before=$(find "$dir" | wc -l)
+            if GITHUB_OUTPUT="$RUNNER_TEMP/$case.out" BUILD_DIR="$site" ASSET_NAME="$name" TAG_NAME=publish-harness \
+                OUT_DIR="$dir" COMMIT_SHA="$GITHUB_SHA" REPOSITORY="$GITHUB_REPOSITORY" SIZE_MB="$size_mb" \
+                FILE_COUNT="$count" bash scripts/package-release-assets.sh > "$RUNNER_TEMP/$case.log" 2>&1; then
+              fail "$case: the script packed when it should have refused"
+            fi
+            [ "$(find "$dir" | wc -l)" -eq "$before" ] || fail "$case: the script refused, but wrote into $dir first"
+          done
 
           [ "$bad" -eq 0 ] || exit 1
           echo "✅ the release assets have the documented names, layout, checksum and manifest"
