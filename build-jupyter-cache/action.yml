@@ -91,6 +91,14 @@ inputs:
       `build-lectures`' because this action runs unattended.
     required: false
     default: 'true'
+  error-outputs:
+    description: >-
+      Passed to each build as the `build-lectures` input of the same name: `fail`, `warn` or
+      `ignore`, for an executed notebook that holds an error output, such as the traceback of a
+      figure that failed to draw. Empty, the default, leaves it to `build-lectures`' default. A
+      build that fails the check saves no cache, as any failed build does.
+    required: false
+    default: ''
 
 outputs:
   cache-saved:
@@ -234,6 +242,7 @@ runs:
         builder: 'jupyter'
         source-dir: ${{ inputs.source-dir }}
         upload-failure-reports: ${{ inputs.upload-failure-reports }}
+        error-outputs: ${{ inputs.error-outputs }}
 
     - name: Build PDF (pdflatex)
       id: build-pdflatex
@@ -244,6 +253,7 @@ runs:
         builder: 'pdflatex'
         source-dir: ${{ inputs.source-dir }}
         upload-failure-reports: ${{ inputs.upload-failure-reports }}
+        error-outputs: ${{ inputs.error-outputs }}
 
     - name: Build HTML
       id: build-html
@@ -254,6 +264,7 @@ runs:
         builder: 'html'
         source-dir: ${{ inputs.source-dir }}
         upload-failure-reports: ${{ inputs.upload-failure-reports }}
+        error-outputs: ${{ inputs.error-outputs }}
         html-copy-pdf: ${{ steps.parse-builders.outputs.run-pdflatex }}
         html-copy-notebooks: ${{ steps.parse-builders.outputs.run-jupyter }}
 
@@ -555,8 +566,9 @@ runs:
             artifacts.length
               ? `2. Artifacts on that run:\n${artifacts.map(a => `   - ${a}`).join('\n')}`
               : '2. No artifacts were uploaded — either nothing was built, or `upload-artifact` and `upload-failure-reports` are both off.',
+            // An error-output failure (#247) passes jb build: say where to look.
             failed.length
-              ? `3. Reproduce locally:\n\n   \`\`\`bash\n${failed.map(b => `   ${repro[b]}`).join('\n')}\n   \`\`\``
+              ? `3. Reproduce locally:\n\n   \`\`\`bash\n${failed.map(b => `   ${repro[b]}`).join('\n')}\n   \`\`\`\n\n   A build that failed only on error outputs passes \`jb build\`: its log names each notebook and cell whose traceback the page shows.`
               : phase === 'build'
                 ? '3. No builder reported failure — the run failed after the builds, in cache save, artifact upload, or alerting.'
                 : '3. Nothing to reproduce locally: no lecture was built. Start from the failing step in the run logs — this is an environment or configuration failure, not a lecture failure.',

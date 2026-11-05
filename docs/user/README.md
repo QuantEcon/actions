@@ -15,7 +15,7 @@ A workflow step uses an action as `quantecon/actions/<action>@v0`.
 | Action | What it does |
 |---|---|
 | [`setup-environment`](actions/setup-environment.md) | Sets up the Python environment for a lecture build. Inside a QuantEcon container it uses the image's environment, adding any extra packages you list; on a standard runner it builds a cached Conda environment and can install LaTeX. |
-| [`build-lectures`](actions/build-lectures.md) | Builds the lectures with Jupyter Book, as the website, the PDF or notebooks. When the build fails it prints each failing notebook's traceback, and can upload the execution reports. |
+| [`build-lectures`](actions/build-lectures.md) | Builds the lectures with Jupyter Book, as the website, the PDF or notebooks, then checks the executed notebooks for tracebacks that would be published. When the build fails it prints each failing notebook's traceback, and can upload the execution reports. |
 | [`build-jupyter-cache`](actions/build-jupyter-cache.md) | Builds the lectures from scratch in each format you list, and saves the result as the cache that pull requests and publishing start from, but only if every build passes. A failed run keeps the last good cache and files an issue. |
 | [`restore-jupyter-cache`](actions/restore-jupyter-cache.md) | Restores the cache that `build-jupyter-cache` saved, so a pull request or publish build re-executes only the notebooks that changed. It only restores by default, and can also save a cache for the later runs of the same pull request. |
 | [`preview-netlify`](actions/preview-netlify.md) | Deploys a pull request's built site to Netlify as a preview, at a URL that stays the same for every push, and comments on the pull request with it and with links to the lectures it changes. |

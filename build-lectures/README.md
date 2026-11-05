@@ -2,7 +2,7 @@
 
 # Build Lectures
 
-Builds the lectures with Jupyter Book, as the website, the PDF or notebooks. When the build fails it prints each failing notebook's traceback, and can upload the execution reports.
+Builds the lectures with Jupyter Book, as the website, the PDF or notebooks, then checks the executed notebooks for tracebacks that would be published. When the build fails it prints each failing notebook's traceback, and can upload the execution reports.
 
 How to set it up, and every input and output: [the `build-lectures` chapter of the user manual](../docs/user/actions/build-lectures.md).
 
