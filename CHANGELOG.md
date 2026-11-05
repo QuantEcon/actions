@@ -127,6 +127,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `actions/checkout` checks out a pull request: in full, and 1, 2 and 50 commits deep, with a
   rename, a merge base just inside the cap and one past it, a remote that cannot be fetched from,
   and no repository at all. (#215)
+- **`test-container.yml`**: the image-size job failed on every run once `ubuntu-latest` became
+  ubuntu-26.04, whose Docker 29.4 uses the containerd image store: there `docker image inspect`
+  reports the compressed content size, and the job's guard (#172) refuses to print that as the
+  on-disk size. The job now switches the runner's daemon back to the classic store
+  (`features.containerd-snapshotter=false`) before it pulls, so the on-disk figure is still the
+  unpacked layers on overlay2, comparable with every earlier report. The guard stays and fails
+  the job if the switch does not hold. (#142)
 
 ## [0.13.0] - 2026-11-05
 
