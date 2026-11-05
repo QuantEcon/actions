@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **`build-lectures`, `build-jupyter-cache`**: the failure artifacts hold the hidden directories
+  they promise. `upload-artifact` leaves out every path whose name starts with a dot unless
+  `include-hidden-files` is set, even a path it is given by name, and neither upload set it. So
+  `build-lectures`' `upload-failure-reports` artifact held the `reports` directories without
+  `_build/.jupyter_cache`, which its path list names, and `build-jupyter-cache`'s
+  `build-cache-<run id>` artifact, described as the whole `_build` directory, held it without
+  `.jupyter_cache` and `.doctrees`. Both uploads now set `include-hidden-files: true`. The
+  harness's `build-fail-guard` and `bjc-fail-guard` jobs now download each artifact and check it
+  for those directories. (#243)
+
 ## [0.14.0] - 2026-11-05
 
 ### Added
