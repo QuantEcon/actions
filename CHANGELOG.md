@@ -13,9 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that it could not are gone, and 0c's prerequisite is recorded as met: what remains is the
   canary's own changes (#135, #136). The release state says `v0` is on v0.14.0, and the eight
   exactly pinned call sites still read `@v0.12.0`. Backlog item 18 counts five actions with
-  `${{ }}` in `run:` scripts, not seven, and item 15 lists #238 and #243. The rows for #222, #227
-  and #230 record their closure, and #232, #233, #236, #238, #239, #243, #246 and #247 get rows.
-  (#246)
+  `${{ }}` in `run:` scripts, not seven, and item 15 lists #238 as left and #243 as done. The rows
+  for #222, #227 and #230 record their closure, and #232, #233, #236, #238, #239, #243, #246 and
+  #247 get rows. (#246)
 
 ### Fixed
 - **`build-lectures`, `build-jupyter-cache`**: the failure artifacts hold the hidden directories
