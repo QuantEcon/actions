@@ -82,8 +82,9 @@ function render({ provider, deployUrl, deploymentUrl, changedFiles, lecturesDir,
 // The action's own comments on the pull request, oldest first. All of its
 // comments are read, not only the first page of 30, and only the bot's count:
 // a person's comment that quotes the heading or the marker is never edited
-// (finding M2 of the 2026-10-06 review). A comment from before the marker was
-// added is recognised by starting with the heading.
+// (finding M2 of the 2026-10-06 review). Its own starts with the marker, or,
+// from before the marker was added, with the heading; a bot comment that has
+// either further down, quoted by another workflow, is not taken.
 async function findComments({ github, owner, repo, issueNumber, provider }) {
   const comments = await github.paginate(github.rest.issues.listComments, {
     owner,
@@ -94,7 +95,7 @@ async function findComments({ github, owner, repo, issueNumber, provider }) {
   const { heading } = PROVIDERS[provider];
   return comments.filter(c =>
     c.user && c.user.login === BOT_LOGIN && typeof c.body === 'string'
-    && (c.body.includes(marker(provider)) || c.body.startsWith(heading)));
+    && (c.body.startsWith(marker(provider)) || c.body.startsWith(heading)));
 }
 
 async function run({ github, context, core }) {

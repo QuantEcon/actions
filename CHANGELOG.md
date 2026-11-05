@@ -25,9 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   heading, a person's included. The two copies of the comment script are now one,
   `scripts/preview-comment.cjs`, loaded from a path resolved from `$GITHUB_ACTION_PATH`, so it
   loads in a container job too. It reads every page of comments, and updates only one by
-  `github-actions[bot]` that carries a hidden first line, `<!-- quantecon-preview:netlify -->` or
-  `<!-- quantecon-preview:cloudflare -->`, or that starts with the heading, as comments posted
-  before this change do, so an open pull request keeps its comment. Where several match, it
+  `github-actions[bot]` that starts with a hidden line, `<!-- quantecon-preview:netlify -->` or
+  `<!-- quantecon-preview:cloudflare -->`, or with the heading, as comments posted before this
+  change do, so an open pull request keeps its comment. Where several match, it
   updates the newest. The comment otherwise renders exactly as before. A new harness job,
   `preview-comment`, runs each action's own comment steps against a stand-in for the GitHub API.
   It checks each body against the one the old scripts rendered for the same inputs, and that the

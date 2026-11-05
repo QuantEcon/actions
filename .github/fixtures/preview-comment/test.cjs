@@ -105,6 +105,8 @@ const lookupCases = () => [
     comments: [{ user: { login: 'netlify[bot]', type: 'Bot' }, body: before('netlify-lectures') }], expect: 'create' },
   { name: 'a bot comment that only mentions the heading: posts one', golden: 'netlify-lectures',
     comments: [bot(`A summary of this run.\n\n${before('netlify-lectures')}`)], expect: 'create' },
+  { name: 'a bot comment that only mentions the marker: posts one', golden: 'netlify-lectures',
+    comments: [bot(`A summary of this run.\n\n${after('netlify-lectures')}`)], expect: 'create' },
   { name: "the other preview action's comments only: posts one", golden: 'netlify-lectures',
     comments: [bot(before('cloudflare-lectures')), bot(after('cloudflare-lectures'))], expect: 'create' },
   { name: 'several of its comments, from the bug: updates the newest', golden: 'netlify-lectures',
