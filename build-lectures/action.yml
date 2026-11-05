@@ -118,7 +118,16 @@ runs:
         mode=${ERROR_OUTPUTS:-fail}
         case "$mode" in
           fail|warn|ignore) echo "mode=$mode" >> "$GITHUB_OUTPUT" ;;
-          *) echo "::error::error-outputs must be fail, warn or ignore (or empty, for fail), got '$ERROR_OUTPUTS'"; exit 1 ;;
+          *)
+            # Escaped as a workflow command's data, so the value stays in this
+            # one annotation: a newline in it would otherwise start a new line
+            # that the runner could read as a command.
+            shown=${ERROR_OUTPUTS//'%'/'%25'}
+            shown=${shown//$'\r'/'%0D'}
+            shown=${shown//$'\n'/'%0A'}
+            echo "::error::error-outputs must be fail, warn or ignore (or empty, for fail), got '$shown'"
+            exit 1
+            ;;
         esac
 
     - name: Stage PDF for HTML build

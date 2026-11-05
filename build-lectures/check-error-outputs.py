@@ -5,9 +5,12 @@ say) is printed as an `error` output, but the kernel reports the cell as
 successful. nbclient raises only on the reply status, and myst-nb renders the
 traceback without a warning, so `-W` never fires and the page is published with
 the traceback on it. (ipykernel 7.3.0 fails a cell whose last value cannot be
-displayed, but not output shown through display(), which is how figures are.) This reads the notebooks myst-nb wrote, outputs
-included, to <output-dir>/_build/jupyter_execute/, and reports every error
-output that nothing allows.
+displayed, but not output shown through display(), which is how figures are.)
+
+This reads the notebooks myst-nb wrote, outputs included, to
+<output-dir>/_build/jupyter_execute/, and reports every error output that
+nothing allows. A notebook it cannot read is reported too, since it went
+unchecked.
 
 Allowed, as nbclient and myst-nb allow an exception that a cell raises:
   - a cell tagged `raises-exception`;
@@ -17,7 +20,8 @@ Allowed, as nbclient and myst-nb allow an exception that a cell raises:
 
 Usage: check-error-outputs.py <fail|warn> <source-dir> <output-dir>
 
-Exits 1 in `fail` mode when it reports anything. Standard library only, apart
+Exits 1 in `fail` mode when it reports anything, an unreadable notebook
+included. Standard library only, apart
 from PyYAML for _config.yml, which jupyter-book depends on.
 """
 
@@ -121,16 +125,21 @@ def main():
 
     checked = stale = allowed = 0
     hits = []
+    unreadable = []
     for notebook_path in sorted(execute_dir.rglob("*.ipynb")):
         docname = notebook_path.relative_to(execute_dir).with_suffix("").as_posix()
         source = find_source(source_dir, docname)
         if source is None:
             stale += 1
             continue
+        # Unread is unchecked, so with fail it fails the step: a notebook this
+        # cannot read must not pass as one with no error outputs.
         try:
             notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
+            if not isinstance(notebook, dict):
+                raise ValueError("not a JSON object")
         except (OSError, ValueError) as exc:
-            print(f"::warning file={escape_property(str(source))}::{escape_data(f'{notebook_path} could not be read, so it was not checked for error outputs: {exc}')}")
+            unreadable.append((source, f"{notebook_path} could not be read, so it was not checked for error outputs: {exc}"))
             continue
         checked += 1
         mystnb = (notebook.get("metadata") or {}).get("mystnb") or {}
@@ -160,10 +169,14 @@ def main():
 
     print(f"Checked {checked} executed notebook(s) in {execute_dir}: "
           f"{len(hits)} error output(s) reported, {allowed} allowed, "
-          f"{stale} notebook(s) skipped with no source under {source_dir}.")
+          f"{stale} notebook(s) skipped with no source under {source_dir}, "
+          f"{len(unreadable)} could not be read.")
     set_count(len(hits))
-    if not hits:
+    if not hits and not unreadable:
         return 0
+
+    for source, message in unreadable:
+        print(f"::{level} file={escape_property(str(source))}::{escape_data(message)}")
 
     token = "error-outputs-" + secrets.token_hex(8)
     for hit in hits:
@@ -188,22 +201,29 @@ def main():
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         verdict = ("❌ The build fails on" if mode == "fail" else "⚠️ The build passes, with a warning, despite")
-        rows = [
-            f"### {verdict} {len(hits)} error output(s) in the executed notebooks",
-            "",
-            "Each is a traceback that the page shows. The kernel reported the cell as successful, "
-            "so `-W` did not catch it: usually an exception raised while a result was displayed, "
-            "such as a figure that failed to draw. Fix the cell, or tag it `raises-exception` if "
-            "the error is meant to be shown.",
-            "",
-            "| Document | Cell | Error |",
-            "|---|---|---|",
-        ]
-        for hit in hits:
-            cell = f"{hit['cell']}" + (f" (line {hit['line']})" if hit["line"] else "")
-            rows.append(f"| `{hit['source']}` | {cell} | {escape_cell(hit['error'])} |")
+        rows = []
+        if hits:
+            rows += [
+                f"### {verdict} {len(hits)} error output(s) in the executed notebooks",
+                "",
+                "Each is a traceback that the page shows. The kernel reported the cell as successful, "
+                "so `-W` did not catch it: usually an exception raised while output was displayed, "
+                "such as a figure that failed to draw. Fix the cell, or tag it `raises-exception` if "
+                "the error is meant to be shown.",
+                "",
+                "| Document | Cell | Error |",
+                "|---|---|---|",
+            ]
+            for hit in hits:
+                cell = f"{hit['cell']}" + (f" (line {hit['line']})" if hit["line"] else "")
+                rows.append(f"| `{hit['source']}` | {cell} | {escape_cell(hit['error'])} |")
+            rows.append("")
+        if unreadable:
+            rows += [f"### {verdict} {len(unreadable)} executed notebook(s) that could not be read", ""]
+            rows += [f"- `{source}`: {escape_cell(message)}" for source, message in unreadable]
+            rows.append("")
         with open(summary, "a", encoding="utf-8") as handle:
-            handle.write("\n".join(rows) + "\n\n")
+            handle.write("\n".join(rows) + "\n")
 
     return 1 if mode == "fail" else 0
 
