@@ -2619,14 +2619,19 @@ jobs:
           error   | push                | mmcky           |                   |    | dispatch-                    | must be dispatch-
           CASES
 
-          # A line break must not reach GITHUB_OUTPUT as a second key.
+          # A line break must not reach GITHUB_OUTPUT as a second key, nor the
+          # log as a second workflow command: the error is one escaped line.
           n=$((n + 1)); : > "$out"; rc=0
-          PROVIDER=Harness EVENT_NAME=workflow_dispatch ACTOR=mmcky DISPATCH_ALIAS=$'dispatch-canary\ndeploy=true' \
-            GITHUB_OUTPUT="$out" bash scripts/preview-decide.sh > /dev/null 2>&1 || rc=$?
-          if [ "$rc" = 1 ] && [ ! -s "$out" ]; then
-            echo "✓ error: an alias with a line break"
+          log=$(PROVIDER=Harness EVENT_NAME=workflow_dispatch ACTOR=mmcky \
+                DISPATCH_ALIAS=$'dispatch-100%\r\ndeploy=true\n::warning::injected' \
+                GITHUB_OUTPUT="$out" bash scripts/preview-decide.sh 2>&1) || rc=$?
+          if [ "$rc" = 1 ] && [ ! -s "$out" ] && [ "$(grep -c '' <<< "$log")" = 1 ] \
+             && grep -qF '::error::dispatch-alias [dispatch-100%25%0D%0Adeploy=true%0A::warning::injected]' <<< "$log"; then
+            echo "✓ error: an alias with a line break, escaped"
           else
-            echo "::error::an alias with a line break: expected exit 1 and no outputs, got exit $rc, outputs [$(paste -sd' ' "$out")]"; bad=1
+            echo "::error::an alias with a line break: expected exit 1, no outputs and one escaped ::error:: line; got exit $rc, outputs [$(paste -sd' ' "$out")], log:"
+            sed 's/^::\([a-z]*\)::/  (\1) /' <<< "$log"
+            bad=1
           fi
 
           [ "$n" -eq 35 ] || { echo "::error::expected 35 cases, ran $n"; exit 1; }

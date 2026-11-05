@@ -52,11 +52,15 @@ decided() {  # <deploy> <alias>
   { echo "deploy=$1"; echo "alias=$2"; } >> "$GITHUB_OUTPUT"
   exit 0
 }
+# A workflow command's message is one line, so escape it the way the runner
+# decodes it, % first: a line break in DISPATCH_ALIAS would otherwise end the
+# annotation, and the runner would read the line after it as a new command.
+esc() { local s=${1//\%/%25}; s=${s//$'\r'/%0D}; printf '%s' "${s//$'\n'/%0A}"; }
 skip() {  # <reason> [annotation]
-  echo "::${2:-notice}::No $PROVIDER preview deployed: $1"
+  echo "::${2:-notice}::$(esc "No $PROVIDER preview deployed: $1")"
   decided false ''
 }
-fail() { echo "::error::$1"; exit 1; }
+fail() { echo "::error::$(esc "$1")"; exit 1; }
 
 # The `dispatch-` prefix keeps the alias clear of every pull request's
 # pr-<number> and of the production site. Single dashes only: Netlify writes
