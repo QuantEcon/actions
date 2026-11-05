@@ -141,11 +141,11 @@ jobs:
           # avoid. Only real step invocations count.
           DIRS=$(grep -oE '^[[:space:]]*uses: \./[A-Za-z0-9_.-]+' .github/workflows/test-actions.yml | sed 's|.*\./||' | sort -u)
           [ -n "$DIRS" ] || { echo "::error::gate self-test: no 'uses: ./<action>' found in the harness — refusing to decide"; exit 1; }
-                    # The lockfiles are listed by hand: preview-cli-install tests them
-          # without a `uses: ./` line, because the actions need deploy secrets.
-          # So is the change-detection script, which preview-change-detection
-          # runs on its own for the same reason.
-          MUST_RUN=".github/workflows/test-actions.yml .github/fixtures/mini-lectures/environment.yml preview-cloudflare/package-lock.json preview-netlify/package-lock.json scripts/detect-changed-lectures.sh"
+          # Listed by hand, since the loop below adds only each action's
+          # action.yml: the lockfiles, which preview-cli-install tests, and the
+          # scripts the preview actions share, which preview-change-detection
+          # and preview-decide run on their own.
+          MUST_RUN=".github/workflows/test-actions.yml .github/fixtures/mini-lectures/environment.yml preview-cloudflare/package-lock.json preview-netlify/package-lock.json scripts/detect-changed-lectures.sh scripts/preview-decide.sh"
           for d in $DIRS; do MUST_RUN="$MUST_RUN $d/action.yml"; done
           for p in $MUST_RUN; do
             if grep -Eq "$IGNORED" <<< "$p"; then
@@ -2270,20 +2270,23 @@ jobs:
           echo "✅ wrangler $("$wrangler" --version | tail -1) accepts the generated config for deploy and versions upload"
 
   # ==========================================================================
-  # preview-* — the pinned CLIs (install only; a deploy needs provider secrets)
+  # preview-* — the pinned CLIs and the deploy decision (a real deploy needs
+  # provider secrets, so none succeeds here)
   # ==========================================================================
 
   preview-cli-install:
     # #105: preview-cloudflare and preview-netlify install their CLI with
     # `npm ci` from a lockfile beside action.yml, and Dependabot bumps those
-    # lockfiles. The actions themselves cannot run here — a deploy needs the
-    # provider's token, and they skip Dependabot's PRs outright — so without
-    # this job a CLI bump would merge with no CI signal at all.
+    # lockfiles. The actions cannot deploy here — that needs the provider's
+    # token — and they skip Dependabot's PRs outright, so preview-wiring below
+    # installs nothing on exactly the PRs that bump a CLI. Without this job a
+    # CLI bump would merge with no CI signal at all.
     #
     # Scope, stated honestly: this proves each lockfile installs on a clean
     # runner and that the CLI it installs starts and reports the pinned
-    # version. It does not run the actions' install step itself, and it cannot
-    # tell whether the new CLI still deploys; that is for the next real PR.
+    # version. It does not run the actions' install step itself (preview-wiring
+    # does, on this repository's own pull requests), and it cannot tell whether
+    # the new CLI still deploys; that is for the next real PR.
     name: 'preview-*: pinned CLIs install from their lockfiles and run'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -2519,6 +2522,263 @@ jobs:
           [ "$bad" -eq 0 ] || exit 1
           echo "✅ change detection lists what the pull request changed, fetches a bounded history, and warns when git fails"
 
+  preview-decide:
+    # #227, #193: scripts/preview-decide.sh is the one decision both preview
+    # actions follow, for their change detection, CLI install, deploy and
+    # comment. It reads only its environment, so every event can be tried
+    # here, including the ones this workflow never runs on (schedule,
+    # pull_request_target), with no provider secrets. The decision's own
+    # annotations are shown only when a case fails, so a green run carries no
+    # wall of expected ::error:: lines.
+    name: 'preview-*: the deploy decision admits only its listed events, and a valid dispatch-alias'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Decide for each event, actor and dispatch-alias
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/decide.out"
+          bad=0 n=0
+          trim() { local s=$1; s=${s#"${s%%[![:space:]]*}"}; printf '%s' "${s%"${s##*[![:space:]]}"}"; }
+
+          # want: `deploy` (the expect column is the alias), `notice` or
+          # `warning` (deploys nothing; expect is in the message), or `error`
+          # (exits 1, writes no decision). Every case is QuantEcon/actions.
+          # Columns are trimmed, so an empty one means an empty value.
+          while IFS='|' read -r want event actor head pr dalias expect; do
+            want=$(trim "$want")
+            [ -n "$want" ] && [ "${want:0:1}" != "#" ] || continue
+            event=$(trim "$event"); actor=$(trim "$actor"); head=$(trim "$head")
+            pr=$(trim "$pr"); dalias=$(trim "$dalias"); expect=$(trim "$expect")
+            n=$((n + 1))
+            : > "$out"
+            rc=0
+            log=$(PROVIDER=Harness EVENT_NAME="$event" ACTOR="$actor" REPOSITORY=QuantEcon/actions \
+                  HEAD_REPO="$head" PR_NUMBER="$pr" DISPATCH_ALIAS="$dalias" GITHUB_OUTPUT="$out" \
+                  bash scripts/preview-decide.sh 2>&1) || rc=$?
+            got=$(paste -sd' ' "$out")
+            case "$want" in
+              deploy)  ok() { [ "$rc" = 0 ] && [ "$got" = "deploy=true alias=$expect" ]; } ;;
+              notice|warning)
+                       ok() { [ "$rc" = 0 ] && [ "$got" = "deploy=false alias=" ] \
+                                && grep -qF "::$want::No Harness preview deployed: " <<< "$log" \
+                                && grep -qF -- "$expect" <<< "$log"; } ;;
+              error)   ok() { [ "$rc" = 1 ] && [ -z "$got" ] && grep -q '^::error::' <<< "$log" \
+                                && grep -qF -- "$expect" <<< "$log"; } ;;
+              *)       echo "::error::harness typo: want [$want]"; exit 1 ;;
+            esac
+            label="$event / $actor / head [$head] / pr [$pr] / alias [$dalias]"
+            if ok; then
+              echo "✓ $want: $label"
+            else
+              echo "::error::expected $want [$expect] for $label; got exit $rc, outputs [$got], log:"
+              sed 's/^::\([a-z]*\)::/  (\1) /' <<< "$log"
+              bad=1
+            fi
+          done <<'CASES'
+          # want  | event               | actor           | head repo         | pr | dispatch-alias               | expect
+          deploy  | pull_request        | mmcky           | QuantEcon/actions | 5  |                              | pr-5
+          deploy  | pull_request        | mmcky           | QuantEcon/actions | 5  | dispatch-canary              | pr-5
+          notice  | pull_request        | mmcky           | someone/actions   | 5  |                              | from forks
+          notice  | pull_request        | mmcky           |                   | 5  |                              | from forks
+          notice  | pull_request        | dependabot[bot] | QuantEcon/actions | 5  |                              | Dependabot
+          error   | pull_request        | mmcky           | QuantEcon/actions |    |                              | pull request number
+          deploy  | workflow_dispatch   | mmcky           |                   |    | dispatch-canary              | dispatch-canary
+          deploy  | schedule            | mmcky           |                   |    | dispatch-canary-weekly-2     | dispatch-canary-weekly-2
+          deploy  | workflow_dispatch   | mmcky           |                   |    | dispatch-abcdefghijklmnopqrs | dispatch-abcdefghijklmnopqrs
+          notice  | workflow_dispatch   | mmcky           |                   |    |                              | only when dispatch-alias is set
+          notice  | schedule            | mmcky           |                   |    |                              | only when dispatch-alias is set
+          notice  | workflow_dispatch   | dependabot[bot] |                   |    | dispatch-canary              | Dependabot
+          # The allow-list: no input makes any other event deploy.
+          warning | pull_request_target | mmcky           | QuantEcon/actions | 5  |                              | pull_request_target
+          warning | pull_request_target | mmcky           | QuantEcon/actions | 5  | dispatch-canary              | pull_request_target
+          notice  | push                | mmcky           |                   |    | dispatch-canary              | not on push
+          notice  | push                | mmcky           |                   |    |                              | not on push
+          notice  | merge_group         | mmcky           |                   |    | dispatch-canary              | not on merge_group
+          notice  | release             | mmcky           |                   |    | dispatch-canary              | not on release
+          notice  | PULL_REQUEST        | mmcky           | QuantEcon/actions | 5  |                              | not on PULL_REQUEST
+          notice  |                     | mmcky           |                   |    | dispatch-canary              | an unnamed event
+          # An invalid alias fails on every event, a pull request's included.
+          error   | workflow_dispatch   | mmcky           |                   |    | pr-5                         | must be dispatch-
+          error   | workflow_dispatch   | mmcky           |                   |    | main                         | must be dispatch-
+          error   | workflow_dispatch   | mmcky           |                   |    | dispatch                     | must be dispatch-
+          error   | workflow_dispatch   | mmcky           |                   |    | dispatch-                    | must be dispatch-
+          error   | workflow_dispatch   | mmcky           |                   |    | dispatch-canary-             | must be dispatch-
+          error   | workflow_dispatch   | mmcky           |                   |    | dispatch--canary             | must be dispatch-
+          error   | workflow_dispatch   | mmcky           |                   |    | Dispatch-Canary              | must be dispatch-
+          error   | workflow_dispatch   | mmcky           |                   |    | dispatch_canary              | must be dispatch-
+          error   | workflow_dispatch   | mmcky           |                   |    | dispatch-canary.v2           | must be dispatch-
+          error   | workflow_dispatch   | mmcky           |                   |    | dispatch-canary v2           | must be dispatch-
+          error   | workflow_dispatch   | mmcky           |                   |    | dispatch-abcdefghijklmnopqrst | at most 28
+          error   | pull_request        | mmcky           | QuantEcon/actions | 5  | pr-6                         | must be dispatch-
+          error   | pull_request        | mmcky           | someone/actions   | 5  | dispatch-Canary              | must be dispatch-
+          error   | push                | mmcky           |                   |    | dispatch-                    | must be dispatch-
+          CASES
+
+          # A line break must not reach GITHUB_OUTPUT as a second key.
+          n=$((n + 1)); : > "$out"; rc=0
+          PROVIDER=Harness EVENT_NAME=workflow_dispatch ACTOR=mmcky DISPATCH_ALIAS=$'dispatch-canary\ndeploy=true' \
+            GITHUB_OUTPUT="$out" bash scripts/preview-decide.sh > /dev/null 2>&1 || rc=$?
+          if [ "$rc" = 1 ] && [ ! -s "$out" ]; then
+            echo "✓ error: an alias with a line break"
+          else
+            echo "::error::an alias with a line break: expected exit 1 and no outputs, got exit $rc, outputs [$(paste -sd' ' "$out")]"; bad=1
+          fi
+
+          [ "$n" -eq 35 ] || { echo "::error::expected 35 cases, ran $n"; exit 1; }
+          [ "$bad" -eq 0 ]
+          echo "✅ preview-decide.sh deploys only on pull_request, or on workflow_dispatch or schedule with a valid dispatch-alias ($n cases)"
+
+  preview-wiring:
+    # What preview-decide above cannot see: that each action follows the
+    # decision. An invalid dispatch-alias must stop it before its CLI is
+    # installed, on any event; the CLI must be installed exactly when a deploy
+    # will run (#193); and `deployed` must always be set. The credentials are
+    # fake, so a run the decision lets through installs the CLI and then fails
+    # at the provider, while a run it stops passes having installed nothing.
+    # Which of the two to expect depends on this workflow's own event, so the
+    # assertions work it out from the same context the actions read.
+    name: 'preview-*: each action installs its CLI only for a deploy, and refuses a bad dispatch-alias first'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: Create a site
+        run: |
+          mkdir -p harness-site
+          echo '<h1>preview</h1>' > harness-site/index.html
+
+      - name: 'preview-netlify: dispatch-alias without the dispatch- prefix'
+        id: netlify-bad
+        continue-on-error: true
+        uses: ./preview-netlify
+        with:
+          netlify-auth-token: 'harness-fake-token'
+          netlify-site-id: '00000000-0000-0000-0000-000000000000'
+          build-dir: 'harness-site'
+          lectures-dir: ''
+          dispatch-alias: 'pr-5'
+
+      - name: 'preview-cloudflare: dispatch-alias with a capital letter'
+        id: cloudflare-bad
+        continue-on-error: true
+        uses: ./preview-cloudflare
+        with:
+          cloudflare-api-token: 'harness-fake-token'
+          cloudflare-account-id: '00000000000000000000000000000000'
+          project-name: 'harness-no-such-project'
+          build-dir: 'harness-site'
+          lectures-dir: ''
+          dispatch-alias: 'dispatch-Harness'
+
+      - name: Assert an invalid dispatch-alias failed before any install
+        env:
+          RESULTS: |
+            preview-netlify|${{ steps.netlify-bad.outcome }}|${{ steps.netlify-bad.outputs.deployed }}|${{ steps.netlify-bad.outputs.deploy-url }}
+            preview-cloudflare|${{ steps.cloudflare-bad.outcome }}|${{ steps.cloudflare-bad.outputs.deployed }}|${{ steps.cloudflare-bad.outputs.deploy-url }}
+        run: |
+          set -euo pipefail
+          bad=0 n=0
+          while IFS='|' read -r action outcome deployed url; do
+            [ -n "$action" ] || continue
+            n=$((n + 1))
+            if [ "$outcome" != "failure" ] || [ "$deployed" != "false" ] || [ -n "$url" ]; then
+              echo "::error::$action: expected outcome=failure, deployed=false and no deploy-url, got outcome=[$outcome] deployed=[$deployed] deploy-url=[$url]"
+              bad=1
+            elif compgen -G "$RUNNER_TEMP/$action.*" > /dev/null; then
+              echo "::error::$action: $(compgen -G "$RUNNER_TEMP/$action.*") exists, so an invalid dispatch-alias got as far as the CLI install"
+              bad=1
+            else
+              echo "✓ $action refused the alias before installing its CLI"
+            fi
+          done <<< "$RESULTS"
+          [ "$n" -eq 2 ] || { echo "::error::expected 2 cases, read $n"; exit 1; }
+          [ "$bad" -eq 0 ]
+          echo "✅ an invalid dispatch-alias fails each action before anything is installed"
+
+      # A valid alias, on this workflow's own event. On a pull request it is
+      # ignored and the target is pr-<number>.
+      - name: 'preview-netlify: on this event, with a valid dispatch-alias'
+        id: netlify
+        continue-on-error: true
+        uses: ./preview-netlify
+        with:
+          netlify-auth-token: 'harness-fake-token'
+          netlify-site-id: '00000000-0000-0000-0000-000000000000'
+          build-dir: 'harness-site'
+          lectures-dir: ''
+          dispatch-alias: 'dispatch-harness'
+
+      - name: 'preview-cloudflare: on this event, with a valid dispatch-alias'
+        id: cloudflare
+        continue-on-error: true
+        uses: ./preview-cloudflare
+        with:
+          cloudflare-api-token: 'harness-fake-token'
+          cloudflare-account-id: '00000000000000000000000000000000'
+          project-name: 'harness-no-such-project'
+          build-dir: 'harness-site'
+          lectures-dir: ''
+          dispatch-alias: 'dispatch-harness'
+
+      - name: Assert each action installed its CLI exactly when it was going to deploy
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          ACTOR: ${{ github.actor }}
+          REPOSITORY: ${{ github.repository }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          RESULTS: |
+            preview-netlify|${{ steps.netlify.outcome }}|${{ steps.netlify.outputs.deployed }}|${{ steps.netlify.outputs.deploy-url }}
+            preview-cloudflare|${{ steps.cloudflare.outcome }}|${{ steps.cloudflare.outputs.deployed }}|${{ steps.cloudflare.outputs.deploy-url }}
+        run: |
+          set -euo pipefail
+          # This workflow runs on pull_request, push and workflow_dispatch. A
+          # pull request from this repository deploys to pr-<number>, and a
+          # dispatch to dispatch-harness; a fork's pull request, a push and
+          # anything by Dependabot deploy nothing.
+          want=skip
+          if [ "$ACTOR" != "dependabot[bot]" ]; then
+            case "$EVENT_NAME" in
+              pull_request) [ "$HEAD_REPO" != "$REPOSITORY" ] || want=deploy ;;
+              workflow_dispatch) want=deploy ;;
+            esac
+          fi
+          echo "event [$EVENT_NAME], actor [$ACTOR], head [$HEAD_REPO]: expecting each action to $want"
+
+          bad=0 n=0
+          while IFS='|' read -r action outcome deployed url; do
+            [ -n "$action" ] || continue
+            n=$((n + 1))
+            # The install's last act is to link the CLI into bin/.
+            cli=$(compgen -G "$RUNNER_TEMP/$action.*/bin/*" || true)
+            if [ "$deployed" != "false" ] || [ -n "$url" ]; then
+              echo "::error::$action: expected deployed=false and no deploy-url with fake credentials, got deployed=[$deployed] deploy-url=[$url]"
+              bad=1
+            elif [ "$want" = deploy ] && { [ "$outcome" != "failure" ] || [ -z "$cli" ]; }; then
+              echo "::error::$action: expected the CLI installed and the deploy to fail on the fake credentials, got outcome=[$outcome] and CLI [${cli:-not installed}]"
+              bad=1
+            elif [ "$want" = skip ] && { [ "$outcome" != "success" ] || compgen -G "$RUNNER_TEMP/$action.*" > /dev/null; }; then
+              echo "::error::$action: expected success with nothing installed, got outcome=[$outcome] and [$(compgen -G "$RUNNER_TEMP/$action.*" || echo 'nothing installed')]"
+              bad=1
+            else
+              echo "✓ $action: outcome=$outcome, deployed=$deployed, CLI ${cli:+installed at }${cli:-not installed}"
+            fi
+          done <<< "$RESULTS"
+          [ "$n" -eq 2 ] || { echo "::error::expected 2 cases, read $n"; exit 1; }
+          [ "$bad" -eq 0 ]
+          echo "✅ each action installed its CLI only for a deploy, and set deployed"
+
   # ==========================================================================
   # Single anchor for branch protection
   # ==========================================================================
@@ -2563,6 +2823,8 @@ jobs:
       - dc-refuses-mismatch
       - preview-cli-install
       - preview-change-detection
+      - preview-decide
+      - preview-wiring
     steps:
       # This is the job intended to be the single required status check, so it
       # has to be correct in BOTH shapes the gate can produce, and must never be

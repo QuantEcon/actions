@@ -27,6 +27,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   runs the action against a gated and a public Worker stood in for on the runner (the access-gate
   fixture over TLS, behind `/etc/hosts`), and asserts that both mix-ups are refused before wrangler
   is installed, while matching ones reach it.
+- **`preview-netlify`, `preview-cloudflare`**: a `dispatch-alias` input and a `deployed` output,
+  so a scheduled or dispatched run can test the preview deploy, as decided on #143. Until now
+  both actions deployed only on `pull_request`, and on any other event passed having deployed
+  nothing, with nothing in the log to say so: a scheduled canary run was green while testing
+  nothing. With `dispatch-alias: dispatch-canary`, a `workflow_dispatch` or `schedule` run deploys
+  its build to that alias (`https://dispatch-canary--<site>.netlify.app`,
+  `https://dispatch-canary.<project-name>.pages.dev`), with no comment and no changed lectures, and
+  puts the URL in a notice. The value must start with the reserved `dispatch-` prefix, which no
+  pull request's `pr-<number>` can, and be at most 28 characters of lowercase letters and digits
+  in words joined by single dashes; anything else fails the job, on every event. The events are an
+  allow-list: `pull_request` as before, and `workflow_dispatch` and `schedule` only with the
+  input. No input makes `pull_request_target`, `push` or any other event deploy (#105), and fork
+  and Dependabot runs are still skipped. `deployed` is always `'true'` or `'false'`, and a run
+  that deploys nothing says why in a notice, or a warning on `pull_request_target`. The decision
+  is one script, `scripts/preview-decide.sh`, that both actions run first. (#227)
+- **CI**: two harness jobs for that decision, neither needing provider secrets. `preview-decide`
+  runs `scripts/preview-decide.sh` for 35 combinations of event, actor, fork and alias, including
+  `schedule` and `pull_request_target`, which the harness itself never runs on. `preview-wiring`
+  runs both actions with fake credentials. It asserts that an invalid `dispatch-alias` fails each
+  one before anything is installed, and that each installs its CLI exactly when the decision says
+  deploy, with `deployed` always set; on this repository's own pull requests that means reaching
+  the provider and failing on the credentials. A successful deploy is not covered: the staged
+  canary check is its proof. (#227, #193)
 
 ### Changed
 - **`templates/ci.yml`**: a new `pdf-check` job builds the PDF on every pull request and fails
@@ -40,6 +63,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   variables. Harness jobs run the hand-off on the fixture in the lean image, through the
   template's switch, and check that `PDF_CHECK: 'false'` skips both the upload and the job.
   (#230)
+- **`preview-netlify`, `preview-cloudflare`**: the CLI is installed only when the run will
+  deploy, on the deploy step's own condition, so the two cannot drift apart. A `push` run, or a
+  `workflow_dispatch` run without `dispatch-alias`, used to spend 25-45 s on `npm ci` of the
+  pinned CLI and then skip the deploy. The trusted-actor check is now part of the shared decision,
+  and its skip message, which was plain log text, is a notice. (#193)
 
 ### Deprecated
 - **`deploy-cloudflare`**: `require-access`, and leaving out both it and `visibility`, which relied

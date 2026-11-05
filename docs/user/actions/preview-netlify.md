@@ -8,7 +8,7 @@ Deploys a pull request's built site to a Netlify site as a preview, under the al
 - under "Changed Lectures", a link to the page of each lecture that differs between the pull request and its base branch;
 - under "Build Info", a link to the workflow run.
 
-It deploys only on `pull_request` events, and skips pull requests from forks and from Dependabot, whose runs get no secrets. The Netlify site's production deploy is never touched.
+It deploys on `pull_request` events, and skips pull requests from forks and from Dependabot, whose runs get no secrets. With `dispatch-alias` set, it also deploys a `workflow_dispatch` or `schedule` run's build, under that alias and with no comment: see [Outside a pull request](#outside-a-pull-request). On any other event it deploys nothing, and says why in a notice. Its `deployed` output tells the workflow which happened. The Netlify site's production deploy is never touched.
 
 Netlify's dashboard calls a site a *project*. The action's input and secret keep the word *site*: `netlify-site-id` and `NETLIFY_SITE_ID` take the project's ID.
 
@@ -18,6 +18,7 @@ Use it in a pull request's build job, after [`build-lectures`](build-lectures.md
 
 - **Not to publish the site.** [`publish-gh-pages`](publish-gh-pages.md) publishes to GitHub Pages, and [`deploy-cloudflare`](deploy-cloudflare.md) publishes a site that only members may see.
 - **Or on Cloudflare.** [`preview-cloudflare`](preview-cloudflare.md) does the same on Cloudflare Pages. The table below compares the two.
+- **To check the preview outside a pull request**, from a scheduled or dispatched run, set `dispatch-alias`: see [Outside a pull request](#outside-a-pull-request).
 
 ### Netlify or Cloudflare?
 
@@ -36,7 +37,7 @@ Both deploy the files `build-lectures` built, with no build on the provider's si
 
 - **Runner.** Any, with `bash`, `git`, `python3` and `npm`, as GitHub-hosted runners and the QuantEcon images have. The job must be able to reach `registry.npmjs.org`: `netlify-cli` is installed each run from the lockfile beside the action.
 - **Node.** 22.13 or later, which the pinned `netlify-cli` needs. The QuantEcon images carry Node 24. On a standard runner, set it up before this action with `actions/setup-node`; see [On a standard runner](#on-a-standard-runner).
-- **Permissions.** `pull-requests: write`, for the comment. The job also needs `contents: read` for `actions/checkout`.
+- **Permissions.** `pull-requests: write`, for the comment. The job also needs `contents: read` for `actions/checkout`. A run outside a pull request posts no comment, so it needs only `contents: read`.
 - **Secrets.** `NETLIFY_AUTH_TOKEN` and `NETLIFY_SITE_ID`, from [Setting up Netlify](#setting-up-netlify).
 - **Files in your repository.** None beyond the built site. The comment's lecture links compare the pull request's head with the commit where it branched off its base branch. A checkout with `fetch-depth: 0` has that commit, and nothing is fetched. From a shallow checkout, such as `actions/checkout`'s default of one commit, the action fetches history until it finds it, up to 1,024 commits behind the pull request's base and head: see [Behaviour](#behaviour).
 - **Setup outside GitHub.** A Netlify project, once: see [Setting up Netlify](#setting-up-netlify).
@@ -77,6 +78,7 @@ All three settings are in the project's configuration:
 | `netlify-site-id` | yes | none | The ID of the Netlify site to deploy to, from a repository secret such as `secrets.NETLIFY_SITE_ID`. |
 | `build-dir` | yes | none | The directory that holds the built site, such as `_build/html`, which `build-lectures` gives in its `build-path` output. |
 | `lectures-dir` | no | `lectures` | The directory of lecture `.md` files that change detection looks in, as a path from the repository root such as `lectures`, with no `./` or trailing slash: each lecture the pull request added or modified gets a link in the comment, and is listed in `changed-files`. Empty turns change detection off, and the comment gives only the preview URL. |
+| `dispatch-alias` | no | `''` | Deploys on `workflow_dispatch` and `schedule` events too, to this alias, such as `dispatch-canary`, at `https://<alias>--<site>.netlify.app`. It must start with `dispatch-`, which keeps it clear of every pull request's `pr-<number>`, and be lowercase letters and digits in words joined by single dashes, at most 28 characters in all. Any other value fails the job, on every event. Such a run has no comment and no changed lectures, and a pull request ignores the input. Empty, the default, deploys on `pull_request` only. |
 
 <!-- END GENERATED -->
 
@@ -86,7 +88,8 @@ All three settings are in the project's configuration:
 
 | Output | Description |
 |---|---|
-| `deploy-url` | The preview's URL, `https://pr-<number>--<site>.netlify.app`, the same for every push to the pull request. Empty when nothing was deployed: on an event other than `pull_request`, and for a pull request from a fork or by Dependabot. |
+| `deployed` | `'true'` when this run deployed a preview, so that `deploy-url` is set, and `'false'` when it did not, and then a notice or a warning in the log says why. A scheduled or dispatched check should assert `deployed == 'true'`, or it passes without testing the deploy. |
+| `deploy-url` | The preview's URL, `https://pr-<number>--<site>.netlify.app`, the same for every push to the pull request, or `https://<dispatch-alias>--<site>.netlify.app` on a `workflow_dispatch` or `schedule` run. Empty when nothing was deployed. |
 | `changed-files` | The lecture files under `lectures-dir` that the pull request added or modified, one path per line, compared from the commit where it branched off. When a shallow checkout's history does not reach that commit within 1,024 commits, the comparison starts from the base branch's tip instead, with a warning, so a lecture changed only on the base branch is listed too. When git fails, the action warns and lists none. Empty when there are none, with `lectures-dir: ''`, on an event other than `pull_request`, and for a pull request from a fork or by Dependabot. |
 
 <!-- END GENERATED -->
@@ -138,26 +141,74 @@ Set up Node first:
     build-dir: _build/html
 ```
 
+### Outside a pull request
+
+A scheduled or dispatched run deploys only with `dispatch-alias` set, here to `https://dispatch-canary--<site>.netlify.app`, which each run replaces. Check `deployed`: a run that deployed nothing still passes.
+
+```yaml
+name: Preview check
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/quantecon/quantecon-build:latest
+    permissions:
+      contents: read
+      packages: read         # the image pull, as the templates grant it
+    steps:
+      - uses: actions/checkout@v7
+      - uses: quantecon/actions/setup-environment@v0
+      - uses: quantecon/actions/build-lectures@v0
+        id: build
+      - uses: quantecon/actions/preview-netlify@v0
+        id: preview
+        with:
+          netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
+          build-dir: ${{ steps.build.outputs.build-path }}
+          dispatch-alias: dispatch-canary
+      - name: Fail unless the preview was deployed
+        if: steps.preview.outputs.deployed != 'true'
+        run: |
+          echo "::error::no preview was deployed"
+          exit 1
+```
+
 ### In the templates
 
 [`ci.yml`](https://github.com/QuantEcon/actions/blob/main/templates/ci.yml) deploys each pull request's build with this action, with `preview-cloudflare` as a commented alternative.
 
 ## Behaviour
 
-1. **Who gets a preview.** A run by Dependabot, or for a pull request from a fork, stops here: it prints `⚠️ Netlify deployment skipped (untrusted actor or fork PR)`, deploys nothing, and passes.
+1. **Whether to deploy.** The action decides first, and every later step follows the decision:
+
+   | The run | Deploys to | Changed lectures and comment |
+   |---|---|---|
+   | `pull_request`, from this repository | `pr-<number>`, whatever `dispatch-alias` says | yes |
+   | `workflow_dispatch` or `schedule`, with `dispatch-alias` set | `dispatch-alias` | no |
+   | `pull_request` from a fork; any run by Dependabot | nothing | no |
+   | `workflow_dispatch` or `schedule` without `dispatch-alias` | nothing | no |
+   | any other event, such as `push` or `pull_request_target` | nothing | no |
+
+   A run that deploys nothing stops here: it installs nothing, sets `deployed` to `'false'`, passes, and says why in a notice, such as `No Netlify preview deployed: pull requests from forks get no secrets.` On `pull_request_target` the message is a warning, because of [Security](#security). A `dispatch-alias` that breaks the input's rules fails the job, on every event.
 2. **Changed lectures.** On a `pull_request` event with `lectures-dir` set, the action compares the pull request's head with the commit where it branched off its base branch, the merge base, as `git diff <base>...<head>` does. It lists each `.md` file under `lectures-dir` that was added or modified between them, except `<lectures-dir>/intro.md` and files whose path within `lectures-dir` starts with `_`. A renamed lecture counts as added; a deleted one is not listed. A lecture changed only on the base branch, after the pull request branched off, is not listed.
    - A shallow checkout may not have the merge base. The action then fetches the history behind the pull request's base and head, 64 commits behind each and then twice as many each time, until it finds the merge base. If it has not found it 1,024 commits behind each, or cannot fetch more, it logs a warning and compares from the tip of the base branch instead, so a lecture changed only on the base branch is listed too. A checkout that has the merge base, such as one with `fetch-depth: 0`, fetches nothing.
    - If git cannot read the checkout, fetch the two commits, or compare them, the action logs a warning with git's own message, lists no lectures, and goes on to deploy.
    - `lectures-dir` is matched against paths from the repository root, as git writes them: give it as `lectures`, not `./lectures` or `lectures/`, which match nothing. Lectures at the repository root cannot be listed.
 3. **The CLI.** The `netlify-cli` version pinned in the action's [`package.json`](https://github.com/QuantEcon/actions/blob/main/preview-netlify/package.json) is installed with `npm ci`, into a temporary directory, and its `netlify` command is added to the `PATH` of the job's later steps.
-4. **The deploy**, on `pull_request` events only:
+4. **The deploy:**
 
    ```text
-   netlify deploy --no-build --dir <build-dir> --alias pr-<number> --message "PR #<number> (<short commit>)" --json
+   netlify deploy --no-build --dir <build-dir> --alias <alias> --message "<run> (<short commit>)" --json
    ```
 
-   `<short commit>` is the first 7 characters of the pull request's head commit. The token and the site ID reach the CLI through the environment. `--no-build` stops Netlify from running a build of its own, and without `--prod` the deploy is a preview, so the site's production deploy is untouched. Netlify's output is in the "Deployment Output" log group.
-5. **The comment.** Among the pull request's first 30 comments, the action looks for one that contains `## 📖 Netlify Preview Ready!`, and updates it; if there is none, it posts a new one. Each changed lecture links to `<deploy-url>/<path>.html`. `<path>` is the file's path without `.md`, and also without the `lectures-dir/` in front when `_toc.yml` is in `lectures-dir`, because Jupyter Book then builds the pages relative to it.
+   `<alias>` is `pr-<number>` or `dispatch-alias`, as step 1 decided. `<run>` is `PR #<number>`, or the event and branch, such as `workflow_dispatch on main`. `<short commit>` is the first 7 characters of the pull request's head commit, or of the commit a dispatched or scheduled run is on. The token and the site ID reach the CLI through the environment. `--no-build` stops Netlify from running a build of its own, and without `--prod` the deploy is a preview, so the site's production deploy is untouched. Netlify's output is in the "Deployment Output" log group. Outside a pull request, the preview's URL also goes in a notice, on the run's summary page.
+5. **The comment**, on a pull request only. Among the pull request's first 30 comments, the action looks for one that contains `## 📖 Netlify Preview Ready!`, and updates it; if there is none, it posts a new one. Each changed lecture links to `<deploy-url>/<path>.html`. `<path>` is the file's path without `.md`, and also without the `lectures-dir/` in front when `_toc.yml` is in `lectures-dir`, because Jupyter Book then builds the pages relative to it.
 
    For a pull request that changes two lectures, the comment's Markdown is:
 
@@ -180,17 +231,20 @@ Set up Node first:
    </details>
    ````
 
-On any event but `pull_request`, such as `push`, `workflow_dispatch` or `schedule`, the action installs the CLI and does nothing else, and nothing in the log says so: the step succeeds, with an empty `deploy-url`. To know whether a preview was deployed, check `deploy-url`. The one exception is a run by Dependabot, which prints the skip message and installs nothing.
+To know whether a preview was deployed, check `deployed`. A scheduled or dispatched check should fail unless it is `'true'`, as in [Outside a pull request](#outside-a-pull-request): otherwise a run that deployed nothing, because `dispatch-alias` was left out, say, passes having tested nothing.
 
 ### What fails the job
 
+- A `dispatch-alias` other than `dispatch-` followed by lowercase letters and digits in words joined by single dashes, at most 28 characters in all, on any event.
 - `npm ci` failing to install the pinned CLI, or the installed CLI failing to run.
 - `netlify deploy` failing, or printing no deploy URL.
 - The comment failing to post, for want of `pull-requests: write`.
 
 ## Security
 
-Previews of pull requests from forks are not supported, and the action skips them. Do not run it from a `pull_request_target` workflow to get around that. A workflow triggered that way builds and runs the fork's notebooks with `NETLIFY_AUTH_TOKEN` and a write-scoped `GITHUB_TOKEN` within their reach, the pattern known as a "pwn request". It would not produce a preview either: the action deploys only on `pull_request` events.
+Previews of pull requests from forks are not supported, and the action skips them. Do not run it from a `pull_request_target` workflow to get around that. A workflow triggered that way builds and runs the fork's notebooks with `NETLIFY_AUTH_TOKEN` and a write-scoped `GITHUB_TOKEN` within their reach, the pattern known as a "pwn request". It would not produce a preview either: the action never deploys on `pull_request_target`, whatever `dispatch-alias` says, and warns instead.
+
+`dispatch-alias` does not widen who can deploy. A `workflow_dispatch` run needs write access to the repository, and a `schedule` run uses the workflow on the default branch, so either already has the repository's secrets.
 
 ## Troubleshooting
 
@@ -226,3 +280,9 @@ Check also that `build-dir` exists.
 **A new preview comment on every push.** The pull request has more than 30 comments before the preview's, so the action does not find its own comment, and posts another.
 
 **A pull request from a fork got no preview.** Expected: its runs get no secrets, so the action skips them. See [Security](#security).
+
+**`No Netlify preview deployed: …`, in a notice.** The run deployed nothing by design, and the rest of the message says why: see the table in [Behaviour](#behaviour). For a scheduled or dispatched run, set `dispatch-alias`.
+
+**`dispatch-alias […] must be dispatch- followed by lowercase letters and digits …`.** Give a short lowercase name that starts with `dispatch-`, such as `dispatch-canary`: not `canary`, `dispatch_canary` or `Dispatch-Canary`. The job fails on this even on a pull request, which does not use the input, so that a typo shows before the first scheduled run.
+
+**A dispatched or scheduled run deployed, but posted no comment.** Expected: there is no pull request to comment on. The URL is in `deploy-url`, and in a notice on the run's summary page.
