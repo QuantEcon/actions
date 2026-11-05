@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **`templates/ci.yml`, `templates/cache.yml`, `templates/publish.yml`**: the pull request preview
+  is deployed from a job that runs no notebook code, and no template leaves the job's token in
+  git's config for later steps (finding M1 of the 2026-10-06 review). Building the lectures runs
+  code the repository does not fully control, and it used to share a job with the step that hands
+  the Netlify or Cloudflare token to the deploy CLI. `ci.yml` now has three jobs. `build` (renamed
+  from `preview`) builds in the container with `contents: read` and no secrets, and uploads
+  `_build/html` as the `html` artifact, hidden files included. `deploy` needs `build`, has no
+  container, holds the provider secrets and `pull-requests: write`, sets up Node 24 and runs only
+  the preview action on the downloaded site. `pdf-check` now needs `build` too, so it runs beside
+  the deploy rather than after it. Every checkout in the three templates sets
+  `persist-credentials: false`. Change detection in `deploy` fetches the history it needs from
+  GitHub with no credentials, which a public repository allows; a private repository sets
+  `fetch-depth: 0` on `deploy`'s checkout, as its comment says. A site that copies the new
+  `ci.yml` and makes the old job a required status check must require `build` in place of
+  `preview`: no job is called `preview` any more, so until it does its pull requests wait for a
+  check that never reports. `pdf-check` and `deploy` are both skipped when `build` fails, so
+  either needs `build` required beside it. Two harness jobs, `preview-site-handoff` and
+  `preview-deploy-job`, run the hand-off: the site must arrive whole, hidden files included, and
+  from a shallow checkout with no stored credentials, change detection must list the files GitHub
+  lists for the pull request. (#232)
+
 ### Documentation
 - **`docs/dev/PLAN.md`**: caught up with wave 1 of #246 and the v0.13.0 and v0.14.0 releases.
   Since #240 a dispatched or scheduled run can exercise the preview deploy, so the statements

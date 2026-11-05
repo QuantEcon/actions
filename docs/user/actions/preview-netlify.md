@@ -14,7 +14,7 @@ Netlify's dashboard calls a site a *project*. The action's input and secret keep
 
 ## When to use it
 
-Use it in a pull request's build job, after [`build-lectures`](build-lectures.md), as [`ci.yml`](https://github.com/QuantEcon/actions/blob/main/templates/ci.yml) does.
+Use it in a job of its own that deploys a pull request's build, as [`ci.yml`](https://github.com/QuantEcon/actions/blob/main/templates/ci.yml) does: the build job runs [`build-lectures`](build-lectures.md) and uploads the site as an artifact, and the deploy job downloads it and runs this action. Building runs notebook code, which can reach anything the job holds, so only the deploy job should hold the Netlify token: see [A build job and a deploy job](#a-build-job-and-a-deploy-job). The action also works as a step after `build-lectures` in the same job, as it always has.
 
 - **Not to publish the site.** [`publish-gh-pages`](publish-gh-pages.md) publishes to GitHub Pages, and [`deploy-cloudflare`](deploy-cloudflare.md) publishes a site that only members may see.
 - **Or on Cloudflare.** [`preview-cloudflare`](preview-cloudflare.md) does the same on Cloudflare Pages. The table below compares the two.
@@ -29,7 +29,7 @@ Use it in a pull request's build job, after [`build-lectures`](build-lectures.md
 | Repository secrets | `NETLIFY_AUTH_TOKEN`, `NETLIFY_SITE_ID` | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` |
 | Other inputs it needs | none | `project-name` |
 | CLI, installed each run | `netlify-cli`, which needs Node 22.13 or later | `wrangler`, which needs Node 22 or later |
-| In `ci.yml` | the preview step | a commented alternative |
+| In `ci.yml` | the `deploy` job's preview step | a commented alternative |
 
 Both deploy the files `build-lectures` built, with no build on the provider's side, and neither needs the provider to be linked to the repository. For what each provider's plans allow, see its pricing page.
 
@@ -39,7 +39,7 @@ Both deploy the files `build-lectures` built, with no build on the provider's si
 - **Node.** 22.13 or later, which the pinned `netlify-cli` needs. The QuantEcon images carry Node 24. On a standard runner, set it up before this action with `actions/setup-node`; see [On a standard runner](#on-a-standard-runner).
 - **Permissions.** `pull-requests: write`, for the comment. The job also needs `contents: read` for `actions/checkout`. A run outside a pull request posts no comment, so it needs only `contents: read`.
 - **Secrets.** `NETLIFY_AUTH_TOKEN` and `NETLIFY_SITE_ID`, from [Setting up Netlify](#setting-up-netlify).
-- **Files in your repository.** None beyond the built site. The comment's lecture links compare the pull request's head with the commit where it branched off its base branch. A checkout with `fetch-depth: 0` has that commit, and nothing is fetched. From a shallow checkout, such as `actions/checkout`'s default of one commit, the action fetches history until it finds it, up to 1,024 commits behind the pull request's base and head: see [Behaviour](#behaviour).
+- **Files in your repository.** None beyond the built site. The comment's lecture links compare the pull request's head with the commit where it branched off its base branch. A checkout with `fetch-depth: 0` has that commit, and nothing is fetched. From a shallow checkout, such as `actions/checkout`'s default of one commit, the action fetches history until it finds it, up to 1,024 commits behind the pull request's base and head: see [Behaviour](#behaviour). That fetch uses whatever credentials `actions/checkout` left in the checkout, and with `persist-credentials: false`, as `ci.yml` sets, it has none. A public repository needs none. A private repository checks out with `fetch-depth: 0`, so that nothing is fetched.
 - **Setup outside GitHub.** A Netlify project, once: see [Setting up Netlify](#setting-up-netlify).
 
 ## Setting up Netlify
@@ -96,9 +96,9 @@ All three settings are in the project's configuration:
 
 ## Examples
 
-### Minimal
+### A build job and a deploy job
 
-A pull request's build in a container, deployed as a preview:
+A pull request's build in a container, and its deploy as a preview from a second job, which is the only one that holds the token. Building the lectures runs notebook cells, packages installed at build time and network fetches, and code that runs earlier in a job can reach what the job's later steps are given. So the build job has no secrets and only read access, and the deploy job runs no notebook or repository code. It checks out the repository only for the comment's links to changed lectures. Neither job leaves its token in git's config for later steps (`persist-credentials: false`). `upload-artifact` leaves out files whose names start with a dot unless told otherwise, so `include-hidden-files` makes the deploy publish every file the build wrote.
 
 ```yaml
 name: Preview
@@ -106,29 +106,57 @@ on:
   pull_request:
 
 jobs:
-  preview:
+  build:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/quantecon/quantecon-build:latest
     permissions:
       contents: read
-      pull-requests: write   # the preview comment
       packages: read         # the image pull, as the templates grant it
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: quantecon/actions/setup-environment@v0
       - uses: quantecon/actions/build-lectures@v0
         id: build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: html
+          path: ${{ steps.build.outputs.build-path }}
+          include-hidden-files: true
+          if-no-files-found: error
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write   # the preview comment
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          # fetch-depth: 0   # a private repository: see Requirements
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@v8
+        with:
+          name: html
+          path: _build/html
       - uses: quantecon/actions/preview-netlify@v0
         with:
           netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
-          build-dir: ${{ steps.build.outputs.build-path }}
+          build-dir: _build/html
 ```
+
+The deploy job is skipped when the build fails. A branch rule that requires the deploy to pass must therefore require `build` as well, because GitHub counts a skipped required check as passed.
 
 ### On a standard runner
 
-Set up Node first:
+The deploy job above runs on a standard runner, so it sets up Node before the action. Any job on a standard runner does the same:
 
 ```yaml
 - uses: actions/setup-node@v7
@@ -145,43 +173,35 @@ Set up Node first:
 
 A scheduled or dispatched run deploys only with `dispatch-alias` set, here to `https://dispatch-canary--<site>.netlify.app`, which each run replaces. Check `deployed`: a run that deployed nothing still passes.
 
+Start from the workflow in [A build job and a deploy job](#a-build-job-and-a-deploy-job), and change three things. It runs on a schedule or by hand, in place of `pull_request`:
+
 ```yaml
-name: Preview check
 on:
   schedule:
     - cron: '0 6 * * 1'
   workflow_dispatch:
+```
 
-jobs:
-  preview:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/quantecon/quantecon-build:latest
-    permissions:
-      contents: read
-      packages: read         # the image pull, as the templates grant it
-    steps:
-      - uses: actions/checkout@v7
-      - uses: quantecon/actions/setup-environment@v0
-      - uses: quantecon/actions/build-lectures@v0
-        id: build
-      - uses: quantecon/actions/preview-netlify@v0
-        id: preview
-        with:
-          netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
-          build-dir: ${{ steps.build.outputs.build-path }}
-          dispatch-alias: dispatch-canary
-      - name: Fail unless the preview was deployed
-        if: steps.preview.outputs.deployed != 'true'
-        run: |
-          echo "::error::no preview was deployed"
-          exit 1
+The deploy job needs only `contents: read`, since there is no pull request to comment on. Its last steps are:
+
+```yaml
+- uses: quantecon/actions/preview-netlify@v0
+  id: preview
+  with:
+    netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+    netlify-site-id: ${{ secrets.NETLIFY_SITE_ID }}
+    build-dir: _build/html
+    dispatch-alias: dispatch-canary
+- name: Fail unless the preview was deployed
+  if: steps.preview.outputs.deployed != 'true'
+  run: |
+    echo "::error::no preview was deployed"
+    exit 1
 ```
 
 ### In the templates
 
-[`ci.yml`](https://github.com/QuantEcon/actions/blob/main/templates/ci.yml) deploys each pull request's build with this action, with `preview-cloudflare` as a commented alternative.
+[`ci.yml`](https://github.com/QuantEcon/actions/blob/main/templates/ci.yml) builds each pull request in its `build` job and deploys it with this action from its `deploy` job, as in [A build job and a deploy job](#a-build-job-and-a-deploy-job), with `preview-cloudflare` as a commented alternative.
 
 ## Behaviour
 
@@ -270,7 +290,7 @@ Check also that `build-dir` exists.
 - The pull request adds or modifies no lecture that is listed: see [Behaviour](#behaviour) for the files it skips, `<lectures-dir>/intro.md` and paths within `lectures-dir` that start with `_`.
 - `lectures-dir` names the wrong directory, or is written as `./lectures` or `lectures/`: give it as `lectures`.
 - git cannot read the checkout, and the log has the warning `git cannot read the checkout, so no changed lectures are listed`, followed by git's message, such as `detected dubious ownership`. That happens in a container job whose image does not trust every directory; both QuantEcon images do. `build-lectures` makes git trust the checkout for the rest of the job, so run this action after it, or trust the workspace yourself with `git config --global --add safe.directory "$GITHUB_WORKSPACE"`.
-- git cannot fetch the pull request's commits, and the log has the warning `Could not fetch the pull request's base and head commits`, followed by git's message. The action fetches with the credentials `actions/checkout` leaves in the checkout, so a shallow checkout of a private repository made with `persist-credentials: false` cannot fetch.
+- git cannot fetch the pull request's commits, and the log has the warning `Could not fetch the pull request's base and head commits`, followed by git's message. The action fetches with the credentials `actions/checkout` leaves in the checkout, so a shallow checkout of a private repository made with `persist-credentials: false`, as `ci.yml`'s is, cannot fetch. Check out with `fetch-depth: 0` instead, and nothing needs fetching.
 
 **The comment lists a lecture the pull request did not change.** The log has the warning `Found no merge base within 1024 commits of the pull request's base and head`. The checkout is shallow, and the pull request branched off its base branch too long ago for the action to find where, so it compared from the base branch's tip: see [Behaviour](#behaviour). Update the pull request's branch from its base branch, or check out with `fetch-depth: 0`. With the warning `The pull request's base and head share no history`, the two have no commit in common.
 
