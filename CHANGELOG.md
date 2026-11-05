@@ -20,9 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   current state, consumers, open priorities, dependency policy, open issues and rollout, and
   drops the closed items and the history. A root `AGENTS.md`, which Copilot code review and other
   agents read, replaces `.github/copilot-instructions.md`, pointing at `docs/dev` instead of
-  repeating it. No container size is written into the docs any more: `CONTAINER-VALIDATION.md`,
-  like the user manual, points at each `Test Container` run's size report (#201). `tests/README.md`
-  and CONTRIBUTING's doc-update table follow. (#192)
+  repeating it. `CONTAINER-VALIDATION.md` describes the lecture matrix as it runs, when, what it
+  builds and how to read a run, without the February 2026 results. No container size is written
+  into the docs any more: like the user manual, the dev docs point at each `Test Container` run's
+  size report (#201). `tests/README.md` and CONTRIBUTING's doc-update table follow. (#192)
 
 ## [0.15.0] - 2026-11-05
 

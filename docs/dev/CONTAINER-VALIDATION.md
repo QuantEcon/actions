@@ -1,73 +1,34 @@
-# Container Validation Results
+# Container validation: the lecture matrix
 
-This document records validation test results for the QuantEcon containers across all lecture repositories and build types.
+[`test-containers-lectures.yml`](../../.github/workflows/test-containers-lectures.yml) builds real lecture repositories in both container images, so a change to an image, or a change in a lecture repository against an unchanged image, is caught before a lecture build meets it. How the images are built, and the smoke test each change gets first, are in [CONTAINERS.md](CONTAINERS.md).
 
-## Automated Testing
+## When it runs
 
-Containers are tested by [`test-containers-lectures.yml`](../../.github/workflows/test-containers-lectures.yml), which runs after the **Build QuantEcon Containers** workflow completes, and weekly on Monday at 02:00 UTC against `:latest`, since the images are no longer rebuilt on a schedule (#235). Each job builds one lecture repo on one container through the full builder pipeline (HTML → pdflatex → jupyter) **sequentially**, reusing the executed notebooks across builders. Concurrency groups serialize jobs for the same repo to avoid network contention from concurrent dataset downloads; different repos run in parallel.
+- **After each `Build QuantEcon Containers` run** that succeeds, against the `:latest` it pushed, with the actions checked out at the commit that built it.
+- **Weekly, on Monday at 02:00 UTC**, against `:latest`, since the images are no longer rebuilt on a schedule (#235). This run is what catches a lecture repository, or the actions, drifting against images that have not changed.
+- **By hand:** `gh workflow run test-containers-lectures.yml`.
 
-The HTML stage is tried twice. Several lectures fetch a dataset from raw GitHub at build time, and with several repos building at once from shared runner IPs that fetch is sometimes refused with HTTP 429, non-deterministically. A first attempt that fails is rebuilt once with `--all`, which re-executes only the notebooks that did not reach the jupyter cache and re-checks every warning, so a transient 429 no longer fails a leg while a persistent failure still does. A retried leg says so in the run's job summary, and the first attempt's execution reports stay available as the `reports-html-<container>-<repo>` artifact (#102).
+It runs after `:latest` has moved, not on a pull request's candidate images: at up to three hours a leg, it is a check after the push, not a gate.
 
-**Matrix:** 2 containers (`quantecon`, `quantecon-build`) × the QuantEcon lecture repos — `lecture-python-intro`, `lecture-python-programming`, `lecture-python.myst`, `lecture-python-advanced.myst` (`lecture-jax` is temporarily disabled pending [lecture-jax#284](https://github.com/QuantEcon/lecture-jax/issues/284)).
+## What it builds
 
-A companion workflow, [`test-container.yml`](../../.github/workflows/test-container.yml), smoke-tests the freshly built images (XeLaTeX compile + a minimal Jupyter Book HTML/PDF build).
+The matrix is both images, `quantecon` and `quantecon-build`, times four lecture repositories:
 
-Both run only after a build has already moved `:latest`. Before that, a pull request that changes an image builds it as a `:pr-<N>` candidate and runs the same smoke test on it, through [`validate-containers.yml`](../../.github/workflows/validate-containers.yml), which the action harness calls so that its result is part of the required check (#142). This matrix is not run on candidates: at up to three hours a leg it stays a check after the push, not a gate.
+| Repository | Notes |
+|---|---|
+| `lecture-python-intro` | |
+| `lecture-python-programming` | |
+| `lecture-python-advanced.myst` | |
+| `lecture-python.myst` | The largest; its leg may run 180 minutes, the others 120 |
 
-## Containers
+`lecture-jax` is left out until [lecture-jax#284](https://github.com/QuantEcon/lecture-jax/issues/284) adds its JAX install to the lectures.
 
-| Container | Image | Description |
-|-----------|-------|-------------|
-| **quantecon** (full) | `ghcr.io/quantecon/quantecon:latest` | Full Anaconda + TexLive |
-| **quantecon-build** (lean) | `ghcr.io/quantecon/quantecon-build:latest` | Miniconda + explicit package list (no Anaconda metapackage) + the same TexLive minus `texlive-luatex` |
+Each leg clones the repository and builds it with this repository's actions, through all three builders in turn, HTML, then `pdflatex`, then `jupyter`, in one job, so the later builders reuse the notebooks the HTML build executed. A repository's two legs run one after the other, so that two builds of it do not fetch its datasets at once; different repositories run side by side.
 
-Each [`Test Container`](https://github.com/QuantEcon/actions/actions/workflows/test-container.yml) run reports both images' sizes, compressed and on disk, in the summaries of its `Image size` jobs.
+The HTML stage is tried twice. Several lectures fetch a dataset from raw GitHub at build time, and from shared runner addresses that fetch is sometimes refused with HTTP 429. A first attempt that fails is rebuilt once with `--all`, which re-executes only the notebooks that did not reach the execution cache and re-checks every warning, so a passing flake does not fail the leg and a persistent failure still does (#102).
 
-## Lecture Repositories
+## Reading a run
 
-| Repository | Lectures | Notes |
-|-----------|----------|-------|
-| `lecture-python-intro` | 46 | Standard, Netlify deployment |
-| `lecture-python-programming` | ~40 | Standard, GitHub Pages |
-| `lecture-python-advanced.myst` | ~50 | Standard, GitHub Pages |
-| `lecture-python.myst` | ~80 | GPU lectures, GitHub Pages |
-
----
-
-## 6 February 2026
-
-**Test workflow:** [`test-containers-lectures.yml`](../../.github/workflows/test-containers-lectures.yml)
-
-**Matrix:** 2 containers × 4 repos × 3 builders = 24 jobs
-
-### Results: 24/24 passing
-
-| Builder | Repository | quantecon-build (lean) | quantecon (full) |
-|---------|-----------|:---:|:---:|
-| **html** | lecture-python-intro | ✅ 12m | ✅ 13m |
-| | lecture-python-programming | ✅ 5m | ✅ 5m |
-| | lecture-python-advanced.myst | ✅ 34m | ✅ 36m |
-| | lecture-python.myst | ✅ 58m | ✅ 100m |
-| **pdflatex** | lecture-python-intro | ✅ 14m | ✅ 14m |
-| | lecture-python-programming | ✅ 6m | ✅ 7m |
-| | lecture-python-advanced.myst | ✅ 36m | ✅ 38m |
-| | lecture-python.myst | ✅ 62m | ✅ 63m |
-| **jupyter** | lecture-python-intro | ✅ 12m | ✅ 12m |
-| | lecture-python-programming | ✅ 4m | ✅ 5m |
-| | lecture-python-advanced.myst | ✅ 34m | ✅ 35m |
-| | lecture-python.myst | ✅ 58m | ✅ 58m |
-
-### Run Links
-
-- **Full matrix (24 jobs):** [Run 21733415254](https://github.com/QuantEcon/actions/actions/runs/21733415254)
-  - Initial run: 22/24 passed. 2 failures were `pdflatex · lecture-python-advanced.myst` on both containers due to upstream content issue (`text/html` mime type warning in `knowing_forecasts_of_others.md` with `-W` warnings-as-errors).
-- **Re-run after upstream fix (2 jobs):** [Run 21737474016](https://github.com/QuantEcon/actions/actions/runs/21737474016)
-  - Both `pdflatex · lecture-python-advanced.myst` jobs passed after upstream fix.
-
-### Notes
-
-- Build times are approximate (rounded to nearest minute, measured from job start to completion).
-- The workflow named `lecture-python-programming` as `lecture-python-programming.myst` at the time, so the run's job names carry that name.
-- The lean container (`quantecon-build`) performs comparably to the full container across all builders and repos.
-- `lecture-python.myst` HTML build is significantly slower on the full container (~100m vs ~58m on lean) — likely due to conda solver overhead with the larger Anaconda environment during package installation.
-- All builds use Jupyter Book 1.0.4post1, Python 3.13, and XeLaTeX for PDF output.
+- **Each leg is named `<repository> · <image>`.** Its job summary records the runner's CPU model and core count, since a slow leg can be the host's doing.
+- **A retried leg** says so in the job summary. The first attempt's execution reports are the `reports-html-<image>-<repository>` artifact, and the retry's, if it failed too, `reports-html-retry-<image>-<repository>`.
+- **A failed or cancelled run** that nobody started by hand opens a tracking issue, or comments on the open one, through `scripts/create-ci-failure-issue.sh`. A leg that hits its time limit concludes cancelled, not failed, so cancelled alerts too, which also files an issue for a run superseded by a newer image build.
