@@ -1557,8 +1557,12 @@ jobs:
     # #228: html-copy-pdf and html-copy-notebooks, which no other job here
     # turns on. build-jupyter-cache sets both, but runs build-lectures at @v0,
     # so its jobs test the release, not this pull request. The PDF and the
-    # notebook are stand-ins, put where a pdflatex and a jupyter build under
+    # notebooks are stand-ins, put where a pdflatex and a jupyter build under
     # output-dir would leave them: what is tested is the copy into the site.
+    # #217: sub/lecture1.ipynb differs from lecture1.ipynb, so a flat copy
+    # loses one of them and has no sub/ to compare. A failed copy must fail
+    # the step, before the build, which a read-only destination stages: the
+    # hosted runner's user is not root.
     name: 'build-lectures: html-copy-pdf and html-copy-notebooks copy the PDF and notebooks into the site'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -1570,19 +1574,71 @@ jobs:
           fetch-depth: 0
 
       # Same salt as env-seed, so the conda env restores from its cache.
-      - name: Recreate salted fixture, with a PDF and a notebook to copy
+      - name: Recreate salted fixture, with a PDF and two notebooks to copy
         run: |
           cp -r .github/fixtures/mini-lectures harness
           printf '\n# harness-salt: %s-book\n' "$SALT" >> harness/environment.yml
           printf '%% harness salt: %s-book\n' "$SALT" > harness/lectures/salt.md
-          mkdir -p harness/_build/latex harness/_build/jupyter
+          mkdir -p harness/_build/latex harness/_build/jupyter/sub
           printf '%%PDF-1.4\n%% harness stand-in %s\n' "$SALT" > harness/_build/latex/harness-book.pdf
           printf '{"cells": [], "metadata": {"harness": "%s"}, "nbformat": 4, "nbformat_minor": 5}\n' "$SALT" > harness/_build/jupyter/lecture1.ipynb
+          printf '{"cells": [], "metadata": {"harness": "%s-sub"}, "nbformat": 4, "nbformat_minor": 5}\n' "$SALT" > harness/_build/jupyter/sub/lecture1.ipynb
 
       - name: Setup environment
         uses: ./setup-environment
         with:
           environment: 'harness/environment.yml'
+
+      - name: Make the PDF destination read-only
+        run: |
+          mkdir -p harness/_build/html/_pdf harness/_build/html/_notebooks
+          chmod a-w harness/_build/html/_pdf
+
+      # Fails in staging, before the build, in seconds.
+      - name: Build lectures with the PDF copy failing (expected to fail)
+        id: pdf-copy-fails
+        continue-on-error: true
+        uses: ./build-lectures
+        with:
+          builder: 'html'
+          source-dir: 'harness/lectures'
+          output-dir: 'harness'
+          html-copy-pdf: 'true'
+          html-copy-notebooks: 'true'
+
+      # The PDF copy passes now, so the notebook copy is the one that fails.
+      - name: Make only the notebook destination read-only
+        run: |
+          chmod u+w harness/_build/html/_pdf
+          chmod a-w harness/_build/html/_notebooks
+
+      - name: Build lectures with the notebook copy failing (expected to fail)
+        id: notebook-copy-fails
+        continue-on-error: true
+        uses: ./build-lectures
+        with:
+          builder: 'html'
+          source-dir: 'harness/lectures'
+          output-dir: 'harness'
+          html-copy-pdf: 'true'
+          html-copy-notebooks: 'true'
+
+      # build-path is set by the build step alone, so an empty one means
+      # nothing was built.
+      - name: Assert a failed copy fails the step before the build
+        env:
+          PDF_OUTCOME: ${{ steps.pdf-copy-fails.outcome }}
+          PDF_BUILD_PATH: ${{ steps.pdf-copy-fails.outputs.build-path }}
+          NB_OUTCOME: ${{ steps.notebook-copy-fails.outcome }}
+          NB_BUILD_PATH: ${{ steps.notebook-copy-fails.outputs.build-path }}
+        run: |
+          chmod u+w harness/_build/html/_notebooks
+          [ "$PDF_OUTCOME" = "failure" ] || { echo "::error::html-copy-pdf into a read-only _pdf/ reported [$PDF_OUTCOME]: a failed copy must fail the step (#217)"; exit 1; }
+          [ -z "$PDF_BUILD_PATH" ] || { echo "::error::html-copy-pdf into a read-only _pdf/ set build-path [$PDF_BUILD_PATH]: a failed copy must fail before the build"; exit 1; }
+          [ "$NB_OUTCOME" = "failure" ] || { echo "::error::html-copy-notebooks into a read-only _notebooks/ reported [$NB_OUTCOME]: a failed copy must fail the step (#217)"; exit 1; }
+          [ -z "$NB_BUILD_PATH" ] || { echo "::error::html-copy-notebooks into a read-only _notebooks/ set build-path [$NB_BUILD_PATH]: a failed copy must fail before the build"; exit 1; }
+          [ ! -e harness/_build/html/index.html ] || { echo "::error::harness/_build/html/index.html exists: a build ran after a failed copy"; exit 1; }
+          echo "✅ a failed PDF copy and a failed notebook copy each failed the step, before the build"
 
       - name: Build lectures (html, copying the PDF and the notebooks)
         id: build
@@ -1603,8 +1659,10 @@ jobs:
           cmp harness/_build/latex/harness-book.pdf harness/_build/html/_pdf/harness-book.pdf \
             || { echo "::error::html-copy-pdf: harness/_build/html/_pdf/harness-book.pdf is missing or differs from the PDF under _build/latex"; ls -la harness/_build/html/_pdf || true; exit 1; }
           cmp harness/_build/jupyter/lecture1.ipynb harness/_build/html/_notebooks/lecture1.ipynb \
-            || { echo "::error::html-copy-notebooks: harness/_build/html/_notebooks/lecture1.ipynb is missing or differs from the notebook under _build/jupyter"; ls -la harness/_build/html/_notebooks || true; exit 1; }
-          echo "✅ the html build copied the PDF into _pdf/ and the notebook into _notebooks/"
+            || { echo "::error::html-copy-notebooks: harness/_build/html/_notebooks/lecture1.ipynb is missing or differs from the notebook under _build/jupyter"; ls -laR harness/_build/html/_notebooks || true; exit 1; }
+          cmp harness/_build/jupyter/sub/lecture1.ipynb harness/_build/html/_notebooks/sub/lecture1.ipynb \
+            || { echo "::error::html-copy-notebooks: harness/_build/html/_notebooks/sub/lecture1.ipynb is missing or differs from the notebook under _build/jupyter/sub: a notebook must keep its path (#217)"; ls -laR harness/_build/html/_notebooks || true; exit 1; }
+          echo "✅ the html build copied the PDF into _pdf/, and each notebook into _notebooks/ at its own path"
 
   # ==========================================================================
   # setup-environment — container mode, in the real lean image

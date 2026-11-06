@@ -101,6 +101,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   action; and `build-html-copy` runs `html-copy-pdf` and `html-copy-notebooks`, which no
   harness job turned on. ARCHITECTURE's rule on inputs now has no exceptions, PLAN drops
   backlog item 18, and TESTING lists the new jobs. (#228)
+- **`build-lectures`**: `html-copy-notebooks` copies each notebook under `_build/jupyter` into
+  `_build/html/_notebooks/` at the same path. It copied them flat, but quantecon-book-theme links
+  a page to `/_notebooks/<page>.ipynb` with the page's directory in it, so a lecture in a
+  subdirectory had a download link that led nowhere, and two lectures with the same name in
+  different directories left one notebook between them. A top-level notebook lands where it did,
+  and no QuantEcon book that copies its notebooks has a lecture in a subdirectory. A failed copy
+  now fails the step, for the PDF too: `find … -exec cp … \;` ignored a failed `cp`, so the site
+  was built without the download. The PDF copy stays flat, since the theme links the book's one
+  PDF. The `html-copy-notebooks` description and the chapter say so, and the chapter drops its
+  caveat on lectures in subdirectories. The harness's `build-html-copy` job copies a second
+  `lecture1.ipynb` from a subdirectory, and shows a read-only destination failing each copy.
+  (#217)
 - **`build-jupyter-cache`**: the failure issue's commands to reproduce each failed build pass
   `--path-output .`, as `build-lectures` does for the action's own builds, so a local repro run
   from the repository's root builds into `_build` there. Without it, `jb build` wrote into the
