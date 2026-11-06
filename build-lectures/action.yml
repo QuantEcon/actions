@@ -64,10 +64,11 @@ inputs:
   html-copy-notebooks:
     description: >-
       With `builder: html`: `'true'` copies each notebook under `<output-dir>/_build/jupyter` into
-      `<output-dir>/_build/html/_notebooks/` before the build, so the site offers them for
-      download. The notebooks come from a `jupyter` build earlier in the job, or from a restored
-      build cache; if that directory does not exist, a warning says so and the site is built
-      without them. Ignored by the other builders.
+      `<output-dir>/_build/html/_notebooks/` before the build, at the same path, so the site
+      offers them for download: `_build/jupyter/sub/page.ipynb` becomes
+      `_build/html/_notebooks/sub/page.ipynb`. The notebooks come from a `jupyter` build earlier
+      in the job, or from a restored build cache; if that directory does not exist, a warning
+      says so and the site is built without them. Ignored by the other builders.
     required: false
     default: 'false'
   upload-failure-reports:
@@ -153,9 +154,12 @@ runs:
         PDF_SOURCE="$OUTPUT_DIR/_build/latex"
         PDF_DEST="$OUTPUT_DIR/_build/html/_pdf"
         
+        # Flat: the theme links one PDF, the book's, at /_pdf/<name>.pdf. With
+        # `+`, find fails when cp does (`\;` ignores it), and `{}` must come
+        # last, so cp gets the destination as sh's $0 (`cp -t` is GNU-only).
         if [ -d "$PDF_SOURCE" ]; then
           mkdir -p "$PDF_DEST"
-          find "$PDF_SOURCE" -name "*.pdf" -exec cp {} "$PDF_DEST/" \;
+          find "$PDF_SOURCE" -name "*.pdf" -exec sh -c 'cp "$@" "$0"' "$PDF_DEST/" {} +
           echo "Staged PDFs in $PDF_DEST (Jupyter Book will detect and enable downloads):"
           ls -lh "$PDF_DEST" || echo "No PDFs found"
         else
@@ -176,9 +180,17 @@ runs:
         NB_SOURCE="$OUTPUT_DIR/_build/jupyter"
         NB_DEST="$OUTPUT_DIR/_build/html/_notebooks"
         
+        # Each notebook keeps its path under _build/jupyter, as the theme links
+        # a page to /_notebooks/<page>.ipynb with the page's directory in it
+        # (#217). No cd, so a relative output-dir still resolves, and a failed
+        # mkdir or cp fails the step.
         if [ -d "$NB_SOURCE" ]; then
           mkdir -p "$NB_DEST"
-          find "$NB_SOURCE" -name "*.ipynb" -exec cp {} "$NB_DEST/" \;
+          while IFS= read -r -d '' nb; do
+            rel=${nb#"$NB_SOURCE"/}
+            mkdir -p "$NB_DEST/$(dirname "$rel")"
+            cp "$nb" "$NB_DEST/$rel"
+          done < <(find "$NB_SOURCE" -name "*.ipynb" -print0)
           NB_COUNT=$(find "$NB_DEST" -name "*.ipynb" | wc -l)
           echo "Staged $NB_COUNT notebooks in $NB_DEST (Jupyter Book will detect and enable downloads)"
         else
