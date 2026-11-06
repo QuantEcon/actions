@@ -19,6 +19,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   until #142's phase 2 changes it. actionlint skips `run:` scripts when it finds no shellcheck,
   so the gate now fails if the runner image has none, and logs its version. TESTING.md and
   AGENTS.md give the same check to run locally. (#100)
+- **CI**: the harness gate shellchecks each action's `run:` scripts, and `scripts/*.sh`, through
+  a new `scripts/lint-shell.py`, since actionlint never reads an `action.yml`. The script reads
+  every `*/action.yml` with PyYAML, runs shellcheck at warning severity on each `run:` script
+  whose shell is bash or sh, and reports each finding at its line in the `action.yml`. It also
+  fails on any `${{ }}` left in a `run:` script, an action's or a workflow's. #228 moved every one
+  in the actions into `env:`, and the workflows had none, so AGENTS.md's rule now holds from here
+  on. At warning severity it found nothing else: the 56 `run:` scripts and the 9 `scripts/*.sh`
+  pass with shellcheck 0.11.0. The two scripts under
+  `containers/` are left out, since a change there rebuilds both images. (#100)
 
 ### Changed
 - **`restore-jupyter-cache`**: `cache-type` accepts only `build` or `execution`, and `save-cache`
