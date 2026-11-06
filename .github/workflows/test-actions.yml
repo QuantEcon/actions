@@ -333,9 +333,10 @@ jobs:
 
       # #100 (review M5): actionlint never reads an action.yml. This lints each
       # action's run: scripts with shellcheck at --severity=warning, reporting
-      # at their lines in action.yml, and fails on any ${{ }} in one, since a
-      # value belongs in env: (AGENTS.md). Then scripts/*.sh, at the same
-      # severity. containers/ is left out: a change there rebuilds both images.
+      # at their lines in action.yml, and fails on any ${{ }} in a run: script
+      # of an action or a workflow, since a value belongs in env: (AGENTS.md).
+      # Then scripts/*.sh, at the same severity. containers/ is left out: a
+      # change there rebuilds both images.
       - name: Lint the actions' run scripts and scripts/*.sh with shellcheck
         run: |
           "$RUNNER_TEMP/docs-venv/bin/python" scripts/lint-shell.py

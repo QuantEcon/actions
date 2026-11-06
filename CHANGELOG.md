@@ -23,9 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a new `scripts/lint-shell.py`, since actionlint never reads an `action.yml`. The script reads
   every `*/action.yml` with PyYAML, runs shellcheck at warning severity on each `run:` script
   whose shell is bash or sh, and reports each finding at its line in the `action.yml`. It also
-  fails on any `${{ }}` left in an action's `run:` script. #228 moved every one into `env:`, so
-  AGENTS.md's rule now holds from here on. At warning severity it found nothing else: the 56
-  `run:` scripts and the 9 `scripts/*.sh` pass with shellcheck 0.11.0. The two scripts under
+  fails on any `${{ }}` left in a `run:` script, an action's or a workflow's. #228 moved every one
+  in the actions into `env:`, and the workflows had none, so AGENTS.md's rule now holds from here
+  on. At warning severity it found nothing else: the 56 `run:` scripts and the 9 `scripts/*.sh`
+  pass with shellcheck 0.11.0. The two scripts under
   `containers/` are left out, since a change there rebuilds both images. (#100)
 
 ### Changed

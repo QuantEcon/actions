@@ -11,8 +11,9 @@ This script does, for every */action.yml:
   - a run: script whose shell: is bash or sh must pass shellcheck at --severity=warning. Each
     finding is reported at its line in action.yml.
 
-Then every scripts/*.sh must pass shellcheck at the same severity, as its shebang's dialect.
-containers/ is left out: a change there rebuilds both images.
+The run: scripts in .github/workflows/*.yml are held to the first rule too. actionlint already
+shellchecks them. Then every scripts/*.sh must pass shellcheck at the same severity, as its
+shebang's dialect. containers/ is left out: a change there rebuilds both images.
 
 Usage:
 
@@ -90,6 +91,34 @@ class Script:
         return self.first_line + line - 1, self.indent + column
 
 
+def expressions(script):
+    """Record a finding for each ${{ in a run: script, and return how many there were."""
+    hits = [m.start() for m in EXPRESSION.finditer(script.text)]
+    for offset in hits:
+        line = script.text.count("\n", 0, offset) + 1
+        column = offset - (script.text.rfind("\n", 0, offset) + 1) + 1
+        findings.append((rel(script.path), *script.where(line, column),
+                         "a ${{ }} expression in a run: script. Pass the value through "
+                         "the step's env: and read it as \"$NAME\" (AGENTS.md)."))
+    return len(hits)
+
+
+def workflow_scripts():
+    """Check each workflow's run: scripts for ${{ }} alone: actionlint shellchecks them."""
+    files = sorted((ROOT / ".github" / "workflows").glob("*.yml"))
+    count = 0
+    for path in files:
+        text = path.read_text(encoding="utf-8")
+        for job in mapping(mapping(yaml.compose(text)).get("jobs")).values():
+            steps = mapping(job).get("steps")
+            for step in steps.value if isinstance(steps, yaml.SequenceNode) else []:
+                node = mapping(step).get("run")
+                if node is not None:
+                    expressions(Script(path, node, text))
+                    count += 1
+    return files, count
+
+
 def action_scripts():
     """Each linted run: script, by dialect. Records findings for expressions and bad shells."""
     by_dialect = {"bash": [], "sh": []}
@@ -106,13 +135,7 @@ def action_scripts():
             if node is None:
                 continue
             script = Script(path, node, text)
-            hits = [m.start() for m in EXPRESSION.finditer(script.text)]
-            for offset in hits:
-                line = script.text.count("\n", 0, offset) + 1
-                column = offset - (script.text.rfind("\n", 0, offset) + 1) + 1
-                findings.append((rel(path), *script.where(line, column),
-                                 "a ${{ }} expression in a run: script. Pass the value through "
-                                 "the step's env: and read it as \"$NAME\" (AGENTS.md)."))
+            hits = expressions(script)
             shell = fields.get("shell")
             words = shell.value.split() if isinstance(shell, yaml.ScalarNode) else []
             dialect = words[0] if words else None
@@ -174,6 +197,9 @@ def main():
                 findings.append((rel(script.path), *script.where(comment["line"], comment["column"]),
                                  message(comment)))
     print(f"checked {count} run: scripts in {len(files)} action.yml files")
+
+    files, count = workflow_scripts()
+    print(f"checked {count} run: scripts in {len(files)} workflows for ${{{{ }}}}")
 
     scripts = sorted(ROOT.glob("scripts/*.sh"))
     for comment in shellcheck(args.shellcheck, None, [rel(p) for p in scripts]) if scripts else []:

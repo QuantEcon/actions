@@ -148,7 +148,7 @@ action has no chapter: run the script and commit what it writes. It also checks 
 actionlint. [docs/dev/CHAPTER-TEMPLATE.md](docs/dev/CHAPTER-TEMPLATE.md)
 lists the checks and how to run them locally. The gate also lints `.github/workflows/` with
 actionlint, and the actions' `run:` scripts and `scripts/*.sh` with `scripts/lint-shell.py`,
-which also fails on any `${{ }}` in an action's `run:` script. Fix what they report. A shellcheck
+which also fails on any `${{ }}` in a `run:` script, an action's or a workflow's. Fix what they report. A shellcheck
 finding that is wrong for one command takes a `# shellcheck disable=SC<code> # <reason>` line
 just before that command; any other actionlint ignore goes in `.github/actionlint.yaml`, limited
 to its file, with the reason.

@@ -35,4 +35,4 @@ actionlint
 python3 scripts/lint-shell.py
 ```
 
-As the gate does, `actionlint` lints `.github/workflows/`, and `scripts/lint-shell.py` the actions' `run:` scripts and `scripts/*.sh`. Both need `shellcheck` on your `PATH`: without it, actionlint skips the `run:` scripts without a word. Run `shellcheck` on any other shell you change.
+As the gate does, `actionlint` lints `.github/workflows/`. `scripts/lint-shell.py` shellchecks the actions' `run:` scripts and `scripts/*.sh`, and fails on a `${{ }}` in any action's or workflow's `run:` script. Both need `shellcheck` on your `PATH`: without it, actionlint skips the `run:` scripts without a word. Run `shellcheck` on any other shell you change.
