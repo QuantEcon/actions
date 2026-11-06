@@ -565,6 +565,132 @@ jobs:
           [ "$(cat _build/.jupyter_cache/STAMP)" = "$SALT-unit-exec" ] || { echo "::error::payload STAMP mismatch: got [$(cat _build/.jupyter_cache/STAMP)]"; exit 1; }
           echo "✅ execution cache save-mode restore verified"
 
+  # #228: the custom key and path, as a caller writes them. Both used to be
+  # expanded into the run: text, where the shell read a '$' in the path as a
+  # variable: 'harness/$HARNESS_UNSET cache' became 'harness/ cache', which
+  # does not exist, so nothing was saved and the restore below missed.
+  unit-custom-seed:
+    name: 'restore-jupyter-cache: seed a custom key, into a path holding a space and a $ (#228)'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    env:
+      CACHE_DIR: 'harness/$HARNESS_UNSET cache'
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Restore under a custom key (save mode, expecting a miss)
+        id: restore
+        uses: ./restore-jupyter-cache
+        with:
+          key: harness-custom-${{ env.SALT }}
+          path: ${{ env.CACHE_DIR }}
+          save-cache: 'true'
+
+      - name: Assert outputs report a miss
+        env:
+          CACHE_HIT: ${{ steps.restore.outputs.cache-hit }}
+          CACHE_KEY: ${{ steps.restore.outputs.cache-key }}
+        run: |
+          [ "$CACHE_HIT" = "false" ] || { echo "::error::cache-hit: expected [false], got [$CACHE_HIT]"; exit 1; }
+          [ -z "$CACHE_KEY" ] || { echo "::error::cache-key: expected empty, got [$CACHE_KEY]"; exit 1; }
+          echo "✅ miss reported correctly (cache-hit=false, cache-key empty)"
+
+      # Written after the action ran, at the path as written: the post: hook
+      # saves it under the custom key at job end.
+      - name: Write payload for the downstream restore job
+        run: |
+          mkdir -p "$CACHE_DIR"
+          printf '%s-unit-custom\n' "$SALT" > "$CACHE_DIR/STAMP"
+
+  unit-custom-restore:
+    name: 'restore-jupyter-cache: restore a custom key, into a path holding a space and a $ (#228)'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: unit-custom-seed
+    env:
+      CACHE_DIR: 'harness/$HARNESS_UNSET cache'
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Restore under the custom key (read-only)
+        id: restore
+        uses: ./restore-jupyter-cache
+        with:
+          key: harness-custom-${{ env.SALT }}
+          path: ${{ env.CACHE_DIR }}
+
+      # A custom key is restored as given, with no run ID appended, so the
+      # seed's key matches exactly.
+      - name: Assert the hit, the key, and the payload at the path as written
+        env:
+          CACHE_HIT: ${{ steps.restore.outputs.cache-hit }}
+          CACHE_KEY: ${{ steps.restore.outputs.cache-key }}
+          EXPECTED_KEY: harness-custom-${{ env.SALT }}
+        run: |
+          [ "$CACHE_HIT" = "true" ] || { echo "::error::cache-hit: expected [true], got [$CACHE_HIT]. If the seed job warned that its path does not exist, the path was read as shell (#228)"; exit 1; }
+          [ "$CACHE_KEY" = "$EXPECTED_KEY" ] || { echo "::error::cache-key: expected [$EXPECTED_KEY], got [$CACHE_KEY]"; exit 1; }
+          STAMP="$CACHE_DIR/STAMP"
+          [ -f "$STAMP" ] || { echo "::error::nothing was restored at [$STAMP]"; find harness -maxdepth 2 | sort; exit 1; }
+          [ "$(cat "$STAMP")" = "$SALT-unit-custom" ] || { echo "::error::payload STAMP mismatch: got [$(cat "$STAMP")]"; exit 1; }
+          echo "✅ the custom key restored exactly, into the path as written"
+
+  # #228: a line break in key or path would end the value it is written to
+  # $GITHUB_OUTPUT in and start another output. Each second line here is an
+  # output the action reads, so before the check both steps passed, having
+  # set restore-keys and path from it. The control, the same key on one line,
+  # passes (a miss), so each failure is the line break's.
+  unit-line-break:
+    name: 'restore-jupyter-cache: a key or path holding a line break fails before any output is written (#228)'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 'control: the key on one line'
+        id: one-line
+        continue-on-error: true
+        uses: ./restore-jupyter-cache
+        with:
+          key: harness-line-${{ env.SALT }}
+
+      - name: 'refused: a key with a second output on its next line'
+        id: key
+        continue-on-error: true
+        uses: ./restore-jupyter-cache
+        with:
+          key: |-
+            harness-line-${{ env.SALT }}
+            restore-keys=harness-injected-${{ env.SALT }}
+
+      - name: 'refused: a path with a second output on its next line'
+        id: path
+        continue-on-error: true
+        uses: ./restore-jupyter-cache
+        with:
+          key: harness-line-${{ env.SALT }}
+          path: |-
+            _build
+            path=harness-injected
+
+      - name: Assert the control passed, and each line break failed the action
+        env:
+          ONE_LINE: ${{ steps.one-line.outcome }}
+          KEY: ${{ steps.key.outcome }}
+          KEY_HIT: ${{ steps.key.outputs.cache-hit }}
+          PATH_OUTCOME: ${{ steps.path.outcome }}
+          PATH_HIT: ${{ steps.path.outputs.cache-hit }}
+        run: |
+          [ "$ONE_LINE" = "success" ] || { echo "::error::the single-line key reported [$ONE_LINE]: it must pass (a miss), or the failures below prove nothing"; exit 1; }
+          [ "$KEY" = "failure" ] || { echo "::error::a key holding a line break reported [$KEY]: it must fail before the key is written to GITHUB_OUTPUT (#228)"; exit 1; }
+          [ "$PATH_OUTCOME" = "failure" ] || { echo "::error::a path holding a line break reported [$PATH_OUTCOME]: it must fail before the path is written to GITHUB_OUTPUT (#228)"; exit 1; }
+          [ "$KEY_HIT" = "false" ] && [ "$PATH_HIT" = "false" ] || { echo "::error::cache-hit after a refused input: expected [false] and [false], got [$KEY_HIT] and [$PATH_HIT]"; exit 1; }
+          [ ! -e harness-injected ] || { echo "::error::harness-injected exists: the path's second line was used"; exit 1; }
+          echo "✅ the single-line key passed, and a line break in key or path failed the action before the restore"
+
   # ==========================================================================
   # setup-environment — standard-mode conda cache, two-run miss→hit chain
   # (PLAN item 9: the #33/#78 cache fix had never been confirmed by CI)
@@ -1114,6 +1240,59 @@ jobs:
           [ "$INVALID_OUTCOME" = "failure" ] || { echo "::error::error-outputs: 'loud' reported [$INVALID_OUTCOME]: an invalid value must fail the step"; exit 1; }
           [ -z "$INVALID_BUILD_PATH" ] || { echo "::error::error-outputs: 'loud' set build-path [$INVALID_BUILD_PATH]: an invalid value must fail before the build"; exit 1; }
           echo "✅ warn passed with the error reported, ignore passed without checking, and an invalid value failed before building"
+
+  build-html-copy:
+    # #228: html-copy-pdf and html-copy-notebooks, which no other job here
+    # turns on. build-jupyter-cache sets both, but runs build-lectures at @v0,
+    # so its jobs test the release, not this pull request. The PDF and the
+    # notebook are stand-ins, put where a pdflatex and a jupyter build under
+    # output-dir would leave them: what is tested is the copy into the site.
+    name: 'build-lectures: html-copy-pdf and html-copy-notebooks copy the PDF and notebooks into the site'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: env-seed
+    steps:
+      # Full history, as in build-fail-guard.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # Same salt as env-seed, so the conda env restores from its cache.
+      - name: Recreate salted fixture, with a PDF and a notebook to copy
+        run: |
+          cp -r .github/fixtures/mini-lectures harness
+          printf '\n# harness-salt: %s-book\n' "$SALT" >> harness/environment.yml
+          printf '%% harness salt: %s-book\n' "$SALT" > harness/lectures/salt.md
+          mkdir -p harness/_build/latex harness/_build/jupyter
+          printf '%%PDF-1.4\n%% harness stand-in %s\n' "$SALT" > harness/_build/latex/harness-book.pdf
+          printf '{"cells": [], "metadata": {"harness": "%s"}, "nbformat": 4, "nbformat_minor": 5}\n' "$SALT" > harness/_build/jupyter/lecture1.ipynb
+
+      - name: Setup environment
+        uses: ./setup-environment
+        with:
+          environment: 'harness/environment.yml'
+
+      - name: Build lectures (html, copying the PDF and the notebooks)
+        id: build
+        uses: ./build-lectures
+        with:
+          builder: 'html'
+          source-dir: 'harness/lectures'
+          output-dir: 'harness'
+          html-copy-pdf: 'true'
+          html-copy-notebooks: 'true'
+
+      - name: Assert the site was built with both copies in it
+        env:
+          BUILD_PATH: ${{ steps.build.outputs.build-path }}
+        run: |
+          [ "$BUILD_PATH" = "harness/_build/html" ] || { echo "::error::build-path: expected [harness/_build/html], got [$BUILD_PATH]"; exit 1; }
+          [ -f harness/_build/html/index.html ] || { echo "::error::no index.html produced"; exit 1; }
+          cmp harness/_build/latex/harness-book.pdf harness/_build/html/_pdf/harness-book.pdf \
+            || { echo "::error::html-copy-pdf: harness/_build/html/_pdf/harness-book.pdf is missing or differs from the PDF under _build/latex"; ls -la harness/_build/html/_pdf || true; exit 1; }
+          cmp harness/_build/jupyter/lecture1.ipynb harness/_build/html/_notebooks/lecture1.ipynb \
+            || { echo "::error::html-copy-notebooks: harness/_build/html/_notebooks/lecture1.ipynb is missing or differs from the notebook under _build/jupyter"; ls -la harness/_build/html/_notebooks || true; exit 1; }
+          echo "✅ the html build copied the PDF into _pdf/ and the notebook into _notebooks/"
 
   # ==========================================================================
   # setup-environment — container mode, in the real lean image
@@ -3664,6 +3843,9 @@ jobs:
       - unit-exec-seed
       - unit-exec-restore
       - unit-exec-restore-save
+      - unit-custom-seed
+      - unit-custom-restore
+      - unit-line-break
       - env-seed
       - env-hit-build
       - env-version-bump
@@ -3673,6 +3855,7 @@ jobs:
       - env-pinned-edit
       - build-fail-guard
       - build-display-error-guard
+      - build-html-copy
       - env-container-update
       - pdf-check-handoff
       - pdf-check-build
