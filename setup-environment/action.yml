@@ -174,9 +174,11 @@ runs:
     - name: Validate environment file (non-container mode)
       if: steps.detect-container.outputs.container-mode == 'false'
       shell: bash
+      env:
+        ENV_FILE: ${{ inputs.environment }}
       run: |
-        if [ ! -f "${{ inputs.environment }}" ]; then
-          echo "::error::Environment file not found: ${{ inputs.environment }} (required in standard / non-container mode)"
+        if [ ! -f "$ENV_FILE" ]; then
+          echo "::error::Environment file not found: $ENV_FILE (required in standard / non-container mode)"
           exit 1
         fi
 
@@ -261,7 +263,10 @@ runs:
       # Runs on a true cache miss OR a restore-keys partial match (cache-hit is
       # exact-only). --prune removes deps dropped from environment.yml when
       # updating an older restored env.
-      run: conda env update -n ${{ inputs.environment-name }} -f ${{ inputs.environment }} --prune
+      env:
+        ENV_NAME: ${{ inputs.environment-name }}
+        ENV_FILE: ${{ inputs.environment }}
+      run: conda env update -n "$ENV_NAME" -f "$ENV_FILE" --prune
 
     - name: Install LaTeX packages (non-container mode)
       if: steps.detect-container.outputs.container-mode == 'false' && inputs.install-latex == 'true'

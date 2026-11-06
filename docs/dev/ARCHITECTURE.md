@@ -55,7 +55,7 @@ Building the lectures runs code the repository does not fully control, and code 
 
 ### Inputs reach scripts through the environment
 
-A step passes its inputs and outputs to a script through `env:`, not by expanding `${{ }}` into the `run:` text, where a value would be read as shell. #228 tracks the actions that still expand some. A step finds a script relative to `$GITHUB_ACTION_PATH`, never `${{ github.action_path }}`: in a container job the latter is the runner's path, which does not exist inside the container.
+A step passes its inputs and outputs to a script through `env:`, not by expanding `${{ }}` into the `run:` text, where a value would be read as shell. A step finds a script relative to `$GITHUB_ACTION_PATH`, never `${{ github.action_path }}`: in a container job the latter is the runner's path, which does not exist inside the container.
 
 ### Failures reach a person
 

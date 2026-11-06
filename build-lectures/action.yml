@@ -133,10 +133,12 @@ runs:
     - name: Stage PDF for HTML build
       if: inputs.builder == 'html' && inputs.html-copy-pdf == 'true'
       shell: bash
+      env:
+        OUTPUT_DIR: ${{ inputs.output-dir }}
       run: |
         echo "::group::Stage PDF for HTML build"
-        PDF_SOURCE="${{ inputs.output-dir }}/_build/latex"
-        PDF_DEST="${{ inputs.output-dir }}/_build/html/_pdf"
+        PDF_SOURCE="$OUTPUT_DIR/_build/latex"
+        PDF_DEST="$OUTPUT_DIR/_build/html/_pdf"
         
         if [ -d "$PDF_SOURCE" ]; then
           mkdir -p "$PDF_DEST"
@@ -152,10 +154,12 @@ runs:
     - name: Stage notebooks for HTML build
       if: inputs.builder == 'html' && inputs.html-copy-notebooks == 'true'
       shell: bash
+      env:
+        OUTPUT_DIR: ${{ inputs.output-dir }}
       run: |
         echo "::group::Stage notebooks for HTML build"
-        NB_SOURCE="${{ inputs.output-dir }}/_build/jupyter"
-        NB_DEST="${{ inputs.output-dir }}/_build/html/_notebooks"
+        NB_SOURCE="$OUTPUT_DIR/_build/jupyter"
+        NB_DEST="$OUTPUT_DIR/_build/html/_notebooks"
         
         if [ -d "$NB_SOURCE" ]; then
           mkdir -p "$NB_DEST"
@@ -406,19 +410,25 @@ runs:
     - name: Display Build Info
       if: success()
       shell: bash
+      env:
+        BUILDER: ${{ inputs.builder }}
+        SOURCE_DIR: ${{ inputs.source-dir }}
+        BUILD_PATH: ${{ steps.build.outputs.build-path }}
+        HTML_COPY_PDF: ${{ inputs.html-copy-pdf }}
+        HTML_COPY_NOTEBOOKS: ${{ inputs.html-copy-notebooks }}
       run: |
         echo "::group::Build Summary"
-        echo "Builder: ${{ inputs.builder }}"
-        echo "Source: ${{ inputs.source-dir }}"
-        echo "Output: ${{ steps.build.outputs.build-path }}"
-        if [ "${{ inputs.builder }}" = "html" ]; then
-          echo "PDF copied to HTML: ${{ inputs.html-copy-pdf }}"
-          echo "Notebooks copied to HTML: ${{ inputs.html-copy-notebooks }}"
+        echo "Builder: $BUILDER"
+        echo "Source: $SOURCE_DIR"
+        echo "Output: $BUILD_PATH"
+        if [ "$BUILDER" = "html" ]; then
+          echo "PDF copied to HTML: $HTML_COPY_PDF"
+          echo "Notebooks copied to HTML: $HTML_COPY_NOTEBOOKS"
         fi
         echo "::endgroup::"
-        
+
         echo "::group::Build Artifacts"
-        ls -lh ${{ steps.build.outputs.build-path }} || echo "Build directory not found"
+        ls -lh "$BUILD_PATH" || echo "Build directory not found"
         echo "::endgroup::"
 
 branding:
