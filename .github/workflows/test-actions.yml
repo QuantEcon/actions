@@ -2172,6 +2172,7 @@ jobs:
     # `issues: write` and would file real issues in this repo on every PR run,
     # so it belongs to the canary (QuantEcon/test-actions-lecture-intro), which
     # runs in container mode against @v0 and has a tracker that can absorb them.
+    # bjc-alert below runs the alert's own script against a stand-in API.
     name: 'build-jupyter-cache: a failing build fails the step, no cache saved'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -2452,6 +2453,61 @@ jobs:
           check 'html,pdf' "$PARTIAL_OUTCOME" "$PARTIAL_SUCCESS" "$PARTIAL_STATUSES"
           check 'nojupyter' "$SUBSTRING_OUTCOME" "$SUBSTRING_SUCCESS" "$SUBSTRING_STATUSES"
           exit "$fail"
+
+  bjc-alert:
+    # #229 and #238: what the failure alert files, and where. The jobs above
+    # run with create-issue-on-failure: 'false', since filing needs
+    # issues: write and would open real issues here on every run. This job
+    # reads the alert step and the step that verifies it from
+    # build-jupyter-cache/action.yml and runs them on their own, with no
+    # token: the github-script body against a stand-in for the GitHub API,
+    # called as actions/github-script calls it, as preview-comment does, and
+    # the verification step as bash. It asserts that the issue gives each
+    # failed builder's command with --path-output . and the given source-dir,
+    # so a local repro builds where the action did; that a later failure
+    # comments on the open issue that carries the first label, and never on
+    # a pull request that carries it; and that the verification step fails
+    # on a pull request's URL. test.cjs lists the cases.
+    name: 'build-jupyter-cache: the failure alert lands on an issue, never a pull request, and its commands build where the action does'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # The Node that actions/github-script@v9 runs on.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      # PyYAML, at the pin in scripts/requirements.txt, as the gate installs it.
+      # The verification step is found by its name, since it has no id.
+      - name: Read the alert's steps
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --disable-pip-version-check --quiet -r scripts/requirements.txt
+          "$RUNNER_TEMP/venv/bin/python" - build-jupyter-cache > "$RUNNER_TEMP/alert-steps.json" <<'PY'
+          import json, os, sys, yaml
+          d = sys.argv[1]
+          with open(os.path.join(d, 'action.yml')) as f:
+              action = yaml.safe_load(f)
+          steps = action['runs']['steps']
+          alert = next(s for s in steps if s.get('id') == 'create-failure-issue')
+          verify = next(s for s in steps if s.get('name') == 'Verify the failure alert was filed')
+          json.dump({
+              'dir': os.path.abspath(d),
+              'output': action['outputs']['failure-issue-url']['value'],
+              'alert': {'if': alert['if'], 'uses': alert['uses'], 'env': alert['env'], 'with': alert['with']},
+              'verify': {'if': verify['if'], 'shell': verify['shell'], 'env': verify['env'], 'run': verify['run']},
+          }, sys.stdout)
+          PY
+
+      - name: Run them against a stand-in GitHub API
+        run: node .github/fixtures/bjc-alert/test.cjs "$RUNNER_TEMP/alert-steps.json"
 
   bjc-restore-build:
     name: 'round-trip: restore-jupyter-cache reads build-jupyter-cache (build)'
@@ -4183,6 +4239,7 @@ jobs:
       - bjc-fail-guard
       - bjc-abort-guard
       - bjc-builders-parse
+      - bjc-alert
       - bjc-restore-build
       - bjc-restore-exec
       - dc-gate-probe
