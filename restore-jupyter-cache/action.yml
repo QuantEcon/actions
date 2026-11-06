@@ -14,7 +14,7 @@ inputs:
       What to restore. `build`, the default, restores the whole `_build` directory the last cache
       build saved: its HTML, PDF and notebooks, and the execution cache in `_build/.jupyter_cache`.
       `execution` restores only `_build/.jupyter_cache`, which holds each notebook's executed
-      outputs.
+      outputs. Any other value fails the run before anything is restored.
     required: false
     default: 'build'
   path:
@@ -22,8 +22,8 @@ inputs:
       The build directory to restore into. The path is part of what identifies a cache, so only
       `_build`, the default, finds the caches that `build-jupyter-cache` saves; any other path
       finds only what this action saved with `save-cache` and the same `path`. With
-      `cache-type: execution` the cache goes into `<path>/.jupyter_cache`. A line break in it fails
-      the run before anything is restored.
+      `cache-type: execution` the cache goes into `<path>/.jupyter_cache`. An empty path, or one
+      with a line break in it, fails the run before anything is restored.
     required: false
     default: '_build'
   source-dir:
@@ -59,7 +59,8 @@ inputs:
   fail-on-miss:
     description: >-
       `'true'` fails the job when nothing is restored. `'false'`, the default, carries on without a
-      cache, and the build starts from scratch.
+      cache, and the build starts from scratch. Any other value, `'True'` or `yes` among them,
+      fails the run before anything is restored.
     required: false
     default: 'false'
   save-cache:
@@ -68,7 +69,8 @@ inputs:
       not match exactly. Saved from a pull request's run, the cache can be restored only by that
       pull request's later runs; saved from a run on a branch, it reaches every pull request that
       targets the branch. So use it in pull-request builds only. `'false'`, the default, only
-      restores.
+      restores. Any other value, `'True'` or `yes` among them, fails the run before anything is
+      restored.
     required: false
     default: 'false'
 
@@ -89,32 +91,64 @@ outputs:
 runs:
   using: "composite"
   steps:
-    # Before either value is written to $GITHUB_OUTPUT below, where a line
-    # break would end the value and start another output (#228). A comma or
-    # an over-long key is left to actions/cache, which refuses both itself.
+    # First, on every call, a custom key's included, so that nothing is
+    # restored or registered for saving from a value the steps below misread.
+    # They compare cache-type, save-cache and fail-on-miss exactly, but an
+    # `if:` compares case-insensitively: save-cache 'True' registered the
+    # job-end save while the key step left the run ID off the key, so the
+    # cache stopped updating without a word, and cache-type 'exec' restored
+    # the build cache (#236). key and path are written to $GITHUB_OUTPUT
+    # below, where a line break would end the value and start another output
+    # (#228). A comma or an over-long key is left to actions/cache, which
+    # refuses both itself.
     - name: Check inputs
       shell: bash
       env:
+        CACHE_TYPE: ${{ inputs.cache-type }}
+        SAVE_CACHE: ${{ inputs.save-cache }}
+        FAIL_ON_MISS: ${{ inputs.fail-on-miss }}
         CUSTOM_KEY: ${{ inputs.key }}
         CACHE_PATH: ${{ inputs.path }}
       run: |
-        single_line() {
-          case "$2" in
-            *$'\n'*|*$'\r'*)
-              # Escaped as a workflow command's data, so the value stays in this
-              # one annotation: a newline in it would otherwise start a new line
-              # that the runner could read as a command.
-              shown=${2//'%'/'%25'}
-              shown=${shown//$'\r'/'%0D'}
-              shown=${shown//$'\n'/'%0A'}
-              echo "::error::$1 must be a single line, got '$shown'"
-              return 1
-              ;;
-          esac
+        # Escaped as a workflow command's data, so a value stays in its one
+        # annotation: a newline in it would otherwise start a new line that
+        # the runner could read as a command.
+        shown() {
+          local s
+          s=${1//'%'/'%25'}
+          s=${s//$'\r'/'%0D'}
+          s=${s//$'\n'/'%0A'}
+          printf '%s' "$s"
         }
         bad=0
-        single_line key "$CUSTOM_KEY" || bad=1
-        single_line path "$CACHE_PATH" || bad=1
+        refuse() { echo "::error::$1"; bad=1; }
+        single_line() {
+          case "$2" in
+            *$'\n'*|*$'\r'*) refuse "$1 must be a single line, got '$(shown "$2")'" ;;
+          esac
+        }
+
+        case "$CACHE_TYPE" in
+          build|execution) ;;
+          *) refuse "cache-type must be build or execution, got '$(shown "$CACHE_TYPE")'" ;;
+        esac
+        case "$SAVE_CACHE" in
+          true|false) ;;
+          *) refuse "save-cache must be 'true' or 'false', got '$(shown "$SAVE_CACHE")'" ;;
+        esac
+        case "$FAIL_ON_MISS" in
+          true|false) ;;
+          *) refuse "fail-on-miss must be 'true' or 'false', got '$(shown "$FAIL_ON_MISS")'" ;;
+        esac
+        single_line key "$CUSTOM_KEY"
+        # Neither cache type can use an empty path: actions/cache refuses one
+        # for the build cache, and the execution cache would go to
+        # /.jupyter_cache.
+        if [ -z "$CACHE_PATH" ]; then
+          refuse "path must not be empty: give the build directory, _build by default"
+        else
+          single_line path "$CACHE_PATH"
+        fi
         exit "$bad"
 
     - name: Determine cache key and restore-keys

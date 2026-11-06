@@ -20,6 +20,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so the gate now fails if the runner image has none, and logs its version. TESTING.md and
   AGENTS.md give the same check to run locally. (#100)
 
+### Changed
+- **`restore-jupyter-cache`**: `cache-type` accepts only `build` or `execution`, and `save-cache`
+  and `fail-on-miss` only `'true'` or `'false'`; `path` must not be empty. Anything else fails the
+  run in its first step, on every call, a custom `key`'s included, before anything is restored or
+  registered for saving. The steps compared these values exactly, but their conditions compared
+  them case-insensitively. So `save-cache: 'True'` registered the job-end save under the
+  read-only key, which has no run ID: the first run saved under it, every later run matched it
+  exactly and saved nothing, and the pull request's cache stopped updating without a word. A
+  typo such as `cache-type: exec` restored the whole build cache, and `fail-on-miss: yes` was
+  false. An empty `path` restored the execution cache into `/.jupyter_cache`, and failed inside
+  `actions/cache` for the build cache. An unquoted `true` or `True` is unaffected, since YAML
+  reads it as a boolean and the action receives `'true'`. No QuantEcon workflow passes a value
+  outside these. Each input's description names its accepted values, and a new harness job,
+  `unit-input-values`, shows each refused value failing the action where a control passes. It
+  also makes #160's `cache-type: execution` safer to adopt: a mistyped value can no longer bring
+  the build cache back unnoticed. (#236)
+
 ### Documentation
 - **Developer docs** (#178): `docs/dev` describes the project as it is. `ARCHITECTURE.md` is the
   current design: the parts, and why the actions are composite, the environment an image, the

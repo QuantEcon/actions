@@ -691,6 +691,107 @@ jobs:
           [ ! -e harness-injected ] || { echo "::error::harness-injected exists: the path's second line was used"; exit 1; }
           echo "✅ the single-line key passed, and a line break in key or path failed the action before the restore"
 
+  # #236: an input outside its accepted values used to pass unchecked. The
+  # steps compare them exactly, and an `if:` case-insensitively, so
+  # save-cache 'True' registered the job-end save under a key without the run
+  # ID, cache-type 'exec' restored the build cache, and fail-on-miss 'yes'
+  # was false; an empty path put the execution cache in /.jupyter_cache. Each
+  # case below differs from the control in one input, and each passed before
+  # the check. 'True' is quoted: unquoted, YAML reads it as the boolean, and
+  # the action receives 'true'.
+  unit-input-values:
+    name: 'restore-jupyter-cache: a value outside an input''s accepted values, or an empty path, fails before anything is restored (#236)'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Create salted fixture (distinct salt — nothing ever saved for it)
+        run: |
+          mkdir -p harness
+          printf 'harness-env-salt: %s-unit-values\n' "$SALT" > harness/environment.yml
+
+      - name: 'control: build, read-only, a miss'
+        id: control
+        continue-on-error: true
+        uses: ./restore-jupyter-cache
+        with:
+          cache-type: 'build'
+          environment: 'harness/environment.yml'
+          save-cache: 'false'
+          fail-on-miss: 'false'
+
+      - name: "refused: cache-type 'exec'"
+        id: exec
+        continue-on-error: true
+        uses: ./restore-jupyter-cache
+        with:
+          cache-type: 'exec'
+          environment: 'harness/environment.yml'
+
+      - name: "refused: save-cache 'True'"
+        id: save-true
+        continue-on-error: true
+        uses: ./restore-jupyter-cache
+        with:
+          environment: 'harness/environment.yml'
+          save-cache: 'True'
+
+      - name: "refused: save-cache 'True', with a custom key"
+        id: key-save-true
+        continue-on-error: true
+        uses: ./restore-jupyter-cache
+        with:
+          key: harness-values-${{ env.SALT }}
+          save-cache: 'True'
+
+      - name: "refused: fail-on-miss 'yes'"
+        id: miss-yes
+        continue-on-error: true
+        uses: ./restore-jupyter-cache
+        with:
+          environment: 'harness/environment.yml'
+          fail-on-miss: 'yes'
+
+      - name: 'refused: an empty path, with the execution cache'
+        id: empty-path
+        continue-on-error: true
+        uses: ./restore-jupyter-cache
+        with:
+          cache-type: 'execution'
+          path: ''
+
+      - name: Assert the control passed, each refused value failed, and nothing was restored
+        env:
+          RESULTS: |
+            passed|control|${{ steps.control.outcome }}|${{ steps.control.outputs.cache-hit }}
+            refused|exec|${{ steps.exec.outcome }}|${{ steps.exec.outputs.cache-hit }}
+            refused|save-true|${{ steps.save-true.outcome }}|${{ steps.save-true.outputs.cache-hit }}
+            refused|key-save-true|${{ steps.key-save-true.outcome }}|${{ steps.key-save-true.outputs.cache-hit }}
+            refused|miss-yes|${{ steps.miss-yes.outcome }}|${{ steps.miss-yes.outputs.cache-hit }}
+            refused|empty-path|${{ steps.empty-path.outcome }}|${{ steps.empty-path.outputs.cache-hit }}
+        run: |
+          set -euo pipefail
+          bad=0 n=0
+          while IFS='|' read -r want id outcome hit; do
+            [ -n "$want" ] || continue
+            n=$((n + 1))
+            if [ "$want" = passed ]; then expect=success; else expect=failure; fi
+            if [ "$outcome" != "$expect" ] || [ "$hit" != false ]; then
+              echo "::error::$id: expected outcome [$expect] and cache-hit [false], got [$outcome] and [$hit]"
+              bad=1
+            else
+              echo "✓ $id: outcome=$outcome"
+            fi
+          done <<< "$RESULTS"
+          [ "$n" -eq 6 ] || { echo "::error::expected 6 cases, read $n"; exit 1; }
+          [ ! -e _build ] || { echo "::error::_build exists: something was restored"; exit 1; }
+          [ ! -e /.jupyter_cache ] || { echo "::error::/.jupyter_cache exists: the empty path was used"; exit 1; }
+          [ "$bad" -eq 0 ]
+          echo "✅ the control passed, and every value outside its accepted set failed the action before the restore"
+
   # ==========================================================================
   # setup-environment — standard-mode conda cache, two-run miss→hit chain
   # (PLAN item 9: the #33/#78 cache fix had never been confirmed by CI)
@@ -3846,6 +3947,7 @@ jobs:
       - unit-custom-seed
       - unit-custom-restore
       - unit-line-break
+      - unit-input-values
       - env-seed
       - env-hit-build
       - env-version-bump
