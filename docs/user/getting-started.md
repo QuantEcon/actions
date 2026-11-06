@@ -78,8 +78,6 @@ For download links to the PDF and the notebooks on every page:
 2. In `publish.yml`, uncomment the `jupyter` and `pdflatex` build steps, and set `html-copy-pdf: 'true'` and `html-copy-notebooks: 'true'` on the `html` build.
 3. In `ci.yml`, do the same in the `build` job, if the previews should offer downloads too.
 
-Notebooks from lectures in subdirectories have broken download links: see [Downloads on the site](actions/build-lectures.md#downloads-on-the-site).
-
 ### The PDF check
 
 `ci.yml`'s `pdf-check` job builds the PDF on every pull request, because malformed LaTeX can pass the HTML build and still break the PDF build, and with it the publish.
