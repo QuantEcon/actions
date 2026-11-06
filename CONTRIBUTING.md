@@ -146,7 +146,10 @@ chapter in `docs/user/actions/`. The chapters' input and output tables, the acti
 action has no chapter: run the script and commit what it writes. It also checks every example in
 `docs/user` and `templates/` against the `action.yml` files, for `permissions:`, and with
 actionlint. [docs/dev/CHAPTER-TEMPLATE.md](docs/dev/CHAPTER-TEMPLATE.md)
-lists the checks and how to run them locally.
+lists the checks and how to run them locally. The gate also lints `.github/workflows/` with
+actionlint: fix what it reports. A shellcheck finding that is wrong for one command takes a
+`# shellcheck disable=SC<code> # <reason>` line just before that command; any other ignore goes
+in `.github/actionlint.yaml`, limited to its file, with the reason.
 
 ### Breaking Changes
 

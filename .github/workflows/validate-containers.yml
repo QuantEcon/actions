@@ -223,7 +223,7 @@ jobs:
             echo "| | |"
             echo "|---|---|"
             echo "| **Pushed** | \`$IMAGE@$DIGEST\` |"
-            echo "| **Tags** | $(sed 's/^.*:\(.*\)$/`\1`/' <<< "$TAGS" | paste -sd' ' -) |"
+            echo "| **Tags** | $(awk -F: '{ printf "%s`%s`", (NR > 1 ? " " : ""), $NF }' <<< "$TAGS") |"
             if [ -n "$BEFORE" ]; then
               echo "| **\`:latest\` at build time** | \`$IMAGE@$BEFORE\` |"
             else
@@ -320,6 +320,7 @@ jobs:
           {
             echo "### Candidates deleted for pull request #$PR_NUMBER"
             echo
+            # shellcheck disable=SC2001 # a prefix on each line of the list, which ${var//} cannot do
             if [ -n "$deleted" ]; then sed 's/^/- /' <<< "$deleted"; else echo "None: it pushed no candidates."; fi
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
