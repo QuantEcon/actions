@@ -146,6 +146,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   request alone, a newer one beside an older issue, an issue after more than 30 newer pull
   requests, and nothing labelled. PLAN drops backlog item 15, and TESTING lists the new job.
   (#238)
+- **`restore-jupyter-cache`**: a build-cache restore that matches, exactly or by prefix, removes
+  the restored `<path>/html`, and logs how many files went. A build writes over `_build/html` but
+  removes nothing from it, so a site built over the build cache published again every page and
+  file deleted from the source since the last cache build: a removed lecture's pages, a deleted
+  `_static` file, image or dataset, and the `_pdf/` and `_notebooks/` copies that the cache build
+  staged there. The restored HTML saved no work, since a fresh checkout gives every source file a
+  new modification time and Sphinx rewrites every page anyway. `_build/jupyter`, `_build/latex` and
+  `_build/.jupyter_cache` stay, and an execution-cache restore removes nothing. There is no input:
+  a build always rewrites `html`. A build that offered the PDF or the notebooks from a restored
+  `_build/html/_pdf/` or `_notebooks/`, without `html-copy-pdf` or `html-copy-notebooks`, sets
+  those two inputs, which copy them from the restored `_build/latex` and `_build/jupyter`; no
+  QuantEcon workflow did. `lecture-dp` gets the change through `@v0` with no edit. The
+  `cache-type` description, the chapter, ARCHITECTURE's "Two caches", the templates' comments and
+  Getting started's migration steps say so. The harness's build-restore jobs show the removal,
+  with an execution restore as the control. #270 is the second step. (#160)
 
 ## [0.15.0] - 2026-11-05
 
