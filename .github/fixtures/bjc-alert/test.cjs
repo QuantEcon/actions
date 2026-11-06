@@ -13,7 +13,9 @@
 //     however many newer ones do: with only pull requests labelled, it files
 //     a new issue (#238);
 //   - the verification step passes on the URL the alert gave, and fails when
-//     there is none or it is a pull request's (#238).
+//     there is none or it is not an issue's, naming a pull request's as one
+//     (#238); it reads only the URL's end, so an owner or a repository
+//     named pull or issues changes nothing.
 //
 // Usage: node test.cjs STEPS_JSON, where STEPS_JSON holds the alert step, the
 // verification step and the failure-issue-url output's value (the harness
@@ -105,9 +107,18 @@ const VERIFY = [
   { name: "an issue's URL: passes",
     env: { ALERT_OUTCOME: 'success', ISSUE_URL: issueUrl(10), FAILURE_PHASE: 'build' }, rc: 0,
     out: /^✅ failure issue filed: https:\/\/github\.com\/QuantEcon\/lecture-harness\/issues\/10$/m },
+  { name: "an issue's URL in a repository named pull, of an owner named pull: passes",
+    env: { ALERT_OUTCOME: 'success', ISSUE_URL: `${SERVER}/pull/pull/issues/10`, FAILURE_PHASE: 'build' }, rc: 0,
+    out: /^✅ failure issue filed: https:\/\/github\.com\/pull\/pull\/issues\/10$/m },
   { name: "a pull request's URL: fails",
     env: { ALERT_OUTCOME: 'success', ISSUE_URL: pullUrl(5), FAILURE_PHASE: 'build' }, rc: 1,
     out: /^::error::[^\n]*a pull request, not an issue: https:\/\/github\.com\/QuantEcon\/lecture-harness\/pull\/5\. /m },
+  { name: "a pull request's URL in a repository named issues: fails",
+    env: { ALERT_OUTCOME: 'success', ISSUE_URL: `${SERVER}/QuantEcon/issues/pull/5`, FAILURE_PHASE: 'build' }, rc: 1,
+    out: /^::error::[^\n]*a pull request, not an issue: https:\/\/github\.com\/QuantEcon\/issues\/pull\/5\. /m },
+  { name: "a URL that is neither an issue's nor a pull request's: fails",
+    env: { ALERT_OUTCOME: 'success', ISSUE_URL: `${SERVER}/QuantEcon/lecture-harness/discussions/5`, FAILURE_PHASE: 'build' }, rc: 1,
+    out: /^::error::[^\n]*the alert step's URL is not an issue's: https:\/\/github\.com\/QuantEcon\/lecture-harness\/discussions\/5\.$/m },
   { name: 'no URL: fails',
     env: { ALERT_OUTCOME: 'success', ISSUE_URL: '', FAILURE_PHASE: 'build' }, rc: 1,
     out: /^::error::create-issue-on-failure is enabled but no failure issue was filed \(alert step outcome=\[success\], issue url=\[\]/m },

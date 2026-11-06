@@ -652,9 +652,10 @@ runs:
 
     # The defect this whole path had was being a silent no-op, so assert the
     # postcondition rather than trusting the step above. This also survives
-    # someone later adding continue-on-error to it. An issue's URL has
-    # /issues/ in it and a pull request's /pull/, so a report that the lookup
-    # posted on a pull request fails here too (#238).
+    # someone later adding continue-on-error to it. An issue's URL ends in
+    # /issues/<number> and a pull request's in /pull/<number>, so a report
+    # that the lookup posted on a pull request fails here too (#238). Only the
+    # end is matched, since an owner or a repository may be named pull.
     - name: Verify the failure alert was filed
       if: always() && steps.status.outputs.all-passed != 'true' && inputs.create-issue-on-failure == 'true'
       shell: bash
@@ -667,12 +668,14 @@ runs:
           echo "::error::create-issue-on-failure is enabled but no failure issue was filed (alert step outcome=[$ALERT_OUTCOME], issue url=[$ISSUE_URL], failing phase=[$FAILURE_PHASE]). This run's failure would otherwise have gone unreported."
           exit 1
         fi
-        case "$ISSUE_URL" in
-          */pull/*)
+        if [[ ! $ISSUE_URL =~ /issues/[0-9]+$ ]]; then
+          if [[ $ISSUE_URL =~ /pull/[0-9]+$ ]]; then
             echo "::error::create-issue-on-failure is enabled but the failure report went to a pull request, not an issue: $ISSUE_URL. No failure issue was filed."
-            exit 1
-            ;;
-        esac
+          else
+            echo "::error::create-issue-on-failure is enabled but the alert step's URL is not an issue's: $ISSUE_URL."
+          fi
+          exit 1
+        fi
         echo "✅ failure issue filed: $ISSUE_URL"
         echo "Failure issue: $ISSUE_URL" >> "$GITHUB_STEP_SUMMARY"
 
