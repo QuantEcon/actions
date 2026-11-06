@@ -129,10 +129,18 @@ jobs:
           IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/quantecon
           TAGS: ${{ steps.meta.outputs.tags }}
           TAG: ${{ needs.plan.outputs.tag }}
+          SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          if [ "$(grep -c . <<< "$TAGS")" -ne 2 ] || ! grep -qxF "$IMAGE:$TAG" <<< "$TAGS" || grep -q ':latest$' <<< "$TAGS"; then
-            echo "::error::a build pushes $IMAGE:$TAG and one <branch>-<sha> tag, never :latest, but the tags are [$TAGS]"
+          n=0
+          while IFS= read -r ref; do
+            [ -n "$ref" ] || continue
+            [[ $ref == "$IMAGE:$TAG" || $ref =~ ^"$IMAGE":[A-Za-z0-9._-]+-"${SHA:0:7}"$ ]] \
+              || { echo "::error::refusing to push [$ref]: a build pushes only $IMAGE:$TAG and $IMAGE:<branch>-${SHA:0:7}, never :latest"; exit 1; }
+            n=$((n + 1))
+          done <<< "$TAGS"
+          if [ "$n" -ne 2 ] || ! grep -qxF "$IMAGE:$TAG" <<< "$TAGS"; then
+            echo "::error::expected $IMAGE:$TAG and $IMAGE:<branch>-${SHA:0:7}, got [$TAGS]"
             exit 1
           fi
 
@@ -206,10 +214,18 @@ jobs:
           IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/quantecon-build
           TAGS: ${{ steps.meta.outputs.tags }}
           TAG: ${{ needs.plan.outputs.tag }}
+          SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          if [ "$(grep -c . <<< "$TAGS")" -ne 2 ] || ! grep -qxF "$IMAGE:$TAG" <<< "$TAGS" || grep -q ':latest$' <<< "$TAGS"; then
-            echo "::error::a build pushes $IMAGE:$TAG and one <branch>-<sha> tag, never :latest, but the tags are [$TAGS]"
+          n=0
+          while IFS= read -r ref; do
+            [ -n "$ref" ] || continue
+            [[ $ref == "$IMAGE:$TAG" || $ref =~ ^"$IMAGE":[A-Za-z0-9._-]+-"${SHA:0:7}"$ ]] \
+              || { echo "::error::refusing to push [$ref]: a build pushes only $IMAGE:$TAG and $IMAGE:<branch>-${SHA:0:7}, never :latest"; exit 1; }
+            n=$((n + 1))
+          done <<< "$TAGS"
+          if [ "$n" -ne 2 ] || ! grep -qxF "$IMAGE:$TAG" <<< "$TAGS"; then
+            echo "::error::expected $IMAGE:$TAG and $IMAGE:<branch>-${SHA:0:7}, got [$TAGS]"
             exit 1
           fi
 

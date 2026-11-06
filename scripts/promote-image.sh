@@ -86,13 +86,20 @@ case $3 in
       esac
       shift
     done
-    manifest=$(cat "$R/manifests/$(lookup "$1")")
-    if [ "$copy" != true ] || [ -f "$R/rewrap" ]; then manifest="{\"manifests\":[$manifest]}"; fi
-    if [ "$dry" = true ]; then
-      printf '%s\n' "$manifest"
+    # Files, not variables, so the bytes stay exact, a trailing newline too.
+    src=$(lookup "$1")
+    out=$(mktemp "$R/push-XXXXXX")
+    if [ "$copy" != true ] || [ -f "$R/rewrap" ]; then
+      { printf '{"manifests":['; cat "$R/manifests/$src"; printf ']}'; } > "$out"
     else
-      d=sha256:$(printf '%s' "$manifest" | sha256)
-      printf '%s' "$manifest" > "$R/manifests/$d"
+      cp "$R/manifests/$src" "$out"
+    fi
+    if [ "$dry" = true ]; then
+      cat "$out"; echo
+      rm "$out"
+    else
+      d=sha256:$(sha256 < "$out")
+      mv "$out" "$R/manifests/$d"
       echo "$d" > "$R/tags/${dst//\//_}"
     fi ;;
   *) echo "fake docker: unexpected [$*]" >&2; exit 2 ;;
@@ -153,6 +160,11 @@ self_test() {
 
   reset; rm "$work/reg/tags/${q//\//_}:latest"; run "quantecon@$d1"; ok "an image with no :latest"
   [ "$(get_tag "$q:latest")" = "$d1" ] || bad "an image with no :latest: not promoted"
+
+  # A manifest's own trailing newline is part of its bytes, and of the copy.
+  local nl=$'{"n":"ends in a newline"}\n'
+  reset; add "$nl"; set_tag "$q:$tag" "$(digest_of "$nl")"
+  RUN_DRY=true run "quantecon@$(digest_of "$nl")"; ok "a dry run of a manifest that ends in a newline"
 
   reset; touch "$work/reg/rewrap"; RUN_DRY=true run "quantecon@$d1"; refused "a dry run that is not a copy"
   reset; touch "$work/reg/rewrap"; run "quantecon@$d1"; refused "a promotion that is not a copy"
@@ -239,8 +251,13 @@ for i in "${!images[@]}"; do
   if [ "$DRY_RUN" = true ]; then
     docker buildx imagetools create --dry-run --prefer-index=false --tag "$repo:latest" "$repo@$digest" > "$WORK/manifest" \
       || fail "docker buildx imagetools create --dry-run failed for $repo@$digest"
-    # create prints the manifest it would push, then a newline.
-    would=sha256:$(printf '%s' "$(< "$WORK/manifest")" | sha256)
+    # create prints the manifest it would push, then one newline. Hash every
+    # byte but that one: a command substitution would strip them all.
+    size=$(($(wc -c < "$WORK/manifest")))
+    if [ "$size" -lt 2 ] || [ "$(tail -c 1 "$WORK/manifest" | od -An -tx1 | tr -d ' \n')" != 0a ]; then
+      fail "imagetools create --dry-run printed no manifest and newline for $repo@$digest"
+    fi
+    would=sha256:$(head -c "$((size - 1))" "$WORK/manifest" | sha256)
     [ "$would" = "$digest" ] \
       || fail "imagetools create would push $would as $repo:latest, not a copy of $digest"
     echo "| **\`:latest\` after** | would be \`$repo@$digest\` |"
