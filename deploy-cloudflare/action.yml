@@ -66,7 +66,7 @@ inputs:
   # action does not declare gets nothing but a warning from the runner.
   require-access:
     description: >-
-      Removed: use `visibility`. Passing it, with any value, fails the job, with a message that
+      Removed: use `visibility`. Any value but an empty one fails the job, with a message that
       says which `visibility` replaces it.
     required: false
     default: ''
@@ -116,17 +116,22 @@ runs:
         # would end the line that prints it, and could start a workflow command
         # (#267), or, in build-dir, write another key to GITHUB_OUTPUT below.
         # The secrets are never printed, and neither is require-access, which
-        # is refused below whatever it holds.
+        # is refused below whenever it holds anything.
         single_line "worker-name=$WORKER_NAME" "account-subdomain=$ACCOUNT_SUBDOMAIN" \
           "visibility=$VISIBILITY" "team-domain=$TEAM_DOMAIN" "build-dir=$BUILD_DIR" \
           "alias=$ALIAS" || exit 1
 
         # Who may see the site comes first, so that the log's first line says
         # it (#177). visibility replaced require-access, which is refused
-        # whatever its value: no input turns the checks off, and a site is
-        # never taken to be private because nothing said otherwise.
-        [ -z "$REQUIRE_ACCESS" ] \
-          || fail "require-access has been removed: use visibility. For require-access: 'true', set visibility: private. For require-access: 'false', set visibility: public and remove team-domain if the site is public, or visibility: private if it is behind Access."
+        # whenever it is set: no input turns the checks off, and a site is
+        # never taken to be private because nothing said otherwise. Beside a
+        # valid visibility, the message says only to remove it.
+        if [ -n "$REQUIRE_ACCESS" ]; then
+          case "$VISIBILITY" in
+            private|public) fail "require-access has been removed: remove it, and keep visibility: $VISIBILITY." ;;
+            *) fail "require-access has been removed: use visibility. For require-access: 'true', set visibility: private. For require-access: 'false', set visibility: public and remove team-domain if the site is public, or visibility: private if it is behind Access." ;;
+          esac
+        fi
         case "$VISIBILITY" in
           private|public) mode=$VISIBILITY ;;
           '') fail "visibility is required: set it to private, for a site behind Access, or public." ;;

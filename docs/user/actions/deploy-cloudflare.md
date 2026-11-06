@@ -90,7 +90,7 @@ The Access application is set up once per Worker, and the login method once per 
 | `team-domain` | no | `''` | The Access team's login domain, `<team>.cloudflareaccess.com`; a bare `<team>` is accepted too. Required for a private site, whose every check requires an anonymous request to be redirected to exactly this host. Must be empty for a public site, so that a workflow copied from a private site fails rather than publish it. |
 | `build-dir` | yes | none | The directory that holds the built site. The job fails if it is missing or holds no files, and warns if it has no `index.html`, since the site's root would then answer 404. A public site must hold an `index.html` or a file that is not HTML, for the check to request. |
 | `alias` | no | `''` | Also uploads the same build as a named preview alias, such as `report-2026-08`, for a permanent URL beside the production one, which moves with each deploy. Lowercase letters, digits and dashes, starting with a letter and not ending with a dash, and `<alias>-<worker-name>` must fit in 63 characters. Empty, the default, uploads no alias. |
-| `require-access` | no | `''` | Removed: use `visibility`. Passing it, with any value, fails the job, with a message that says which `visibility` replaces it. |
+| `require-access` | no | `''` | Removed: use `visibility`. Any value but an empty one fails the job, with a message that says which `visibility` replaces it. |
 
 <!-- END GENERATED -->
 
@@ -241,7 +241,7 @@ On the free plan a Worker's static assets can hold 20,000 files per version, and
 
 ## Moving from `require-access`
 
-`visibility` replaced `require-access`, which v0.12.0 shipped, and is required. A workflow that passes `require-access`, with any value, fails in the action's first step, before anything is checked or uploaded. So does one that leaves out `visibility`, which `require-access`'s default used to make a private site.
+`visibility` replaced `require-access`, which v0.12.0 shipped, and is required. A workflow that passes `require-access`, with any value but an empty one, fails in the action's first step, before anything is checked or uploaded. So does one that leaves out `visibility`, which `require-access`'s default used to make a private site.
 
 | Your workflow passes | Change it to |
 |---|---|
@@ -259,7 +259,7 @@ On the free plan a Worker's static assets can hold 20,000 files per version, and
 
 **`visibility must be private or public`.** Only those two values, in lower case.
 
-**`require-access has been removed: use visibility`.** Remove `require-access`, and set `visibility` as the message says: see [Moving from `require-access`](#moving-from-require-access).
+**`require-access has been removed`.** Remove `require-access`. If the workflow already sets `visibility`, the message says to keep it. If not, it says which `visibility` replaces each value: see [Moving from `require-access`](#moving-from-require-access).
 
 **`team-domain is set, but visibility is public`**, or **`visibility is private, so team-domain is required`.** Each kind of site refuses the other's `team-domain`, so that a workflow copied from a private site to a public one, or the reverse, fails rather than check the wrong thing. Pass `team-domain` for a private site only.
 
