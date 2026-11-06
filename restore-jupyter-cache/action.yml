@@ -13,8 +13,9 @@ inputs:
     description: >-
       What to restore. `build`, the default, restores the whole `_build` directory the last cache
       build saved, then removes its HTML, `<path>/html`, so the build writes the site afresh and
-      nothing deleted from the source since is published again. What stays is the execution cache
-      in `_build/.jupyter_cache`, and the PDF and notebooks if the cache build made them.
+      nothing deleted from the source since that cache build is published again. What stays is
+      the execution cache in `_build/.jupyter_cache`, and the PDF and notebooks if the cache build
+      made them.
       `execution` restores only `_build/.jupyter_cache`, which holds each notebook's executed
       outputs, and removes nothing. Any other value fails the run before anything is restored.
     required: false
