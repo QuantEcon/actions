@@ -64,6 +64,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its first step on one. Copilot's review of #265 found the first case, in `setup-environment`.
   (#267)
 
+### Removed
+- ⚠️ **BREAKING** **`deploy-cloudflare`**: `require-access` is removed, and `visibility` is
+  required, as the v0.14.0 and v0.15.0 deprecations said. Passing `require-access` now fails the
+  job in its first step, with a message that says what to use instead, and so does leaving out
+  `visibility`, which used to check the site as private with a warning. `require-access: 'false'`
+  was the only way to turn the checks off, and that goes with it: every deploy is checked before
+  the upload, after the deploy and on the alias, as private or public. The `visibility` output is
+  set on every run whose inputs pass. To migrate: replace `require-access: 'true'`, or neither
+  input, with `visibility: private`. For `require-access: 'false'`, use `visibility: public` and
+  remove `team-domain` if the site is public, or `visibility: private` if it is behind Access.
+  The chapter's "Moving from `require-access`" table gives each form. Two QuantEcon workflows
+  call the action, both pinned to v0.12.0 and passing neither input, so each needs
+  `visibility: private` when it moves to this release. `dc-inputs` shows both failures. (#177)
+
 ### Documentation
 - **Developer docs** (#178): `docs/dev` describes the project as it is. `ARCHITECTURE.md` is the
   current design: the parts, and why the actions are composite, the environment an image, the
