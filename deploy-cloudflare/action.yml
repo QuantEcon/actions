@@ -38,11 +38,8 @@ inputs:
       is uploaded, after the deploy, and on the alias after its upload. `private`: an anonymous
       request must be redirected to the Access login at `team-domain`, which is required. `public`:
       an anonymous request must be served the site, with no redirect to any Access login, and
-      `team-domain` must be empty. Any other value fails the job. Leaving it out is deprecated: in
-      this release the site is then checked as private, with a warning, and from the next minor
-      release the job fails.
-    required: false
-    default: ''
+      `team-domain` must be empty. Leaving it out, or any other value, fails the job.
+    required: true
   team-domain:
     description: >-
       The Access team's login domain, `<team>.cloudflareaccess.com`; a bare `<team>` is accepted
@@ -65,12 +62,12 @@ inputs:
       `<alias>-<worker-name>` must fit in 63 characters. Empty, the default, uploads no alias.
     required: false
     default: ''
+  # Kept as an input only so that passing it can fail the job: an input the
+  # action does not declare gets nothing but a warning from the runner.
   require-access:
     description: >-
-      Deprecated, and removed in the next minor release: use `visibility`. `'true'` checks the site
-      as `visibility: private` does. `'false'` skips every check: never use it for private
-      content. Either gives a warning. Any other value fails the job, and so does setting both
-      this and `visibility`.
+      Removed: use `visibility`. Passing it, with any value, fails the job, with a message that
+      says which `visibility` replaces it.
     required: false
     default: ''
 
@@ -87,10 +84,9 @@ outputs:
     value: ${{ steps.alias.outputs.alias-url }}
   visibility:
     description: >-
-      Who the site is checked as visible to, `private` or `public`: `visibility`, or what the
-      deprecated `require-access` stands for. Set once every input is valid, even if a check then
-      fails the job. Empty when an input is rejected, or when `require-access: 'false'` turns the
-      checks off.
+      Who the site is checked as visible to: `private` or `public`, as `visibility` gives it. Set
+      once every input is valid, even if a check then fails the job. Empty when an input is
+      rejected.
     value: ${{ steps.inputs.outputs.visibility }}
 
 runs:
@@ -119,29 +115,21 @@ runs:
         # Every input but the two secrets is one value, and a line break in one
         # would end the line that prints it, and could start a workflow command
         # (#267), or, in build-dir, write another key to GITHUB_OUTPUT below.
-        # The secrets are never printed.
+        # The secrets are never printed, and neither is require-access, which
+        # is refused below whatever it holds.
         single_line "worker-name=$WORKER_NAME" "account-subdomain=$ACCOUNT_SUBDOMAIN" \
           "visibility=$VISIBILITY" "team-domain=$TEAM_DOMAIN" "build-dir=$BUILD_DIR" \
-          "alias=$ALIAS" "require-access=$REQUIRE_ACCESS" || exit 1
+          "alias=$ALIAS" || exit 1
 
         # Who may see the site comes first, so that the log's first line says
-        # it (#177). require-access is visibility's deprecated alias for one
-        # release, and its old default, private, still holds when neither is
-        # given; a warning says so either way. `unchecked` is
-        # require-access: 'false', which runs no check.
+        # it (#177). visibility replaced require-access, which is refused
+        # whatever its value: no input turns the checks off, and a site is
+        # never taken to be private because nothing said otherwise.
+        [ -z "$REQUIRE_ACCESS" ] \
+          || fail "require-access has been removed: use visibility. For require-access: 'true', set visibility: private. For require-access: 'false', set visibility: public and remove team-domain if the site is public, or visibility: private if it is behind Access."
         case "$VISIBILITY" in
-          private|public)
-            [ -z "$REQUIRE_ACCESS" ] \
-              || fail "visibility and require-access are both set. require-access is deprecated: remove it, and keep visibility: $VISIBILITY."
-            mode=$VISIBILITY
-            ;;
-          '')
-            case "$REQUIRE_ACCESS" in
-              ''|true) mode=private ;;
-              false) mode=unchecked ;;
-              *) fail "require-access must be 'true' or 'false', got [$REQUIRE_ACCESS]. It is deprecated: set visibility to private or public instead." ;;
-            esac
-            ;;
+          private|public) mode=$VISIBILITY ;;
+          '') fail "visibility is required: set it to private, for a site behind Access, or public." ;;
           *) fail "visibility must be private or public, got [$VISIBILITY]." ;;
         esac
 
@@ -151,8 +139,7 @@ runs:
         if [ "$mode" = public ]; then
           [ -z "$TEAM_DOMAIN" ] || fail "team-domain is set, but visibility is public — did you mean private?"
         elif [ -z "$TEAM_DOMAIN" ]; then
-          [ -z "$VISIBILITY" ] || fail "visibility is private, so team-domain is required."
-          fail "team-domain is required unless visibility is public."
+          fail "visibility is private, so team-domain is required."
         else
           team=$(printf '%s' "$TEAM_DOMAIN" | tr '[:upper:]' '[:lower:]')
           team=${team#https://}; team=${team%/}
@@ -162,17 +149,9 @@ runs:
         fi
 
         case "$mode" in
-          private)   echo "🔒 PRIVATE site, gated by $team" ;;
-          public)    echo "🌐 PUBLIC site, served anonymously" ;;
-          unchecked) echo "⚠️ UNCHECKED site: require-access is false, so nothing checks who can see it" ;;
+          private) echo "🔒 PRIVATE site, gated by $team" ;;
+          public)  echo "🌐 PUBLIC site, served anonymously" ;;
         esac
-        if [ -z "$VISIBILITY" ]; then
-          case "$REQUIRE_ACCESS" in
-            true)  echo "::warning::require-access is deprecated, and is removed in the next minor release. Replace require-access: 'true' with visibility: private, which checks the same." ;;
-            false) echo "::warning::require-access is deprecated, and is removed in the next minor release, after which no input turns the checks off. Replace require-access: 'false' with visibility: public and no team-domain if the site is public, or with visibility: private if it is behind Access." ;;
-            *)     echo "::warning::visibility is not set, so the site is checked as private, as require-access's default did. Add visibility: private, or visibility: public for a public site: from the next minor release, leaving it out fails the job." ;;
-          esac
-        fi
 
         # Secrets are empty, not absent, on fork and Dependabot runs.
         [ -n "$API_TOKEN" ] || fail "cloudflare-api-token is empty. Secrets are not passed to workflows triggered from forks or by Dependabot."
@@ -235,7 +214,7 @@ runs:
 
         {
           echo "mode=$mode"
-          if [ "$mode" = unchecked ]; then echo "visibility="; else echo "visibility=$mode"; fi
+          echo "visibility=$mode"
           echo "team-domain=$team"
           echo "build-dir=$BUILD_DIR"
           echo "probe-path=$probe_path"
@@ -264,11 +243,10 @@ runs:
     # Worker that does not exist then fails at wrangler deploy, since the
     # manual's token cannot create one.
     #
-    # Skipped only for an explicit `unchecked`, so a mode that somehow came
-    # out empty fails here rather than skip the check.
+    # It has no condition: every deploy is checked, and a mode that somehow
+    # came out empty fails here rather than skip the check.
     - name: Check who can see the site before deploying
       id: gate-before
-      if: steps.inputs.outputs.mode != 'unchecked'
       shell: bash
       env:
         MODE: ${{ steps.inputs.outputs.mode }}
@@ -295,11 +273,6 @@ runs:
             ;;
         esac
         exit 1
-
-    - name: Warn that nothing is checked
-      if: steps.inputs.outputs.mode == 'unchecked'
-      shell: bash
-      run: echo "::warning::require-access is false, so this deploy does not check who can see the site. Never use this for private content."
 
     - name: Check for Node.js 22 or later
       id: node
@@ -482,7 +455,7 @@ runs:
     # that covers only previews would gate a public site's alias.
     - name: Check who can see the alias
       id: gate-alias
-      if: inputs.alias != '' && steps.inputs.outputs.mode != 'unchecked'
+      if: inputs.alias != ''
       shell: bash
       env:
         MODE: ${{ steps.inputs.outputs.mode }}
@@ -537,15 +510,13 @@ runs:
             public:failure)  echo "🚨 **not served anonymously**, see the step log" ;;
             *:success)       echo "✅ redirects to \`$TEAM\`" ;;
             *:failure)       echo "🚨 **not proven gated**, treat as public" ;;
-            unchecked:*)     echo "⚠️ not checked (\`require-access: false\`)" ;;
             *)               echo "not checked" ;;
           esac
         }
         case "$MODE" in
-          private)   heading="🔒 deploy-cloudflare: \`$WORKER_NAME\`, a PRIVATE site, gated by \`$TEAM\`" ;;
-          public)    heading="🌐 deploy-cloudflare: \`$WORKER_NAME\`, a PUBLIC site, served anonymously" ;;
-          unchecked) heading="⚠️ deploy-cloudflare: \`$WORKER_NAME\`, UNCHECKED (\`require-access: false\`)" ;;
-          *)         heading="☁️ deploy-cloudflare: \`$WORKER_NAME\`" ;;
+          private) heading="🔒 deploy-cloudflare: \`$WORKER_NAME\`, a PRIVATE site, gated by \`$TEAM\`" ;;
+          public)  heading="🌐 deploy-cloudflare: \`$WORKER_NAME\`, a PUBLIC site, served anonymously" ;;
+          *)       heading="☁️ deploy-cloudflare: \`$WORKER_NAME\`" ;;
         esac
         {
           echo "### $heading"

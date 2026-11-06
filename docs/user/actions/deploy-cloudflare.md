@@ -86,11 +86,11 @@ The Access application is set up once per Worker, and the login method once per 
 | `cloudflare-account-id` | yes | none | The ID of the Cloudflare account that owns the Worker, from a repository secret such as `secrets.CLOUDFLARE_ACCOUNT_ID`. The job fails if it is empty. |
 | `worker-name` | yes | none | The Worker to deploy to, one per site: lowercase letters, digits and dashes, not starting or ending with a dash, at most 63 characters. It must already exist, with its `workers.dev` route on, and, for a private site, already be behind Access. |
 | `account-subdomain` | yes | none | The account's `workers.dev` subdomain: `my-subdomain` for `*.my-subdomain.workers.dev`, which `my-subdomain.workers.dev` also gives. The URLs are built from it, never read from wrangler's output. |
-| `visibility` | no | `''` | Who may see the site: `private` or `public`. The site is checked against it before anything is uploaded, after the deploy, and on the alias after its upload. `private`: an anonymous request must be redirected to the Access login at `team-domain`, which is required. `public`: an anonymous request must be served the site, with no redirect to any Access login, and `team-domain` must be empty. Any other value fails the job. Leaving it out is deprecated: in this release the site is then checked as private, with a warning, and from the next minor release the job fails. |
+| `visibility` | yes | none | Who may see the site: `private` or `public`. The site is checked against it before anything is uploaded, after the deploy, and on the alias after its upload. `private`: an anonymous request must be redirected to the Access login at `team-domain`, which is required. `public`: an anonymous request must be served the site, with no redirect to any Access login, and `team-domain` must be empty. Leaving it out, or any other value, fails the job. |
 | `team-domain` | no | `''` | The Access team's login domain, `<team>.cloudflareaccess.com`; a bare `<team>` is accepted too. Required for a private site, whose every check requires an anonymous request to be redirected to exactly this host. Must be empty for a public site, so that a workflow copied from a private site fails rather than publish it. |
 | `build-dir` | yes | none | The directory that holds the built site. The job fails if it is missing or holds no files, and warns if it has no `index.html`, since the site's root would then answer 404. A public site must hold an `index.html` or a file that is not HTML, for the check to request. |
 | `alias` | no | `''` | Also uploads the same build as a named preview alias, such as `report-2026-08`, for a permanent URL beside the production one, which moves with each deploy. Lowercase letters, digits and dashes, starting with a letter and not ending with a dash, and `<alias>-<worker-name>` must fit in 63 characters. Empty, the default, uploads no alias. |
-| `require-access` | no | `''` | Deprecated, and removed in the next minor release: use `visibility`. `'true'` checks the site as `visibility: private` does. `'false'` skips every check: never use it for private content. Either gives a warning. Any other value fails the job, and so does setting both this and `visibility`. |
+| `require-access` | no | `''` | Removed: use `visibility`. Passing it, with any value, fails the job, with a message that says which `visibility` replaces it. |
 
 <!-- END GENERATED -->
 
@@ -102,7 +102,7 @@ The Access application is set up once per Worker, and the login method once per 
 |---|---|
 | `deploy-url` | The production URL, `https://<worker-name>.<account-subdomain>.workers.dev`. Set once the deploy succeeds, even if the gate check after it then fails the job. |
 | `alias-url` | The alias's URL, `https://<alias>-<worker-name>.<account-subdomain>.workers.dev`. Empty when no `alias` is given, or when its upload failed or did not run. |
-| `visibility` | Who the site is checked as visible to, `private` or `public`: `visibility`, or what the deprecated `require-access` stands for. Set once every input is valid, even if a check then fails the job. Empty when an input is rejected, or when `require-access: 'false'` turns the checks off. |
+| `visibility` | Who the site is checked as visible to: `private` or `public`, as `visibility` gives it. Set once every input is valid, even if a check then fails the job. Empty when an input is rejected. |
 
 <!-- END GENERATED -->
 
@@ -188,7 +188,7 @@ No template uses this action: a site on a Worker, private or public, is a choice
 
 ## Behaviour
 
-1. **Inputs.** Every input is checked before anything else runs. `visibility` must be `private` or `public`. `team-domain` must be an Access login domain for a private site and empty for a public one. The secrets must be set, the names must be valid hostname labels, and `build-dir` must hold at least one file. The action also picks the file to probe besides the site's root: see [The gate check](#the-gate-check). The first line of the log names the mode: `PRIVATE site, gated by <team>.cloudflareaccess.com` or `PUBLIC site, served anonymously`.
+1. **Inputs.** Every input is checked before anything else runs. `visibility` is required, and must be `private` or `public`; `require-access`, which it replaced, is refused. `team-domain` must be an Access login domain for a private site and empty for a public one. The secrets must be set, the names must be valid hostname labels, and `build-dir` must hold at least one file. The action also picks the file to probe besides the site's root: see [The gate check](#the-gate-check). The first line of the log names the mode: `PRIVATE site, gated by <team>.cloudflareaccess.com` or `PUBLIC site, served anonymously`.
 2. **The check before the deploy**, on the production URL. If it fails, the job fails with nothing uploaded.
    - **Private:** the URL must be gated. That refuses a Worker that does not exist, as a mistyped name would be, one that is public, and one gated by another Access organisation.
    - **Public:** the URL must not be behind any Access. That refuses a private site's Worker named by mistake, and a site declared public that is in fact gated, before anything is overwritten. A `404` passes here, since the version live now need not hold this build's files; a Worker that does not exist then fails at the deploy, because the token cannot create one.
@@ -199,7 +199,7 @@ No template uses this action: a site on a Worker, private or public, is a choice
 7. **The alias**, if given, and only once the deploy and the check after it have passed: `wrangler versions upload --preview-alias <alias>` uploads the same build as a preview, then its URL is checked too.
 8. **The job summary**, headed with the mode, gives each URL and the result of its check, or says why nothing was deployed. Production and the new version's preview URL share one result, that of the check after the deploy.
 
-With the deprecated `require-access: 'false'`, none of the three checks runs, and a warning says that the site is not checked: see [Moving from `require-access`](#moving-from-require-access).
+No input turns the checks off: every deploy is checked as `private` or `public`.
 
 ### The gate check
 
@@ -241,23 +241,25 @@ On the free plan a Worker's static assets can hold 20,000 files per version, and
 
 ## Moving from `require-access`
 
-`visibility` replaces `require-access`, which v0.12.0 shipped. `require-access` still works for one more minor release, with a warning on every run, and then goes. So does leaving out both inputs, which gives a private site as `require-access`'s default did. Then `visibility` becomes required.
+`visibility` replaced `require-access`, which v0.12.0 shipped, and is required. A workflow that passes `require-access`, with any value, fails in the action's first step, before anything is checked or uploaded. So does one that leaves out `visibility`, which `require-access`'s default used to make a private site.
 
-| Your workflow passes | It works as | Change it to |
-|---|---|---|
-| neither input | `visibility: private`, with a warning | add `visibility: private` |
-| `require-access: 'true'` | `visibility: private`, with a warning | `visibility: private` |
-| `require-access: 'false'`, for a public site | no checks at all, with a warning | `visibility: public`, and remove `team-domain` |
-| `require-access: 'false'`, for a gated site | no checks at all, with a warning | `visibility: private` |
-| both inputs | fails the job | `visibility` alone |
+| Your workflow passes | Change it to |
+|---|---|
+| neither input | `visibility: private` |
+| `require-access: 'true'` | `visibility: private` |
+| `require-access: 'false'`, for a public site | `visibility: public`, and remove `team-domain` |
+| `require-access: 'false'`, for a gated site | `visibility: private` |
+| both inputs | `visibility` alone |
 
 `visibility: public` is not a renamed `require-access: 'false'`: it checks the site rather than skip the checks, and fails if the Worker is behind Access.
 
 ## Troubleshooting
 
-**`visibility must be private or public`.** Only those two values, in lower case. Leaving it out is deprecated, but still works in this release: see [Moving from `require-access`](#moving-from-require-access).
+**`visibility is required`.** Add `visibility: private` for a site behind Access, or `visibility: public`: see [Moving from `require-access`](#moving-from-require-access).
 
-**`visibility and require-access are both set`.** Remove `require-access`; `visibility` replaces it.
+**`visibility must be private or public`.** Only those two values, in lower case.
+
+**`require-access has been removed: use visibility`.** Remove `require-access`, and set `visibility` as the message says: see [Moving from `require-access`](#moving-from-require-access).
 
 **`team-domain is set, but visibility is public`**, or **`visibility is private, so team-domain is required`.** Each kind of site refuses the other's `team-domain`, so that a workflow copied from a private site to a public one, or the reverse, fails rather than check the wrong thing. Pass `team-domain` for a private site only.
 
