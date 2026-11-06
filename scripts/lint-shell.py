@@ -72,11 +72,16 @@ class Script:
         self.text = node.value
         mark = node.start_mark
         if node.style == "|":
-            # A literal block starts on the line after its | indicator, at the block's indent.
+            # A literal block starts on the line after its | indicator, at the block's indent:
+            # what the file's line holds before the block's own text of that line. Read from
+            # the block's first non-blank line, which a blank or empty block does not have.
             self.first_line = mark.line + 2
-            body = text.splitlines()[mark.line + 1:]
-            first = next((s for s in body if s.strip()), "")
-            self.indent = len(first) - len(first.lstrip(" "))
+            lines = node.value.split("\n")
+            k = next((i for i, s in enumerate(lines) if s.strip()), None)
+            if k is None:
+                self.indent = 0
+            else:
+                self.indent = len(text.splitlines()[mark.line + 1 + k]) - len(lines[k])
             self.exact = True
         else:
             # A plain scalar on one line maps exactly. A quoted or folded one does not, since
