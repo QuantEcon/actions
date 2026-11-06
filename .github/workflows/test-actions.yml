@@ -164,7 +164,7 @@ jobs:
               echo "::error::gate self-test: IGNORED no longer matches [$p]"; exit 1
             fi
           done
-          echo "gate self-test passed; harness invokes: $(echo $DIRS | tr '\n' ' ')"
+          echo "gate self-test passed; harness invokes: $(paste -sd' ' - <<< "$DIRS")"
 
           FILES=$(mktemp)
           case "$EVENT_NAME" in
@@ -285,8 +285,11 @@ jobs:
       # actionlint is a pinned release checked against its SHA-256, because
       # actionlint-py ships only an sdist. No Dependabot ecosystem tracks a
       # release download, so bump the version and checksum together, by hand,
-      # from the release's actionlint_<version>_checksums.txt.
-      - name: Install the docs tooling (PyYAML, actionlint)
+      # from the release's actionlint_<version>_checksums.txt. shellcheck is the
+      # runner image's: actionlint runs it on each run: script, and skips that
+      # without a word when it finds none, so its absence fails here, and the
+      # log records which version linted.
+      - name: Install the lint tooling (PyYAML, actionlint), and find shellcheck
         env:
           ACTIONLINT_VERSION: '1.7.12'
           ACTIONLINT_SHA256: '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8'
@@ -302,6 +305,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/actionlint"
           tar -xzf "$RUNNER_TEMP/$tarball" -C "$RUNNER_TEMP/actionlint" actionlint
           "$RUNNER_TEMP/actionlint/actionlint" -version
+          shellcheck --version
 
       - name: Check every action has a chapter, and the manual's generated tables match each action.yml
         run: |
@@ -315,6 +319,16 @@ jobs:
         run: |
           "$RUNNER_TEMP/docs-venv/bin/python" scripts/generate-docs.py --check-examples \
             --actionlint "$RUNNER_TEMP/actionlint/actionlint"
+
+      # #100 (review M5): this repository's own workflows, this one included,
+      # which the step above never sees. With no arguments actionlint lints
+      # every workflow in .github/workflows/, with .github/actionlint.yaml's
+      # ignores. In the gate because it already has actionlint, and every event
+      # runs it and harness-summary requires it, so a problem fails the required
+      # check with no new job to wire into the summary.
+      - name: Lint .github/workflows/ with actionlint
+        run: |
+          "$RUNNER_TEMP/actionlint/actionlint"
 
   # ==========================================================================
   # restore-jupyter-cache — unit jobs (synthetic fixtures, no conda, seconds)
@@ -2723,7 +2737,7 @@ jobs:
           manifest=harness-html-manifest.json
 
           # The names, and the outputs the upload step reads.
-          got=$(ls "$out" | LC_ALL=C sort | paste -sd' ' -)
+          got=$(cd "$out" && printf '%s\n' * | LC_ALL=C sort | paste -sd' ' -)
           [ "$got" = "$checksum $manifest $archive" ] \
             || fail "the script wrote [$got], not [$checksum $manifest $archive]"
           for pair in "archive-name=$archive" "checksum-name=$checksum" "manifest-name=$manifest"; do
@@ -3270,6 +3284,7 @@ jobs:
               echo "✓ $want: $label"
             else
               echo "::error::expected $want [$expect] for $label; got exit $rc, outputs [$got], log:"
+              # shellcheck disable=SC2001 # anchored to each line of the log, which ${var//} cannot do
               sed 's/^::\([a-z]*\)::/  (\1) /' <<< "$log"
               bad=1
             fi
@@ -3324,6 +3339,7 @@ jobs:
             echo "✓ error: an alias with a line break, escaped"
           else
             echo "::error::an alias with a line break: expected exit 1, no outputs and one escaped ::error:: line; got exit $rc, outputs [$(paste -sd' ' "$out")], log:"
+            # shellcheck disable=SC2001 # anchored to each line of the log, which ${var//} cannot do
             sed 's/^::\([a-z]*\)::/  (\1) /' <<< "$log"
             bad=1
           fi

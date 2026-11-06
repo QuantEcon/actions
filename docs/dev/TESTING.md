@@ -21,6 +21,7 @@ The workflow has no `paths:` filter: a filtered-out workflow publishes no check 
 - **`IGNORED`** is a list of paths that cannot, such as the root docs, `docs/`, `tests/` and `templates/`. It is an ignore list, not a cover list, so a path it does not recognise runs the whole harness: forgetting to extend it costs CI minutes, never a green check earned by running nothing.
 - **A self-test** fails the gate if `IGNORED` would match any file the harness must run for: each action's `action.yml`, which it reads from the workflow's own `uses: ./<action>` lines, the shared scripts and lockfiles, and the container files. It also checks that `IGNORED` still matches the paths it is meant to.
 - **The checks a docs-only change still needs** run in the gate itself, because such a change skips every other job: the templates pin the same third-party actions as `.github/workflows/`, and `scripts/generate-docs.py --check --check-examples --actionlint` finds the manual's generated tables current, a chapter for every action, and every example valid. [CHAPTER-TEMPLATE.md](CHAPTER-TEMPLATE.md) lists those checks.
+- **actionlint over `.github/workflows/`** runs in the gate too, on every event, so a problem in any workflow fails the required check. actionlint lints each `run:` script with shellcheck, and silently skips them when it finds none, so the gate fails when the runner image has no shellcheck, and logs both tools' versions. [`.github/actionlint.yaml`](../../.github/actionlint.yaml) holds the ignores, each limited to one file and saying why.
 
 `harness-summary`, the job behind `Action harness: all checks`, passes only if the gate succeeded and either every job succeeded, when the gate found the change relevant, or every job was skipped, when it did not. Any other mix fails it.
 
@@ -71,6 +72,7 @@ In a staged release, a branch of the canary points these at the candidate tag be
 ## Locally
 
 - **The manual's checks**: `python3 scripts/generate-docs.py --check --check-examples --actionlint "$(command -v actionlint)"`, with the actionlint release the gate pins.
+- **The workflows**: `actionlint` from the repository's root, with no arguments. Both actionlint commands lint `run:` scripts only when a `shellcheck` is on your `PATH`, and `pip install shellcheck-py` into a virtual environment provides one. A shellcheck version other than the one the gate logs can report differently.
 - **A larger book**: clone a real lecture repository into `tests/local/`, which git ignores; see [tests/README.md](../../tests/README.md).
 - **The images**: build them as [CONTAINERS.md](CONTAINERS.md#building-locally) shows, and run the smoke test on macOS with `containers/quantecon/tests/run-local-tests.sh`.
 - **An action from a branch**: in a lecture repository, point a step at `quantecon/actions/<action>@<branch>`.

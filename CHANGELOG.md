@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **CI**: the harness gate lints this repository's own workflows with actionlint. Until now it
+  linted only the templates and the manual's examples, so `.github/workflows/` had never been
+  linted. The first run found 11 problems, all shellcheck findings at style or info level, and
+  none from actionlint's own rules. Four are fixed with rewrites that print the same output. Three
+  are `sed` calls that edit each line of a multi-line value, where SC2001's `${var//}` cannot
+  apply, so each has a `# shellcheck disable` with that reason. The other four are in
+  `build-containers.yml`, which this change leaves alone because a merge that edits it rebuilds
+  both images and moves `:latest`. `.github/actionlint.yaml` ignores them for that file only,
+  until #142's phase 2 changes it. actionlint skips `run:` scripts when it finds no shellcheck,
+  so the gate now fails if the runner image has none, and logs its version. TESTING.md and
+  AGENTS.md give the same check to run locally. (#100)
+
 ### Documentation
 - **Developer docs** (#178): `docs/dev` describes the project as it is. `ARCHITECTURE.md` is the
   current design: the parts, and why the actions are composite, the environment an image, the
