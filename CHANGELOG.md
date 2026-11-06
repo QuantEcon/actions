@@ -45,6 +45,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `unit-input-values`, shows each refused value failing the action where a control passes. It
   also makes #160's `cache-type: execution` safer to adopt: a mistyped value can no longer bring
   the build cache back unnoticed. (#236)
+- **Every action**: an input that is one value fails the run in the action's first step if it
+  holds a line break, and every input printed in an error or a warning is escaped. The runner
+  reads each line a step prints that starts with `::` as a workflow command, so an input such as
+  `environment` or `build-dir` whose second line began with `::` issued that command when the
+  action printed it, and a value such as `50%25` printed in an annotation showed as `50%`.
+  Refused now: every input but `build-lectures`' `extra-args`, which is split on whitespace and
+  is now printed with its line breaks as spaces; `build-jupyter-cache`'s `builders`,
+  `issue-labels` and `issue-assignees`, which are lists; and the tokens and IDs passed as
+  secrets, which no action prints. `deploy-cloudflare` already refused a line break in each of
+  its inputs but the secrets, and its message for `build-dir` is now the shared one. Both the
+  check and the escaping are `scripts/workflow-command.sh`, which each step sources from
+  `$GITHUB_ACTION_PATH/../scripts/`, in place of the copies in `build-lectures`,
+  `restore-jupyter-cache`, both preview actions, `scripts/preview-decide.sh` and
+  `scripts/detect-changed-lectures.sh`. Every other value behaves as before, and no QuantEcon
+  workflow passes a line break in any of these inputs. New harness jobs:
+  `workflow-command-helper` tests the file, and `inputs-line-break` shows each action failing in
+  its first step on one. Copilot's review of #265 found the first case, in `setup-environment`.
+  (#267)
 
 ### Documentation
 - **Developer docs** (#178): `docs/dev` describes the project as it is. `ARCHITECTURE.md` is the

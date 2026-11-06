@@ -208,3 +208,5 @@ A second build over the same `_build`, after one that failed with `-W --keep-goi
 **A `pdflatex` or `jupyter` build fails on a reference the `html` build accepts.** Those two builders run with `-n`, so every reference they cannot resolve is a warning, and `-W` makes it an error. Fix the reference.
 
 **A rebuild passes after a failed build, with no warnings.** It read nothing: see [What fails the job](#what-fails-the-job). Rebuild with `--all`.
+
+**`<input> must be a single line`.** Every input but `extra-args` is one value, and a line break would end the line that prints it, and the runner reads a next line that starts with `::` as a workflow command. So the action fails in its first step, before it has done anything. A YAML block scalar (`|`), or an expression whose value spans lines, puts one there: write the value on one line. See [Security](../security.md#what-the-actions-themselves-do). `extra-args` may span lines: it is split on whitespace, line breaks included.

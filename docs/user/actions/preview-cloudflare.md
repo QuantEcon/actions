@@ -247,3 +247,5 @@ Previews of pull requests from forks are not supported, and the action skips the
 **`No Cloudflare preview deployed: …`, in a notice, or `dispatch-alias […] must be dispatch- followed by …`.** See [preview-netlify's troubleshooting](preview-netlify.md#troubleshooting): the two actions decide whether to deploy the same way.
 
 **A dispatched or scheduled run deployed, but posted no comment.** Expected: there is no pull request to comment on. The URL is in `deploy-url`, and in a notice on the run's summary page.
+
+**`project-name must be a single line`, `build-dir must be a single line` or `lectures-dir must be a single line`.** Each is one value, and a line break would end the line that prints it, and the runner reads a next line that starts with `::` as a workflow command. So the action fails in its first step, before it has done anything. A YAML block scalar (`|`), or an expression whose value spans lines, puts one there: write the value on one line. See [Security](../security.md#what-the-actions-themselves-do).

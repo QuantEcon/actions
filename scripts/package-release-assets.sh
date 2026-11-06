@@ -30,6 +30,9 @@
 
 set -euo pipefail
 
+# shellcheck source=scripts/workflow-command.sh
+. "$(dirname "${BASH_SOURCE[0]}")/workflow-command.sh"
+
 : "${BUILD_DIR:?BUILD_DIR is required}"
 : "${ASSET_NAME:?ASSET_NAME is required}"
 : "${TAG_NAME:?TAG_NAME is required}"
@@ -43,12 +46,12 @@ set -euo pipefail
 # Absolute, so that the checksum, written from inside OUT_DIR, lands in it
 # when OUT_DIR is given as a relative path.
 BUILD_ABS=$(cd "$BUILD_DIR" && pwd -P) \
-  || { echo "::error::BUILD_DIR ($BUILD_DIR) is not a directory"; exit 1; }
+  || { annotate error "BUILD_DIR ($BUILD_DIR) is not a directory"; exit 1; }
 OUT_DIR=$(cd "$OUT_DIR" && pwd -P) \
-  || { echo "::error::OUT_DIR ($OUT_DIR) is not a directory"; exit 1; }
+  || { annotate error "OUT_DIR ($OUT_DIR) is not a directory"; exit 1; }
 case "$OUT_DIR/" in
   "$BUILD_ABS/"*)
-    echo "::error::OUT_DIR ($OUT_DIR) is inside BUILD_DIR ($BUILD_DIR), so the archive would take in itself"
+    annotate error "OUT_DIR ($OUT_DIR) is inside BUILD_DIR ($BUILD_DIR), so the archive would take in itself"
     exit 1
     ;;
 esac

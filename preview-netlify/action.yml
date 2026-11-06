@@ -124,10 +124,14 @@ runs:
         HAVE_TOKEN: ${{ inputs.netlify-auth-token != '' }}
         HAVE_SITE_ID: ${{ inputs.netlify-site-id != '' }}
         HAVE_BUILD_DIR: ${{ inputs.build-dir != '' }}
+        BUILD_DIR: ${{ inputs.build-dir }}
+        LECTURES_DIR: ${{ inputs.lectures-dir }}
       run: |
-        # Escaped as the runner expects, so a value cannot end an annotation
-        # and start a workflow command of its own.
-        esc() { local s=$1; s=${s//'%'/'%25'}; s=${s//$'\r'/'%0D'}; s=${s//$'\n'/'%0A'}; printf '%s' "$s"; }
+        # shellcheck source=scripts/workflow-command.sh
+        . "$GITHUB_ACTION_PATH/../scripts/workflow-command.sh"
+        # Each of these is one value, and a line break in one would end the
+        # line that prints it, and could start a workflow command (#267).
+        single_line "build-dir=$BUILD_DIR" "lectures-dir=$LECTURES_DIR" || exit 1
         case "$PLACEHOLDER" in
           true|false) ;;
           *) echo "::error::placeholder is [$(esc "$PLACEHOLDER")], not 'true' or 'false'"; exit 1 ;;

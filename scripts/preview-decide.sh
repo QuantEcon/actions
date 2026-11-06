@@ -52,10 +52,11 @@ decided() {  # <deploy> <alias>
   { echo "deploy=$1"; echo "alias=$2"; } >> "$GITHUB_OUTPUT"
   exit 0
 }
-# A workflow command's message is one line, so escape it the way the runner
-# decodes it, % first: a line break in DISPATCH_ALIAS would otherwise end the
-# annotation, and the runner would read the line after it as a new command.
-esc() { local s=${1//\%/%25}; s=${s//$'\r'/%0D}; printf '%s' "${s//$'\n'/%0A}"; }
+# A workflow command's message is one line, so it is escaped the way the
+# runner decodes it (esc): a line break in DISPATCH_ALIAS would otherwise end
+# the annotation, and the runner would read the line after it as a new command.
+# shellcheck source=scripts/workflow-command.sh
+. "$(dirname "${BASH_SOURCE[0]}")/workflow-command.sh"
 skip() {  # <reason> [annotation]
   echo "::${2:-notice}::$(esc "No $PROVIDER preview deployed: $1")"
   decided false ''

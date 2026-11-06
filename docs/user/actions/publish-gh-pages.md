@@ -294,3 +294,5 @@ A repository that publishes by pushing to a branch, with peaceiris/actions-gh-pa
 **The site answers 404.** Check that the Pages source is **GitHub Actions**, and that `build-dir` has an `index.html` at its top. A new site can take a minute or two to appear.
 
 **The custom domain does not resolve.** Check the DNS records, and allow for DNS to propagate, which can take up to a day. The domain must be set under **Settings**, **Pages**.
+
+**`<input> must be a single line`.** Every input but `github-token` is one value, and a line break would end the line that prints it, and the runner reads a next line that starts with `::` as a workflow command. So the action fails in its first step, before it has done anything. A YAML block scalar (`|`), or an expression whose value spans lines, puts one there: write the value on one line. See [Security](../security.md#what-the-actions-themselves-do).

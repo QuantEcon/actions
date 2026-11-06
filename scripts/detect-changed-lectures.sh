@@ -30,6 +30,9 @@
 # Note: lectures_dir is treated as a *literal* path (quoted-glob matching),
 # not a regex, so values containing regex metacharacters behave correctly.
 
+# shellcheck source=scripts/workflow-command.sh
+. "$(dirname "${BASH_SOURCE[0]}")/workflow-command.sh"
+
 : "${BASE_SHA:?BASE_SHA is required}"
 : "${HEAD_SHA:?HEAD_SHA is required}"
 lectures_dir="${LECTURES_DIR:-lectures}"
@@ -49,10 +52,7 @@ warn() {
   local msg="$1" err
   err=$(<"$git_err")
   [ -z "$err" ] || msg="${msg}: ${err}"
-  msg=${msg//'%'/'%25'}
-  msg=${msg//$'\r'/'%0D'}
-  msg=${msg//$'\n'/'%0A'}
-  echo "::warning::${msg}"
+  annotate warning "$msg"
 }
 
 # '+': a ref left by an earlier run in a reused workspace is overwritten, not

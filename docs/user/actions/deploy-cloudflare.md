@@ -295,3 +295,5 @@ On the free plan a Worker's static assets can hold 20,000 files per version, and
 **A blank page after access is granted.** On the first load after Access lets a visitor in, cached redirects can be served in place of the page's stylesheets, scripts and data. Reloading the page fixes it.
 
 **A person added to the team is still refused.** Cloudflare documents that a user refused before joining can stay refused until they revoke the OAuth app in their GitHub settings, under **Applications**, and log in again.
+
+**`<input> must be a single line`.** Every input but the two secrets is one value, and a line break would end the line that prints it, and the runner reads a next line that starts with `::` as a workflow command. So the action fails in its first step, before it has done anything. A YAML block scalar (`|`), or an expression whose value spans lines, puts one there: write the value on one line. See [Security](../security.md#what-the-actions-themselves-do).

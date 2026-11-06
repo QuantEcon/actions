@@ -147,9 +147,10 @@ jobs:
           # Listed by hand, since the loop below adds only each action's
           # action.yml: the lockfiles, which preview-cli-install tests, the
           # scripts the preview actions share, which preview-change-detection,
-          # preview-decide and preview-comment run on their own, and
-          # publish-gh-pages' packing script, which publish-release-packaging runs.
-          MUST_RUN=".github/workflows/test-actions.yml .github/fixtures/mini-lectures/environment.yml preview-cloudflare/package-lock.json preview-netlify/package-lock.json scripts/detect-changed-lectures.sh scripts/preview-decide.sh scripts/preview-comment.cjs scripts/package-release-assets.sh"
+          # preview-decide and preview-comment run on their own,
+          # publish-gh-pages' packing script, which publish-release-packaging runs,
+          # and the workflow-command helper that every action sources.
+          MUST_RUN=".github/workflows/test-actions.yml .github/fixtures/mini-lectures/environment.yml preview-cloudflare/package-lock.json preview-netlify/package-lock.json scripts/detect-changed-lectures.sh scripts/preview-decide.sh scripts/preview-comment.cjs scripts/package-release-assets.sh scripts/workflow-command.sh"
           for d in $DIRS; do MUST_RUN="$MUST_RUN $d/action.yml"; done
           # The container-images job decides for itself which images to build,
           # but runs only when this gate says relevant: an IGNORED that matched
@@ -340,6 +341,205 @@ jobs:
       - name: Lint the actions' run scripts and scripts/*.sh with shellcheck
         run: |
           "$RUNNER_TEMP/docs-venv/bin/python" scripts/lint-shell.py
+
+  # ==========================================================================
+  # Every action — the workflow-command helper, and a line break in an input
+  # (#267)
+  # ==========================================================================
+
+  workflow-command-helper:
+    # scripts/workflow-command.sh, which every action sources: esc escapes a
+    # workflow command's data, annotate prints one annotation, and single_line
+    # refuses a line break, naming the input. A step that cannot find the
+    # helper must fail, not carry on unchecked.
+    name: 'scripts/workflow-command.sh: esc, annotate and single_line, and a step that cannot find it fails'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Check each function's output
+        run: |
+          set -euo pipefail
+          # shellcheck source=scripts/workflow-command.sh
+          . scripts/workflow-command.sh
+          bad=0 n=0
+          expect() {  # label, got, want
+            n=$((n + 1))
+            if [ "$2" = "$3" ]; then
+              echo "✓ $1"
+            else
+              printf '::error::%s: expected [%s], got [%s]\n' "$1" "$(esc "$3")" "$(esc "$2")"
+              bad=1
+            fi
+          }
+          expect 'esc: a %' "$(esc 'a 100% b')" 'a 100%25 b'
+          expect 'esc: CR and LF' "$(esc $'a\r\nb')" 'a%0D%0Ab'
+          expect 'esc: text that is already escaped' "$(esc 'a%0Ab')" 'a%250Ab'
+          expect 'esc: spaces, a glob and quotes' "$(esc "a  * 'b' \"c\"")" "a  * 'b' \"c\""
+          expect 'annotate: one line, escaped' "$(annotate error $'x\n::warning::y')" '::error::x%0A::warning::y'
+          expect 'annotate: warning' "$(annotate warning 'w')" '::warning::w'
+
+          status=0; out=$(single_line 'a=one' 'b=two words' 'c=' 'd=x=y') || status=$?
+          expect 'single_line: values with no line break' "$status:$out" '0:'
+          status=0; out=$(single_line 'a=ok' $'b=x\ny' $'c=p\rq' $'d=k=v\n') || status=$?
+          expect 'single_line: each line break named, the rest untouched' "$status:$out" \
+            "1:::error::b must be a single line, got 'x%0Ay'
+          ::error::c must be a single line, got 'p%0Dq'
+          ::error::d must be a single line, got 'k=v%0A'"
+          [ "$n" -eq 8 ] || { echo "::error::expected 8 cases, ran $n"; exit 1; }
+          [ "$bad" -eq 0 ]
+          echo "✅ esc, annotate and single_line"
+
+      # As a step runs it: bash -e, the shell GitHub gives `shell: bash`.
+      - name: Check a step that cannot find the helper fails before its checks
+        run: |
+          set -uo pipefail
+          status=0
+          out=$(bash --noprofile --norc -eo pipefail -c '. "/no/such/action/../scripts/workflow-command.sh"; echo "carried on"' 2>&1) || status=$?
+          [ "$status" -ne 0 ] || { echo "::error::a step that cannot source the helper exited 0"; exit 1; }
+          case "$out" in
+            *"carried on"*) echo "::error::a step that cannot source the helper carried on: [$out]"; exit 1 ;;
+          esac
+          echo "✅ a step that cannot find the helper fails (exit $status): $out"
+
+  inputs-line-break:
+    # A line break in an input that is one value ends the line that prints
+    # it, and the runner reads the next line as a workflow command if it
+    # starts with '::'. Each action now refuses one in its first step, so
+    # each case here differs from a working call in one input, whose second
+    # line is a notice. The output after each outcome shows how far the
+    # action got: one its first step does not set, or the install the
+    # deploy actions make. Before #267 every case but deploy-cloudflare's got
+    # further, and printed the notice. deploy-cloudflare already refused a
+    # line break in build-dir; it now does so through the shared check.
+    # The runner is marked a container-mode host before build-jupyter-cache,
+    # as in bjc-builders-parse, so that its builds would start in seconds.
+    name: 'every action: a line break in an input that is one value fails the first step (#267)'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    env:
+      LINE_BREAK: |-
+        harness
+        ::notice::harness-267: a line break in an input reached the log
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: 'setup-environment: environment'
+        id: setup-environment
+        continue-on-error: true
+        uses: ./setup-environment
+        with:
+          environment: ${{ env.LINE_BREAK }}
+
+      - name: 'build-lectures: source-dir'
+        id: build-lectures
+        continue-on-error: true
+        uses: ./build-lectures
+        with:
+          source-dir: ${{ env.LINE_BREAK }}
+
+      - name: 'restore-jupyter-cache: environment'
+        id: restore-jupyter-cache
+        continue-on-error: true
+        uses: ./restore-jupyter-cache
+        with:
+          environment: ${{ env.LINE_BREAK }}
+
+      - name: 'publish-gh-pages: build-dir'
+        id: publish-gh-pages
+        continue-on-error: true
+        uses: ./publish-gh-pages
+        with:
+          mode: 'upload'
+          build-dir: ${{ env.LINE_BREAK }}
+
+      - name: 'deploy-cloudflare: build-dir'
+        id: deploy-cloudflare
+        continue-on-error: true
+        uses: ./deploy-cloudflare
+        with:
+          cloudflare-api-token: 'harness-not-a-token'
+          cloudflare-account-id: '00000000000000000000000000000000'
+          worker-name: 'harness-no-such-worker'
+          account-subdomain: 'harness'
+          visibility: 'public'
+          build-dir: ${{ env.LINE_BREAK }}
+
+      - name: 'preview-netlify: lectures-dir'
+        id: preview-netlify
+        continue-on-error: true
+        uses: ./preview-netlify
+        with:
+          netlify-auth-token: 'harness-not-a-token'
+          netlify-site-id: '00000000-0000-0000-0000-000000000000'
+          build-dir: '.'
+          lectures-dir: ${{ env.LINE_BREAK }}
+
+      - name: 'preview-cloudflare: lectures-dir'
+        id: preview-cloudflare
+        continue-on-error: true
+        uses: ./preview-cloudflare
+        with:
+          cloudflare-api-token: 'harness-not-a-token'
+          cloudflare-account-id: '00000000000000000000000000000000'
+          project-name: 'harness-no-such-project'
+          build-dir: '.'
+          lectures-dir: ${{ env.LINE_BREAK }}
+
+      - name: Mark the runner as a container-mode host
+        run: |
+          printf 'quantecon-container\nimage=harness-container-mode-host\n' | sudo tee /etc/quantecon-container
+
+      - name: 'build-jupyter-cache: source-dir'
+        id: build-jupyter-cache
+        continue-on-error: true
+        uses: ./build-jupyter-cache
+        with:
+          source-dir: ${{ env.LINE_BREAK }}
+          create-issue-on-failure: 'false'
+          upload-artifact: 'false'
+          upload-failure-reports: 'false'
+
+      - name: Assert each action failed in its first step
+        env:
+          # action|outcome|what its first step leaves unset, or the install
+          RESULTS: |
+            setup-environment|${{ steps.setup-environment.outcome }}|${{ steps.setup-environment.outputs.container-mode }}
+            build-lectures|${{ steps.build-lectures.outcome }}|${{ steps.build-lectures.outputs.build-path }}
+            restore-jupyter-cache|${{ steps.restore-jupyter-cache.outcome }}|${{ steps.restore-jupyter-cache.outputs.cache-key }}
+            publish-gh-pages|${{ steps.publish-gh-pages.outcome }}|${{ steps.publish-gh-pages.outputs.mode }}
+            deploy-cloudflare|${{ steps.deploy-cloudflare.outcome }}|${{ steps.deploy-cloudflare.outputs.visibility }}
+            preview-netlify|${{ steps.preview-netlify.outcome }}|${{ steps.preview-netlify.outputs.deploy-url }}
+            preview-cloudflare|${{ steps.preview-cloudflare.outcome }}|${{ steps.preview-cloudflare.outputs.deploy-url }}
+            build-jupyter-cache|${{ steps.build-jupyter-cache.outcome }}|${{ steps.build-jupyter-cache.outputs.jupyter-status }}${{ steps.build-jupyter-cache.outputs.pdflatex-status }}${{ steps.build-jupyter-cache.outputs.html-status }}
+        run: |
+          set -euo pipefail
+          bad=0 n=0
+          while IFS='|' read -r action outcome reached; do
+            [ -n "$action" ] || continue
+            n=$((n + 1))
+            if [ "$outcome" != failure ] || [ -n "$reached" ]; then
+              echo "::error::$action: expected outcome [failure] in the first step, got [$outcome], and it got as far as setting [$reached]"
+              bad=1
+            elif compgen -G "$RUNNER_TEMP/$action*" > /dev/null; then
+              echo "::error::$action: $(compgen -G "$RUNNER_TEMP/$action*") exists, so the line break got as far as an install"
+              bad=1
+            else
+              echo "✓ $action: refused the line break in its first step"
+            fi
+          done <<< "$RESULTS"
+          [ "$n" -eq 8 ] || { echo "::error::expected 8 cases, read $n"; exit 1; }
+          [ "$bad" -eq 0 ]
+          echo "✅ every action refused a line break in an input that is one value, before anything printed it"
 
   # ==========================================================================
   # restore-jupyter-cache — unit jobs (synthetic fixtures, no conda, seconds)
@@ -2068,7 +2268,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Aborts in `Validate and parse builders input` — this repo's own code, no
+      # Aborts in `Check inputs and parse builders` — this repo's own code, no
       # conda, seconds. The composite never reaches setup-environment.
       - name: Abort before setup (invalid builders input)
         id: pre
@@ -3948,6 +4148,8 @@ jobs:
     if: always()
     needs:
       - gate
+      - workflow-command-helper
+      - inputs-line-break
       - unit-build-seed
       - unit-build-restore
       - unit-build-restore-save

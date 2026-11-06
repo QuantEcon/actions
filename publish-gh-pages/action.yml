@@ -81,6 +81,9 @@ runs:
   steps:
     # Before anything is uploaded or deployed, so that a job given the wrong
     # mode, or a mode it cannot carry out, fails having done nothing (#233).
+    # Each input is one value, and a line break in one would end the line that
+    # prints it, and could start a workflow command (#267). The token is
+    # never printed.
     - name: Check inputs
       id: check
       shell: bash
@@ -91,10 +94,14 @@ runs:
         CREATE_RELEASE_ASSETS: ${{ inputs.create-release-assets }}
         ASSET_NAME: ${{ inputs.asset-name }}
       run: |
+        # shellcheck source=scripts/workflow-command.sh
+        . "$GITHUB_ACTION_PATH/../scripts/workflow-command.sh"
+        single_line "mode=$MODE" "build-dir=$BUILD_DIR" "cname=$CNAME" \
+          "create-release-assets=$CREATE_RELEASE_ASSETS" "asset-name=$ASSET_NAME" || exit 1
         case "$MODE" in
           all|upload|deploy|release) ;;
           *)
-            echo "::error::mode [$MODE] must be all, upload, deploy or release"
+            annotate error "mode [$MODE] must be all, upload, deploy or release"
             exit 1
             ;;
         esac
@@ -116,7 +123,7 @@ runs:
         # Every file name the release step writes starts with it. In every
         # mode, so that a bad name shows before the first tag.
         if [ -n "$ASSET_NAME" ] && ! [[ "$ASSET_NAME" =~ ^[A-Za-z0-9._-]+$ ]]; then
-          echo "::error::asset-name [$ASSET_NAME] must be letters, digits, '.', '_' and '-' only"
+          annotate error "asset-name [$ASSET_NAME] must be letters, digits, '.', '_' and '-' only"
           exit 1
         fi
         echo "mode: $MODE"
