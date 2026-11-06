@@ -41,6 +41,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gone, now that `v0` is on v0.15.0, which has the `mode` and `placeholder` inputs the templates
   use. PLAN's release line says `@v0` is on v0.15.0. (#246)
 
+### Fixed
+- **`restore-jupyter-cache`, `build-lectures`, `build-jupyter-cache`, `publish-gh-pages`,
+  `setup-environment`**: no action expands `${{ }}` into a `run:` script any more. Fifty-eight
+  expressions in these five actions put an input, a step's output, a `hashFiles()` result or the
+  run ID straight into the script text, where bash read a value as shell. Each now reaches the
+  script through `env:`, quoted, and the run ID is `$GITHUB_RUN_ID`. So `restore-jupyter-cache`
+  takes a `path` holding a `$` as written: `_build/$x` used to restore into, and save from,
+  `_build/`. It also refuses a `key` or `path` that holds a line break, before writing either
+  as a step output, where the line break would have started another output; its `key` and
+  `path` descriptions say so. `setup-environment` quotes `environment` and `environment-name`
+  where it runs `conda env update`. Every other value behaves exactly as before. New harness
+  jobs: `unit-custom-seed` and `unit-custom-restore` save and restore a custom `key` into a
+  `path` holding a space and a `$`; `unit-line-break` shows a line break in either failing the
+  action; and `build-html-copy` runs `html-copy-pdf` and `html-copy-notebooks`, which no
+  harness job turned on. ARCHITECTURE's rule on inputs now has no exceptions, PLAN drops
+  backlog item 18, and TESTING lists the new jobs. (#228)
+
 ## [0.15.0] - 2026-11-05
 
 ### Added

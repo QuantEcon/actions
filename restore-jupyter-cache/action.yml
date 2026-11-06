@@ -22,7 +22,8 @@ inputs:
       The build directory to restore into. The path is part of what identifies a cache, so only
       `_build`, the default, finds the caches that `build-jupyter-cache` saves; any other path
       finds only what this action saved with `save-cache` and the same `path`. With
-      `cache-type: execution` the cache goes into `<path>/.jupyter_cache`.
+      `cache-type: execution` the cache goes into `<path>/.jupyter_cache`. A line break in it fails
+      the run before anything is restored.
     required: false
     default: '_build'
   source-dir:
@@ -51,7 +52,8 @@ inputs:
       A key to restore in place of the generated ones. It is matched as a prefix, so the newest
       cache whose key starts with it is restored. With `save-cache: 'true'` the cache is saved
       under exactly this key, and only once: a cache is never overwritten, and a later run that
-      matches the key exactly saves nothing. Empty, the default, uses the generated keys.
+      matches the key exactly saves nothing. A line break in it fails the run before anything is
+      restored. Empty, the default, uses the generated keys.
     required: false
     default: ''
   fail-on-miss:
@@ -87,43 +89,80 @@ outputs:
 runs:
   using: "composite"
   steps:
+    # Before either value is written to $GITHUB_OUTPUT below, where a line
+    # break would end the value and start another output (#228). A comma or
+    # an over-long key is left to actions/cache, which refuses both itself.
+    - name: Check inputs
+      shell: bash
+      env:
+        CUSTOM_KEY: ${{ inputs.key }}
+        CACHE_PATH: ${{ inputs.path }}
+      run: |
+        single_line() {
+          case "$2" in
+            *$'\n'*|*$'\r'*)
+              # Escaped as a workflow command's data, so the value stays in this
+              # one annotation: a newline in it would otherwise start a new line
+              # that the runner could read as a command.
+              shown=${2//'%'/'%25'}
+              shown=${shown//$'\r'/'%0D'}
+              shown=${shown//$'\n'/'%0A'}
+              echo "::error::$1 must be a single line, got '$shown'"
+              return 1
+              ;;
+          esac
+        }
+        bad=0
+        single_line key "$CUSTOM_KEY" || bad=1
+        single_line path "$CACHE_PATH" || bad=1
+        exit "$bad"
+
     - name: Determine cache key and restore-keys
       id: cache-key
       shell: bash
+      env:
+        CUSTOM_KEY: ${{ inputs.key }}
+        CACHE_TYPE: ${{ inputs.cache-type }}
+        SAVE_CACHE: ${{ inputs.save-cache }}
+        # hashFiles returns an empty string when nothing matches, as for an
+        # empty environment-update.
+        SOURCE_HASH: ${{ hashFiles(format('{0}/**/*.md', inputs.source-dir)) }}
+        ENV_HASH: ${{ hashFiles(inputs.environment) }}
+        UPDATE_HASH: ${{ hashFiles(inputs.environment-update) }}
       run: |
-        if [ -n "${{ inputs.key }}" ]; then
+        if [ -n "$CUSTOM_KEY" ]; then
           # Custom key provided
-          echo "key=${{ inputs.key }}" >> $GITHUB_OUTPUT
-          echo "restore-keys=${{ inputs.key }}" >> $GITHUB_OUTPUT
-          echo "Using custom cache key: ${{ inputs.key }}"
-        elif [ "${{ inputs.cache-type }}" = "execution" ]; then
+          echo "key=$CUSTOM_KEY" >> "$GITHUB_OUTPUT"
+          echo "restore-keys=$CUSTOM_KEY" >> "$GITHUB_OUTPUT"
+          echo "Using custom cache key: $CUSTOM_KEY"
+        elif [ "$CACHE_TYPE" = "execution" ]; then
           # Execution cache: jupyter-cache-{content-hash}-{run-id}
-          if [ "${{ inputs.save-cache }}" = "true" ]; then
-            KEY="jupyter-cache-${{ hashFiles(format('{0}/**/*.md', inputs.source-dir)) }}-${{ github.run_id }}"
+          if [ "$SAVE_CACHE" = "true" ]; then
+            KEY="jupyter-cache-${SOURCE_HASH}-${GITHUB_RUN_ID}"
           else
             # Read-only restore: use the content prefix as the key. Saved keys
             # carry a -{run_id} suffix, so this never exact-matches and the
             # restore falls through to restore-keys prefix matching — same
             # result, but the "Requested Key" report is honest.
-            KEY="jupyter-cache-${{ hashFiles(format('{0}/**/*.md', inputs.source-dir)) }}-"
+            KEY="jupyter-cache-${SOURCE_HASH}-"
           fi
-          echo "key=$KEY" >> $GITHUB_OUTPUT
-          echo "restore-keys<<EOF" >> $GITHUB_OUTPUT
-          echo "jupyter-cache-${{ hashFiles(format('{0}/**/*.md', inputs.source-dir)) }}-" >> $GITHUB_OUTPUT
-          echo "jupyter-cache-" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          {
+            echo "key=$KEY"
+            echo "restore-keys<<EOF"
+            echo "jupyter-cache-${SOURCE_HASH}-"
+            echo "jupyter-cache-"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
           echo "Using execution cache with prefix match"
         else
           # Build cache: build-{env-hash}-{update-hash}-{run-id}
-          ENV_HASH="${{ hashFiles(inputs.environment) }}"
-          UPDATE_HASH="${{ hashFiles(inputs.environment-update) }}"
-          if [ "${{ inputs.save-cache }}" = "true" ]; then
-            KEY="build-${ENV_HASH}-${UPDATE_HASH}-${{ github.run_id }}"
+          if [ "$SAVE_CACHE" = "true" ]; then
+            KEY="build-${ENV_HASH}-${UPDATE_HASH}-${GITHUB_RUN_ID}"
           else
             # Read-only restore: use the content prefix as the key (see note above).
             KEY="build-${ENV_HASH}-${UPDATE_HASH}-"
           fi
-          echo "key=$KEY" >> $GITHUB_OUTPUT
+          echo "key=$KEY" >> "$GITHUB_OUTPUT"
           # Both fallbacks stay inside the same environment. A bare `build-`
           # prefix used to sit at the end of this list, which made the build
           # cache impossible to miss: changing environment.yml would silently
@@ -132,21 +171,26 @@ runs:
           # user ("normal ... after environment.yml changes"). Unlike
           # .jupyter_cache, which is content-addressed per notebook and so
           # revalidates itself, _build carries no record of what produced it.
-          echo "restore-keys<<EOF" >> $GITHUB_OUTPUT
-          echo "build-${ENV_HASH}-${UPDATE_HASH}-" >> $GITHUB_OUTPUT
-          echo "build-${ENV_HASH}-" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          {
+            echo "restore-keys<<EOF"
+            echo "build-${ENV_HASH}-${UPDATE_HASH}-"
+            echo "build-${ENV_HASH}-"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
           echo "Using build cache with prefix match"
         fi
 
     - name: Determine cache path
       id: cache-path
       shell: bash
+      env:
+        CACHE_TYPE: ${{ inputs.cache-type }}
+        CACHE_PATH: ${{ inputs.path }}
       run: |
-        if [ "${{ inputs.cache-type }}" = "execution" ]; then
-          echo "path=${{ inputs.path }}/.jupyter_cache" >> $GITHUB_OUTPUT
+        if [ "$CACHE_TYPE" = "execution" ]; then
+          echo "path=$CACHE_PATH/.jupyter_cache" >> "$GITHUB_OUTPUT"
         else
-          echo "path=${{ inputs.path }}" >> $GITHUB_OUTPUT
+          echo "path=$CACHE_PATH" >> "$GITHUB_OUTPUT"
         fi
 
     # The restore always runs through actions/cache/restore, in both modes,
@@ -181,22 +225,26 @@ runs:
 
     - name: Cache status report
       shell: bash
+      env:
+        CACHE_TYPE: ${{ inputs.cache-type }}
+        REQUESTED_KEY: ${{ steps.cache-key.outputs.key }}
+        CACHE_HIT: ${{ steps.restore.outputs.cache-hit || 'false' }}
+        MATCHED_KEY: ${{ steps.restore.outputs.cache-matched-key }}
+        SAVE_CACHE: ${{ inputs.save-cache }}
+        CACHE_PATH: ${{ steps.cache-path.outputs.path }}
       run: |
         echo ""
         echo "╔════════════════════════════════════════════════════════════════╗"
         echo "║                    BUILD CACHE STATUS                          ║"
         echo "╚════════════════════════════════════════════════════════════════╝"
         echo ""
-        echo "  Cache Type:     ${{ inputs.cache-type }}"
-        echo "  Requested Key:  ${{ steps.cache-key.outputs.key }}"
-        echo "  Cache Hit:      ${{ steps.restore.outputs.cache-hit || 'false' }} (exact key match)"
-        echo "  Matched Key:    ${{ steps.restore.outputs.cache-matched-key || 'none' }}"
-        echo "  Save Cache:     ${{ inputs.save-cache }}"
+        echo "  Cache Type:     $CACHE_TYPE"
+        echo "  Requested Key:  $REQUESTED_KEY"
+        echo "  Cache Hit:      $CACHE_HIT (exact key match)"
+        echo "  Matched Key:    ${MATCHED_KEY:-none}"
+        echo "  Save Cache:     $SAVE_CACHE"
         echo ""
 
-        CACHE_PATH="${{ steps.cache-path.outputs.path }}"
-        MATCHED_KEY="${{ steps.restore.outputs.cache-matched-key }}"
-        
         # Check if cache was restored (via exact match OR prefix match)
         # With prefix matching, cache-hit is false but cache-matched-key is set
         if [ -n "$MATCHED_KEY" ]; then
@@ -228,7 +276,7 @@ runs:
             echo ""
             
             # For execution cache, show notebook cache info
-            if [ "${{ inputs.cache-type }}" = "execution" ]; then
+            if [ "$CACHE_TYPE" = "execution" ]; then
               echo "── Jupyter Cache Info ──"
               if [ -f "$CACHE_PATH/global.db" ]; then
                 DB_SIZE=$(du -sh "$CACHE_PATH/global.db" 2>/dev/null | cut -f1)
@@ -239,7 +287,7 @@ runs:
             fi
             
             # For build cache, show _build structure
-            if [ "${{ inputs.cache-type }}" = "build" ]; then
+            if [ "$CACHE_TYPE" = "build" ]; then
               echo "── Build Directories ──"
               for dir in html latex jupyter; do
                 if [ -d "$CACHE_PATH/$dir" ]; then
@@ -275,9 +323,11 @@ runs:
     - name: Fail on cache miss
       if: inputs.fail-on-miss == 'true' && steps.restore.outputs.cache-matched-key == ''
       shell: bash
+      env:
+        EXPECTED_KEY: ${{ steps.cache-key.outputs.key }}
       run: |
         echo "::error::Cache miss with fail-on-miss enabled"
-        echo "Expected cache key: ${{ steps.cache-key.outputs.key }}"
+        echo "Expected cache key: $EXPECTED_KEY"
         echo ""
         echo "Ensure the cache generation workflow has run on main branch."
         exit 1

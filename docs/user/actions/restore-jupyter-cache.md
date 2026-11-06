@@ -35,11 +35,11 @@ Use it in a job that builds lectures, after `setup-environment` and before [`bui
 | Input | Required | Default | Description |
 |---|---|---|---|
 | `cache-type` | no | `build` | What to restore. `build`, the default, restores the whole `_build` directory the last cache build saved: its HTML, PDF and notebooks, and the execution cache in `_build/.jupyter_cache`. `execution` restores only `_build/.jupyter_cache`, which holds each notebook's executed outputs. |
-| `path` | no | `_build` | The build directory to restore into. The path is part of what identifies a cache, so only `_build`, the default, finds the caches that `build-jupyter-cache` saves; any other path finds only what this action saved with `save-cache` and the same `path`. With `cache-type: execution` the cache goes into `<path>/.jupyter_cache`. |
+| `path` | no | `_build` | The build directory to restore into. The path is part of what identifies a cache, so only `_build`, the default, finds the caches that `build-jupyter-cache` saves; any other path finds only what this action saved with `save-cache` and the same `path`. With `cache-type: execution` the cache goes into `<path>/.jupyter_cache`. A line break in it fails the run before anything is restored. |
 | `source-dir` | no | `lectures` | With `cache-type: execution`: the book's directory. The key hashes every `.md` file under it, as `build-jupyter-cache` does with its own `source-dir`. Ignored for the build cache. |
 | `environment` | no | `environment.yml` | With `cache-type: build`: the Conda environment file whose hash is part of the key. Give the same file that `build-jupyter-cache` was given, or no cache matches. Ignored for the execution cache. |
 | `environment-update` | no | `''` | With `cache-type: build`: the container delta file whose hash is part of the key. Give the same file that `build-jupyter-cache` was given; with another, only the fallback matches, restoring the newest cache built from the same `environment`. Ignored for the execution cache. |
-| `key` | no | `''` | A key to restore in place of the generated ones. It is matched as a prefix, so the newest cache whose key starts with it is restored. With `save-cache: 'true'` the cache is saved under exactly this key, and only once: a cache is never overwritten, and a later run that matches the key exactly saves nothing. Empty, the default, uses the generated keys. |
+| `key` | no | `''` | A key to restore in place of the generated ones. It is matched as a prefix, so the newest cache whose key starts with it is restored. With `save-cache: 'true'` the cache is saved under exactly this key, and only once: a cache is never overwritten, and a later run that matches the key exactly saves nothing. A line break in it fails the run before anything is restored. Empty, the default, uses the generated keys. |
 | `fail-on-miss` | no | `false` | `'true'` fails the job when nothing is restored. `'false'`, the default, carries on without a cache, and the build starts from scratch. |
 | `save-cache` | no | `false` | `'true'` also saves the directory at the end of the job, if the job succeeds and its key did not match exactly. Saved from a pull request's run, the cache can be restored only by that pull request's later runs; saved from a run on a branch, it reaches every pull request that targets the branch. So use it in pull-request builds only. `'false'`, the default, only restores. |
 
@@ -171,6 +171,8 @@ The action prints what it asked for and what it found. On a typical read-only re
 - The cache build and this job compress differently. `actions/cache` compresses with `zstd` where it is installed and with `gzip` where it is not, and finds only caches made the same way. Run both jobs in the same image, or both on the runner.
 
 **`Cache miss with fail-on-miss enabled`.** As above; the job failed because `fail-on-miss` is `'true'`.
+
+**`key must be a single line` or `path must be a single line`.** The value holds a line break, which would end it where the action writes it as a step output, and start another output. Nothing was restored. A YAML block scalar (`|`) or a value built from a multi-line expression puts one there: write the value on one line.
 
 **The site shows pages of a lecture that was removed.** They come from the build cache, and the next cache build clears them. To clear them now, run the cache workflow by hand.
 

@@ -150,13 +150,14 @@ runs:
     - name: Generate cache key
       id: cache-key
       shell: bash
-      run: |
+      env:
         # Include both environment files in hash for cache key stability
         # hashFiles returns empty string for non-existent files, which is fine
-        ENV_HASH="${{ hashFiles(inputs.environment) }}"
-        UPDATE_HASH="${{ hashFiles(inputs.environment-update) }}"
-        KEY="build-${ENV_HASH}-${UPDATE_HASH}-${{ github.run_id }}"
-        echo "key=$KEY" >> $GITHUB_OUTPUT
+        ENV_HASH: ${{ hashFiles(inputs.environment) }}
+        UPDATE_HASH: ${{ hashFiles(inputs.environment-update) }}
+      run: |
+        KEY="build-${ENV_HASH}-${UPDATE_HASH}-${GITHUB_RUN_ID}"
+        echo "key=$KEY" >> "$GITHUB_OUTPUT"
         echo "Cache key: $KEY"
 
     # One step validates and parses, token by token. Matching the whole string
@@ -275,6 +276,13 @@ runs:
     - name: Verify all builds succeeded
       id: verify-builds
       shell: bash
+      env:
+        RUN_JUPYTER: ${{ steps.parse-builders.outputs.run-jupyter }}
+        JUPYTER_OUTCOME: ${{ steps.build-jupyter.outcome }}
+        RUN_PDFLATEX: ${{ steps.parse-builders.outputs.run-pdflatex }}
+        PDFLATEX_OUTCOME: ${{ steps.build-pdflatex.outcome }}
+        RUN_HTML: ${{ steps.parse-builders.outputs.run-html }}
+        HTML_OUTCOME: ${{ steps.build-html.outcome }}
       run: |
         echo ""
         echo "╔════════════════════════════════════════════════════════════════╗"
@@ -285,48 +293,48 @@ runs:
         ALL_PASSED=true
         
         # Check jupyter build
-        if [ "${{ steps.parse-builders.outputs.run-jupyter }}" = "true" ]; then
-          if [ "${{ steps.build-jupyter.outcome }}" = "success" ]; then
+        if [ "$RUN_JUPYTER" = "true" ]; then
+          if [ "$JUPYTER_OUTCOME" = "success" ]; then
             echo "  ✅ jupyter: passed"
-            echo "jupyter-status=success" >> $GITHUB_OUTPUT
+            echo "jupyter-status=success" >> "$GITHUB_OUTPUT"
           else
             echo "  ❌ jupyter: FAILED"
-            echo "jupyter-status=failure" >> $GITHUB_OUTPUT
+            echo "jupyter-status=failure" >> "$GITHUB_OUTPUT"
             ALL_PASSED=false
           fi
         else
           echo "  ⏭️  jupyter: skipped"
-          echo "jupyter-status=skipped" >> $GITHUB_OUTPUT
+          echo "jupyter-status=skipped" >> "$GITHUB_OUTPUT"
         fi
         
         # Check pdflatex build
-        if [ "${{ steps.parse-builders.outputs.run-pdflatex }}" = "true" ]; then
-          if [ "${{ steps.build-pdflatex.outcome }}" = "success" ]; then
+        if [ "$RUN_PDFLATEX" = "true" ]; then
+          if [ "$PDFLATEX_OUTCOME" = "success" ]; then
             echo "  ✅ pdflatex: passed"
-            echo "pdflatex-status=success" >> $GITHUB_OUTPUT
+            echo "pdflatex-status=success" >> "$GITHUB_OUTPUT"
           else
             echo "  ❌ pdflatex: FAILED"
-            echo "pdflatex-status=failure" >> $GITHUB_OUTPUT
+            echo "pdflatex-status=failure" >> "$GITHUB_OUTPUT"
             ALL_PASSED=false
           fi
         else
           echo "  ⏭️  pdflatex: skipped"
-          echo "pdflatex-status=skipped" >> $GITHUB_OUTPUT
+          echo "pdflatex-status=skipped" >> "$GITHUB_OUTPUT"
         fi
         
         # Check html build
-        if [ "${{ steps.parse-builders.outputs.run-html }}" = "true" ]; then
-          if [ "${{ steps.build-html.outcome }}" = "success" ]; then
+        if [ "$RUN_HTML" = "true" ]; then
+          if [ "$HTML_OUTCOME" = "success" ]; then
             echo "  ✅ html: passed"
-            echo "html-status=success" >> $GITHUB_OUTPUT
+            echo "html-status=success" >> "$GITHUB_OUTPUT"
           else
             echo "  ❌ html: FAILED"
-            echo "html-status=failure" >> $GITHUB_OUTPUT
+            echo "html-status=failure" >> "$GITHUB_OUTPUT"
             ALL_PASSED=false
           fi
         else
           echo "  ⏭️  html: skipped"
-          echo "html-status=skipped" >> $GITHUB_OUTPUT
+          echo "html-status=skipped" >> "$GITHUB_OUTPUT"
         fi
         
         echo ""
@@ -334,11 +342,11 @@ runs:
         
         if [ "$ALL_PASSED" = "true" ]; then
           echo "  ✅ ALL BUILDS PASSED - Cache will be saved"
-          echo "all-passed=true" >> $GITHUB_OUTPUT
+          echo "all-passed=true" >> "$GITHUB_OUTPUT"
         else
           echo "  ❌ SOME BUILDS FAILED - Cache will NOT be saved"
           echo "  Existing cache preserved for PR workflows"
-          echo "all-passed=false" >> $GITHUB_OUTPUT
+          echo "all-passed=false" >> "$GITHUB_OUTPUT"
         fi
 
         echo ""

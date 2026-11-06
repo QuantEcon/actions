@@ -127,33 +127,34 @@ runs:
       if: inputs.mode != 'deploy'
       shell: bash
       env:
+        BUILD_DIR: ${{ inputs.build-dir }}
         CNAME: ${{ inputs.cname }}
       run: |
-        echo "Preparing build directory: ${{ inputs.build-dir }}"
+        echo "Preparing build directory: $BUILD_DIR"
         
         # Verify build directory exists
-        if [ ! -d "${{ inputs.build-dir }}" ]; then
-          echo "❌ Error: Build directory not found: ${{ inputs.build-dir }}"
+        if [ ! -d "$BUILD_DIR" ]; then
+          echo "❌ Error: Build directory not found: $BUILD_DIR"
           exit 1
         fi
         
         # Count files
-        FILE_COUNT=$(find "${{ inputs.build-dir }}" -type f | wc -l)
+        FILE_COUNT=$(find "$BUILD_DIR" -type f | wc -l)
         echo "📊 Files to deploy: $FILE_COUNT"
-        echo "file-count=$FILE_COUNT" >> $GITHUB_OUTPUT
+        echo "file-count=$FILE_COUNT" >> "$GITHUB_OUTPUT"
         
         # Calculate size
-        SIZE=$(du -sh "${{ inputs.build-dir }}" | cut -f1)
-        SIZE_MB=$(du -sm "${{ inputs.build-dir }}" | cut -f1)
+        SIZE=$(du -sh "$BUILD_DIR" | cut -f1)
+        SIZE_MB=$(du -sm "$BUILD_DIR" | cut -f1)
         echo "💾 Total size: $SIZE"
-        echo "size-mb=$SIZE_MB" >> $GITHUB_OUTPUT
+        echo "size-mb=$SIZE_MB" >> "$GITHUB_OUTPUT"
         
         # Add CNAME file if specified. It still lands in the release tarball,
         # but the Pages deploy below (configure-pages -> upload-pages-artifact
         # -> deploy-pages) never reads it: with a GitHub Actions Pages source
         # the custom domain lives only in the repository's Pages settings.
         if [ -n "$CNAME" ]; then
-          echo "$CNAME" > "${{ inputs.build-dir }}/CNAME"
+          echo "$CNAME" > "$BUILD_DIR/CNAME"
           echo "🌐 Added CNAME: $CNAME"
           echo "::warning::cname has no effect on the GitHub Pages deployment: a GitHub Actions Pages deploy ignores CNAME files. Set the custom domain in Settings -> Pages -> Custom domain (the CNAME file is still written into build-dir)."
         fi
