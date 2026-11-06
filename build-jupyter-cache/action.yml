@@ -548,11 +548,15 @@ runs:
           const { owner, repo } = context.repo;
           const runUrl = `${process.env.GITHUB_SERVER_URL}/${owner}/${repo}/actions/runs/${context.runId}`;
 
-          // Reproduce commands must match build-lectures' own builder flags.
+          // Reproduce commands must match build-lectures' own builder flags,
+          // and its output directory. The builds above give build-lectures no
+          // output-dir, so it passes --path-output . and builds ./_build, where
+          // the caches and the artifact come from. Without it jb build writes
+          // into the book's own directory, <source-dir>/_build (#229).
           const repro = {
-            html: `jb build ${sourceDir} -W --keep-going`,
-            pdflatex: `jb build ${sourceDir} --builder pdflatex -n -W --keep-going`,
-            jupyter: `jb build ${sourceDir} --builder=custom --custom-builder=jupyter -n -W --keep-going`,
+            html: `jb build ${sourceDir} --path-output . -W --keep-going`,
+            pdflatex: `jb build ${sourceDir} --path-output . --builder pdflatex -n -W --keep-going`,
+            jupyter: `jb build ${sourceDir} --path-output . --builder=custom --custom-builder=jupyter -n -W --keep-going`,
           };
           const failed = Object.keys(status).filter(k => status[k] === 'failure');
 
@@ -607,13 +611,18 @@ runs:
             'Filed automatically by `build-jupyter-cache`. Close it once the build is fixed; the next successful run saves a new cache.',
           ].join('\n');
 
-          // Dedupe on the first label, matching the previous behaviour.
+          // Dedupe on the first label, matching the previous behaviour. The
+          // Issues API lists pull requests too, newest first, each with a
+          // pull_request key, so take the newest open issue and pass over any
+          // pull request that carries the label (#238). One page of 100 is
+          // enough: past 100 newer such pull requests this files one more
+          // issue, which is harmless.
           let issue;
           try {
             const existing = labels.length
               ? (await github.rest.issues.listForRepo({
-                  owner, repo, state: 'open', labels: labels[0], per_page: 1,
-                })).data[0]
+                  owner, repo, state: 'open', labels: labels[0], per_page: 100,
+                })).data.find(i => !i.pull_request)
               : undefined;
 
             if (existing) {
@@ -643,7 +652,9 @@ runs:
 
     # The defect this whole path had was being a silent no-op, so assert the
     # postcondition rather than trusting the step above. This also survives
-    # someone later adding continue-on-error to it.
+    # someone later adding continue-on-error to it. An issue's URL has
+    # /issues/ in it and a pull request's /pull/, so a report that the lookup
+    # posted on a pull request fails here too (#238).
     - name: Verify the failure alert was filed
       if: always() && steps.status.outputs.all-passed != 'true' && inputs.create-issue-on-failure == 'true'
       shell: bash
@@ -656,6 +667,12 @@ runs:
           echo "::error::create-issue-on-failure is enabled but no failure issue was filed (alert step outcome=[$ALERT_OUTCOME], issue url=[$ISSUE_URL], failing phase=[$FAILURE_PHASE]). This run's failure would otherwise have gone unreported."
           exit 1
         fi
+        case "$ISSUE_URL" in
+          */pull/*)
+            echo "::error::create-issue-on-failure is enabled but the failure report went to a pull request, not an issue: $ISSUE_URL. No failure issue was filed."
+            exit 1
+            ;;
+        esac
         echo "✅ failure issue filed: $ISSUE_URL"
         echo "Failure issue: $ISSUE_URL" >> "$GITHUB_STEP_SUMMARY"
 
