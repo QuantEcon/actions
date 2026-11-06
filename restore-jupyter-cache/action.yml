@@ -99,8 +99,9 @@ runs:
     # cache stopped updating without a word, and cache-type 'exec' restored
     # the build cache (#236). key and path are written to $GITHUB_OUTPUT
     # below, where a line break would end the value and start another output
-    # (#228). A comma or an over-long key is left to actions/cache, which
-    # refuses both itself.
+    # (#228); every input is one value, and a line break in one printed later
+    # could start a workflow command (#267). A comma or an over-long key is
+    # left to actions/cache, which refuses both itself.
     - name: Check inputs
       shell: bash
       env:
@@ -109,45 +110,36 @@ runs:
         FAIL_ON_MISS: ${{ inputs.fail-on-miss }}
         CUSTOM_KEY: ${{ inputs.key }}
         CACHE_PATH: ${{ inputs.path }}
+        SOURCE_DIR: ${{ inputs.source-dir }}
+        ENV_FILE: ${{ inputs.environment }}
+        ENV_UPDATE: ${{ inputs.environment-update }}
       run: |
-        # Escaped as a workflow command's data, so a value stays in its one
-        # annotation: a newline in it would otherwise start a new line that
-        # the runner could read as a command.
-        shown() {
-          local s
-          s=${1//'%'/'%25'}
-          s=${s//$'\r'/'%0D'}
-          s=${s//$'\n'/'%0A'}
-          printf '%s' "$s"
-        }
+        # shellcheck source=scripts/workflow-command.sh
+        . "$GITHUB_ACTION_PATH/../scripts/workflow-command.sh"
         bad=0
-        refuse() { echo "::error::$1"; bad=1; }
-        single_line() {
-          case "$2" in
-            *$'\n'*|*$'\r'*) refuse "$1 must be a single line, got '$(shown "$2")'" ;;
-          esac
-        }
+        refuse() { annotate error "$1"; bad=1; }
 
         case "$CACHE_TYPE" in
           build|execution) ;;
-          *) refuse "cache-type must be build or execution, got '$(shown "$CACHE_TYPE")'" ;;
+          *) refuse "cache-type must be build or execution, got '$CACHE_TYPE'" ;;
         esac
         case "$SAVE_CACHE" in
           true|false) ;;
-          *) refuse "save-cache must be 'true' or 'false', got '$(shown "$SAVE_CACHE")'" ;;
+          *) refuse "save-cache must be 'true' or 'false', got '$SAVE_CACHE'" ;;
         esac
         case "$FAIL_ON_MISS" in
           true|false) ;;
-          *) refuse "fail-on-miss must be 'true' or 'false', got '$(shown "$FAIL_ON_MISS")'" ;;
+          *) refuse "fail-on-miss must be 'true' or 'false', got '$FAIL_ON_MISS'" ;;
         esac
-        single_line key "$CUSTOM_KEY"
+        single_line "key=$CUSTOM_KEY" "source-dir=$SOURCE_DIR" "environment=$ENV_FILE" \
+          "environment-update=$ENV_UPDATE" || bad=1
         # Neither cache type can use an empty path: actions/cache refuses one
         # for the build cache, and the execution cache would go to
         # /.jupyter_cache.
         if [ -z "$CACHE_PATH" ]; then
           refuse "path must not be empty: give the build directory, _build by default"
         else
-          single_line path "$CACHE_PATH"
+          single_line "path=$CACHE_PATH" || bad=1
         fi
         exit "$bad"
 
@@ -267,6 +259,8 @@ runs:
         SAVE_CACHE: ${{ inputs.save-cache }}
         CACHE_PATH: ${{ steps.cache-path.outputs.path }}
       run: |
+        # shellcheck source=scripts/workflow-command.sh
+        . "$GITHUB_ACTION_PATH/../scripts/workflow-command.sh"
         echo ""
         echo "╔════════════════════════════════════════════════════════════════╗"
         echo "║                    BUILD CACHE STATUS                          ║"
@@ -338,7 +332,7 @@ runs:
             
             echo "::endgroup::"
           else
-            echo "::warning::Cache path does not exist after restore: $CACHE_PATH"
+            annotate warning "Cache path does not exist after restore: $CACHE_PATH"
           fi
         else
           echo "════════════════════════════════════════════════════════════════════"

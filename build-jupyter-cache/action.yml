@@ -164,12 +164,34 @@ runs:
     # by substring let 'html,pdf' through as html alone, with no warning, and
     # 'nojupyter' switch the jupyter build ON; install-latex below derives from
     # the same result, so it inherited every such misreading.
-    - name: Validate and parse builders input
+    #
+    # The inputs that are one value come first: a line break in one would end
+    # the line that prints it, and could start a workflow command (#267). The
+    # step above prints only hashes. builders may span lines, and is shown on
+    # one; issue-labels and issue-assignees are lists that the alert splits
+    # and trims, and no step prints them.
+    - name: Check inputs and parse builders
       id: parse-builders
       shell: bash
       env:
         BUILDERS: ${{ inputs.builders }}
+        ENV_FILE: ${{ inputs.environment }}
+        ENV_UPDATE: ${{ inputs.environment-update }}
+        SOURCE_DIR: ${{ inputs.source-dir }}
+        LATEX_REQUIREMENTS_FILE: ${{ inputs.latex-requirements-file }}
+        UPLOAD_ARTIFACT: ${{ inputs.upload-artifact }}
+        ARTIFACT_RETENTION_DAYS: ${{ inputs.artifact-retention-days }}
+        CREATE_ISSUE_ON_FAILURE: ${{ inputs.create-issue-on-failure }}
+        UPLOAD_FAILURE_REPORTS: ${{ inputs.upload-failure-reports }}
+        ERROR_OUTPUTS: ${{ inputs.error-outputs }}
       run: |
+        # shellcheck source=scripts/workflow-command.sh
+        . "$GITHUB_ACTION_PATH/../scripts/workflow-command.sh"
+        single_line "environment=$ENV_FILE" "environment-update=$ENV_UPDATE" "source-dir=$SOURCE_DIR" \
+          "latex-requirements-file=$LATEX_REQUIREMENTS_FILE" "upload-artifact=$UPLOAD_ARTIFACT" \
+          "artifact-retention-days=$ARTIFACT_RETENTION_DAYS" "create-issue-on-failure=$CREATE_ISSUE_ON_FAILURE" \
+          "upload-failure-reports=$UPLOAD_FAILURE_REPORTS" "error-outputs=$ERROR_OUTPUTS" || exit 1
+
         # Tokens are separated by commas and/or any whitespace, newlines
         # included, so 'html, pdflatex', 'html pdflatex' and a YAML block value
         # all work; empty tokens ('html,') are skipped. Not IFS=, read -ra: that
@@ -186,7 +208,7 @@ runs:
             pdflatex) run_pdflatex=true ;;
             html)     run_html=true ;;
             *)
-              echo "::error::Unknown builder '$token' in the builders input. Valid builders: jupyter, pdflatex, html"
+              annotate error "Unknown builder '$token' in the builders input. Valid builders: jupyter, pdflatex, html"
               unknown=1
               ;;
           esac
@@ -194,14 +216,14 @@ runs:
         # Shown on one line: a newline would cut the ::error:: annotation short.
         RECEIVED="$(printf '%s' "$BUILDERS" | tr '\r\n' '  ')"
         if [ "$unknown" -ne 0 ]; then
-          echo "::error::Received: '$RECEIVED'"
+          annotate error "Received: '$RECEIVED'"
           exit 1
         fi
         # Every token is valid by now, so none at all is the only way to have
         # no builder ('', or nothing but commas and whitespace).
         if [ "${#tokens[@]}" -eq 0 ]; then
           echo "::error::No valid builders specified. Must include at least one of: jupyter, pdflatex, html"
-          echo "::error::Received: '$RECEIVED'"
+          annotate error "Received: '$RECEIVED'"
           exit 1
         fi
 

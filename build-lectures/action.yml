@@ -105,27 +105,38 @@ outputs:
 runs:
   using: "composite"
   steps:
-    # Before the build, so a typo fails in seconds rather than after it. The
-    # default is resolved here and nowhere else: build-jupyter-cache passes its
-    # own error-outputs through, empty unless its caller set it, and an explicit
-    # '' reaches this action as '' rather than as a declared default.
-    - name: Check the error-outputs input
+    # Before the build, so a typo fails in seconds rather than after it. Every
+    # input but extra-args is one value, and a line break in one would end the
+    # line that prints it, and could start a workflow command (#267).
+    # extra-args is split on whitespace, line breaks included, and printed
+    # with them as spaces. The error-outputs default is resolved here and
+    # nowhere else: build-jupyter-cache passes its own error-outputs through,
+    # empty unless its caller set it, and an explicit '' reaches this action
+    # as '' rather than as a declared default.
+    - name: Check inputs
       id: error-outputs-mode
       shell: bash
       env:
+        BUILDER: ${{ inputs.builder }}
+        SOURCE_DIR: ${{ inputs.source-dir }}
+        OUTPUT_DIR: ${{ inputs.output-dir }}
         ERROR_OUTPUTS: ${{ inputs.error-outputs }}
+        HTML_COPY_PDF: ${{ inputs.html-copy-pdf }}
+        HTML_COPY_NOTEBOOKS: ${{ inputs.html-copy-notebooks }}
+        UPLOAD_FAILURE_REPORTS: ${{ inputs.upload-failure-reports }}
+        FAILURE_ARTIFACT_NAME: ${{ inputs.failure-artifact-name }}
       run: |
+        # shellcheck source=scripts/workflow-command.sh
+        . "$GITHUB_ACTION_PATH/../scripts/workflow-command.sh"
+        single_line "builder=$BUILDER" "source-dir=$SOURCE_DIR" "output-dir=$OUTPUT_DIR" \
+          "error-outputs=$ERROR_OUTPUTS" "html-copy-pdf=$HTML_COPY_PDF" \
+          "html-copy-notebooks=$HTML_COPY_NOTEBOOKS" "upload-failure-reports=$UPLOAD_FAILURE_REPORTS" \
+          "failure-artifact-name=$FAILURE_ARTIFACT_NAME" || exit 1
         mode=${ERROR_OUTPUTS:-fail}
         case "$mode" in
           fail|warn|ignore) echo "mode=$mode" >> "$GITHUB_OUTPUT" ;;
           *)
-            # Escaped as a workflow command's data, so the value stays in this
-            # one annotation: a newline in it would otherwise start a new line
-            # that the runner could read as a command.
-            shown=${ERROR_OUTPUTS//'%'/'%25'}
-            shown=${shown//$'\r'/'%0D'}
-            shown=${shown//$'\n'/'%0A'}
-            echo "::error::error-outputs must be fail, warn or ignore (or empty, for fail), got '$shown'"
+            annotate error "error-outputs must be fail, warn or ignore (or empty, for fail), got '$ERROR_OUTPUTS'"
             exit 1
             ;;
         esac
@@ -136,6 +147,8 @@ runs:
       env:
         OUTPUT_DIR: ${{ inputs.output-dir }}
       run: |
+        # shellcheck source=scripts/workflow-command.sh
+        . "$GITHUB_ACTION_PATH/../scripts/workflow-command.sh"
         echo "::group::Stage PDF for HTML build"
         PDF_SOURCE="$OUTPUT_DIR/_build/latex"
         PDF_DEST="$OUTPUT_DIR/_build/html/_pdf"
@@ -146,7 +159,7 @@ runs:
           echo "Staged PDFs in $PDF_DEST (Jupyter Book will detect and enable downloads):"
           ls -lh "$PDF_DEST" || echo "No PDFs found"
         else
-          echo "::warning::PDF source directory not found: $PDF_SOURCE"
+          annotate warning "PDF source directory not found: $PDF_SOURCE"
           echo "Run pdflatex builder before html builder with html-copy-pdf"
         fi
         echo "::endgroup::"
@@ -157,6 +170,8 @@ runs:
       env:
         OUTPUT_DIR: ${{ inputs.output-dir }}
       run: |
+        # shellcheck source=scripts/workflow-command.sh
+        . "$GITHUB_ACTION_PATH/../scripts/workflow-command.sh"
         echo "::group::Stage notebooks for HTML build"
         NB_SOURCE="$OUTPUT_DIR/_build/jupyter"
         NB_DEST="$OUTPUT_DIR/_build/html/_notebooks"
@@ -167,7 +182,7 @@ runs:
           NB_COUNT=$(find "$NB_DEST" -name "*.ipynb" | wc -l)
           echo "Staged $NB_COUNT notebooks in $NB_DEST (Jupyter Book will detect and enable downloads)"
         else
-          echo "::warning::Notebook source directory not found: $NB_SOURCE"
+          annotate warning "Notebook source directory not found: $NB_SOURCE"
           echo "Run jupyter builder before html builder with html-copy-notebooks"
         fi
         echo "::endgroup::"
@@ -199,6 +214,8 @@ runs:
       env:
         SOURCE_DIR: ${{ inputs.source-dir }}
       run: |
+        # shellcheck source=scripts/workflow-command.sh
+        . "$GITHUB_ACTION_PATH/../scripts/workflow-command.sh"
         # -c safe.directory='*' applies to this one command only (git reads
         # safe.directory from command-line config), so it can find the root
         # of a tree that git does not yet trust.
@@ -207,7 +224,7 @@ runs:
         elif ! TOP=$(git -c safe.directory='*' -C "$SOURCE_DIR" rev-parse --show-toplevel 2>&1); then
           # Quote git's own reason: not a work tree, or anything else that stops
           # git before it can look (a malformed GIT_CONFIG_COUNT, for one).
-          echo "::warning::git cannot find the work tree for $SOURCE_DIR, so pages will be built without their 'Last changed' date and changelog: ${TOP%%$'\n'*}"
+          annotate warning "git cannot find the work tree for $SOURCE_DIR, so pages will be built without their 'Last changed' date and changelog: ${TOP%%$'\n'*}"
         else
           # Adds the entry only while git refuses the tree, so the repeat calls
           # of multi-format callers and build-jupyter-cache add nothing. It is
@@ -223,9 +240,9 @@ runs:
             fi
           fi
           if ! git -C "$SOURCE_DIR" rev-parse --git-dir >/dev/null 2>&1; then
-            echo "::warning::git cannot read $TOP, so pages will be built without their 'Last changed' date and changelog: $(git -C "$SOURCE_DIR" rev-parse --git-dir 2>&1 | head -n 1)"
+            annotate warning "git cannot read $TOP, so pages will be built without their 'Last changed' date and changelog: $(git -C "$SOURCE_DIR" rev-parse --git-dir 2>&1 | head -n 1)"
           elif [ "$(git -C "$SOURCE_DIR" rev-parse --is-shallow-repository)" = "true" ]; then
-            echo "::warning::$TOP is a shallow clone, so every page's 'Last changed' date will be the checked-out commit's date. Set fetch-depth: 0 on actions/checkout to date each page from its own history."
+            annotate warning "$TOP is a shallow clone, so every page's 'Last changed' date will be the checked-out commit's date. Set fetch-depth: 0 on actions/checkout to date each page from its own history."
           else
             echo "Git history available in $TOP"
           fi
@@ -252,9 +269,10 @@ runs:
 
         # EXTRA_ARGS is intentionally left unquoted so it word-splits into
         # separate flags (e.g. "-W --keep-going"); quoted args with embedded
-        # spaces inside EXTRA_ARGS are not supported.
+        # spaces inside EXTRA_ARGS are not supported. It is printed with its
+        # line breaks as spaces, so no line of it can start a workflow command.
         echo "::group::Build Command"
-        echo "jb build $SOURCE_DIR --path-output $OUTPUT_DIR ${builder_args[*]} $EXTRA_ARGS"
+        echo "jb build $SOURCE_DIR --path-output $OUTPUT_DIR ${builder_args[*]} ${EXTRA_ARGS//[$'\r\n']/ }"
         echo "::endgroup::"
 
         # Execute build and capture exit code

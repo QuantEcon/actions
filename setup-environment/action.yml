@@ -80,6 +80,27 @@ outputs:
 runs:
   using: "composite"
   steps:
+    # First, before any step prints an input: each is one value, and a line
+    # break in it would end the line that prints it, and could start a
+    # workflow command (#267).
+    - name: Check inputs
+      shell: bash
+      env:
+        PYTHON_VERSION: ${{ inputs.python-version }}
+        ENV_FILE: ${{ inputs.environment }}
+        ENV_UPDATE: ${{ inputs.environment-update }}
+        ENV_NAME: ${{ inputs.environment-name }}
+        CACHE_VERSION: ${{ inputs.cache-version }}
+        INSTALL_LATEX: ${{ inputs.install-latex }}
+        LATEX_REQUIREMENTS_FILE: ${{ inputs.latex-requirements-file }}
+      run: |
+        # shellcheck source=scripts/workflow-command.sh
+        . "$GITHUB_ACTION_PATH/../scripts/workflow-command.sh"
+        single_line "python-version=$PYTHON_VERSION" "environment=$ENV_FILE" \
+          "environment-update=$ENV_UPDATE" "environment-name=$ENV_NAME" \
+          "cache-version=$CACHE_VERSION" "install-latex=$INSTALL_LATEX" \
+          "latex-requirements-file=$LATEX_REQUIREMENTS_FILE"
+
     # Detect if running inside QuantEcon container
     - name: Detect container environment
       id: detect-container
@@ -110,10 +131,12 @@ runs:
         ENV_UPDATE: ${{ inputs.environment-update }}
         ENV_NAME: ${{ inputs.environment-name }}
       run: |
+        # shellcheck source=scripts/workflow-command.sh
+        . "$GITHUB_ACTION_PATH/../scripts/workflow-command.sh"
         echo "::group::Environment Update (Container Mode)"
         echo "📦 Action: Installing delta packages from $ENV_UPDATE"
         if [ ! -f "$ENV_UPDATE" ]; then
-          echo "::error::Environment update file not found: $ENV_UPDATE"
+          annotate error "Environment update file not found: $ENV_UPDATE"
           exit 1
         fi
 
@@ -126,7 +149,7 @@ runs:
         # envs/quantecon, because conda env update creates a missing prefix
         # without a word. So target the prefix, and require it to be a conda env.
         if ! TARGET="$(python -c 'import sys; print(sys.prefix)')" || [ ! -d "$TARGET/conda-meta" ]; then
-          echo "::error::Cannot apply $ENV_UPDATE: the python on PATH is not in a conda environment (no conda-meta under its sys.prefix), so there is no environment to update"
+          annotate error "Cannot apply $ENV_UPDATE: the python on PATH is not in a conda environment (no conda-meta under its sys.prefix), so there is no environment to update"
           echo "  python:            $(command -v python || echo 'not found')"
           echo "  sys.prefix:        ${TARGET:-unknown}"
           echo "  conda:             $(command -v conda || echo 'not found')"
@@ -144,10 +167,10 @@ runs:
         FILE_NAME="${FILE_NAME#[\"\']}"
         FILE_NAME="${FILE_NAME%[\"\']}"
         if [ -n "$FILE_NAME" ] && [ "$FILE_NAME" != "$ACTIVE" ]; then
-          echo "::warning::$ENV_UPDATE says name: $FILE_NAME, but the environment on PATH is $ACTIVE ($TARGET). Updating $ACTIVE; the file's name: is ignored."
+          annotate warning "$ENV_UPDATE says name: $FILE_NAME, but the environment on PATH is $ACTIVE ($TARGET). Updating $ACTIVE; the file's name: is ignored."
         fi
         if [ "$ENV_NAME" != "$ACTIVE" ]; then
-          echo "::warning::environment-name is '$ENV_NAME', but the environment on PATH is $ACTIVE ($TARGET). Updating $ACTIVE; environment-name does not select the target in container mode."
+          annotate warning "environment-name is '$ENV_NAME', but the environment on PATH is $ACTIVE ($TARGET). Updating $ACTIVE; environment-name does not select the target in container mode."
         fi
 
         # No --prune: the delta lists only the extras, so pruning would strip the
@@ -177,8 +200,10 @@ runs:
       env:
         ENV_FILE: ${{ inputs.environment }}
       run: |
+        # shellcheck source=scripts/workflow-command.sh
+        . "$GITHUB_ACTION_PATH/../scripts/workflow-command.sh"
         if [ ! -f "$ENV_FILE" ]; then
-          echo "::error::Environment file not found: $ENV_FILE (required in standard / non-container mode)"
+          annotate error "Environment file not found: $ENV_FILE (required in standard / non-container mode)"
           exit 1
         fi
 
@@ -211,11 +236,13 @@ runs:
       env:
         ENV_NAME: ${{ inputs.environment-name }}
       run: |
+        # shellcheck source=scripts/workflow-command.sh
+        . "$GITHUB_ACTION_PATH/../scripts/workflow-command.sh"
         # A name, never a path: an empty or dotted name, or one with a slash,
         # would point rm -rf at envs/ itself or outside it.
         case "$ENV_NAME" in
           ''|.|..|*/*)
-            echo "::error::environment-name [$ENV_NAME] is not a conda environment name"
+            annotate error "environment-name [$ENV_NAME] is not a conda environment name"
             exit 1
             ;;
         esac
@@ -274,8 +301,10 @@ runs:
       env:
         LATEX_REQUIREMENTS_FILE: ${{ inputs.latex-requirements-file }}
       run: |
+        # shellcheck source=scripts/workflow-command.sh
+        . "$GITHUB_ACTION_PATH/../scripts/workflow-command.sh"
         if [ ! -f "$LATEX_REQUIREMENTS_FILE" ]; then
-          echo "::error::install-latex is true but no LaTeX requirements file was found at $LATEX_REQUIREMENTS_FILE"
+          annotate error "install-latex is true but no LaTeX requirements file was found at $LATEX_REQUIREMENTS_FILE"
           exit 1
         fi
         echo "Reading packages from $LATEX_REQUIREMENTS_FILE"
@@ -287,7 +316,7 @@ runs:
         # misconfiguration, and skipping would only move the failure to a
         # harder-to-read missing-TeX error in the pdflatex build.
         if [ "${#pkgs[@]}" -eq 0 ]; then
-          echo "::error::install-latex is true but $LATEX_REQUIREMENTS_FILE contains no package names (only comments or blank lines)"
+          annotate error "install-latex is true but $LATEX_REQUIREMENTS_FILE contains no package names (only comments or blank lines)"
           exit 1
         fi
         echo "Installing LaTeX packages: ${pkgs[*]}"

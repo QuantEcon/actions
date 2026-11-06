@@ -227,3 +227,5 @@ jobs:
 **`conda-cache-hit` is never `'true'`.** The environment is saved only at the end of a job that succeeds, and the key changes with the environment file, `environment-name`, `python-version` and `cache-version`. The cache's post step, near the end of the job log, says whether it saved.
 
 **The restored environment is broken.** Change `cache-version`, say from `v1` to `v2`. No cache from another version is restored, so the next run builds the environment from scratch. Deleting the repository's `conda-` caches, on the Caches page of its Actions tab, does the same.
+
+**`<input> must be a single line`.** Every input is one value, and a line break would end the line that prints it, and the runner reads a next line that starts with `::` as a workflow command. So the action fails in its first step, before it has done anything. A YAML block scalar (`|`), or an expression whose value spans lines, puts one there: write the value on one line. See [Security](../security.md#what-the-actions-themselves-do).

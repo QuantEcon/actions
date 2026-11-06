@@ -111,8 +111,18 @@ runs:
         REQUIRE_ACCESS: ${{ inputs.require-access }}
       run: |
         set -euo pipefail
-        fail() { echo "::error::$1"; exit 1; }
+        # shellcheck source=scripts/workflow-command.sh
+        . "$GITHUB_ACTION_PATH/../scripts/workflow-command.sh"
+        fail() { annotate error "$1"; exit 1; }
         label='^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'
+
+        # Every input but the two secrets is one value, and a line break in one
+        # would end the line that prints it, and could start a workflow command
+        # (#267), or, in build-dir, write another key to GITHUB_OUTPUT below.
+        # The secrets are never printed.
+        single_line "worker-name=$WORKER_NAME" "account-subdomain=$ACCOUNT_SUBDOMAIN" \
+          "visibility=$VISIBILITY" "team-domain=$TEAM_DOMAIN" "build-dir=$BUILD_DIR" \
+          "alias=$ALIAS" "require-access=$REQUIRE_ACCESS" || exit 1
 
         # Who may see the site comes first, so that the log's first line says
         # it (#177). require-access is visibility's deprecated alias for one
@@ -184,8 +194,6 @@ runs:
             || fail "alias [$ALIAS] is too long: [$ALIAS-$WORKER_NAME] must fit in one 63-character hostname label."
         fi
 
-        # A newline would inject keys into GITHUB_OUTPUT below.
-        [[ "$BUILD_DIR" != *$'\n'* && "$BUILD_DIR" != *$'\r'* ]] || fail "build-dir must not contain line breaks."
         [ -d "$BUILD_DIR" ] || fail "build-dir [$BUILD_DIR] is not a directory."
         BUILD_DIR=$(cd "$BUILD_DIR" && pwd -P)
         [ -n "$(find "$BUILD_DIR" -type f -print -quit)" ] || fail "build-dir [$BUILD_DIR] contains no files."
@@ -213,7 +221,7 @@ runs:
             echo "::warning::build-dir has no index.html, so the site root will answer 404 once past the Access login."
           elif [ -n "$probe_path" ]; then
             probe_root=false
-            echo "::warning::build-dir has no index.html, so the site root will answer 404. After the deploy only $probe_path is checked, not the root."
+            annotate warning "build-dir has no index.html, so the site root will answer 404. After the deploy only $probe_path is checked, not the root."
           else
             fail "build-dir has no index.html and no file that is not HTML, so nothing could show that the public site is served. Add an index.html."
           fi

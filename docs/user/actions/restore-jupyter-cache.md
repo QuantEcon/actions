@@ -176,7 +176,7 @@ The action prints what it asked for and what it found. On a typical read-only re
 
 **`path must not be empty`.** Neither cache type can restore into an empty path. Leave `path` out for the default, `_build`. Nothing was restored.
 
-**`key must be a single line` or `path must be a single line`.** The value holds a line break, which would end it where the action writes it as a step output, and start another output. Nothing was restored. A YAML block scalar (`|`) or a value built from a multi-line expression puts one there: write the value on one line.
+**`key must be a single line`, `path must be a single line`, or the same for another input.** The value holds a line break. `key` and `path` are written as step outputs, where it would end the value and start another output, and in any input a line break would end the line that prints it, where the runner reads a next line that starts with `::` as a workflow command. Nothing was restored. A YAML block scalar (`|`) or a value built from a multi-line expression puts one there: write the value on one line.
 
 **The site shows pages of a lecture that was removed.** They come from the build cache, and the next cache build clears them. To clear them now, run the cache workflow by hand.
 

@@ -118,7 +118,7 @@ runs:
     # the next pull request. A deploy's only when one will run: a fork's pull
     # request, which is skipped, gets no secrets. The secrets themselves never
     # reach this step, only whether they are set. project-name is required in
-    # both modes, so it is not checked here.
+    # both modes, so only its line breaks are checked here.
     - name: Check the inputs
       id: check-inputs
       shell: bash
@@ -128,10 +128,15 @@ runs:
         HAVE_TOKEN: ${{ inputs.cloudflare-api-token != '' }}
         HAVE_ACCOUNT_ID: ${{ inputs.cloudflare-account-id != '' }}
         HAVE_BUILD_DIR: ${{ inputs.build-dir != '' }}
+        PROJECT_NAME: ${{ inputs.project-name }}
+        BUILD_DIR: ${{ inputs.build-dir }}
+        LECTURES_DIR: ${{ inputs.lectures-dir }}
       run: |
-        # Escaped as the runner expects, so a value cannot end an annotation
-        # and start a workflow command of its own.
-        esc() { local s=$1; s=${s//'%'/'%25'}; s=${s//$'\r'/'%0D'}; s=${s//$'\n'/'%0A'}; printf '%s' "$s"; }
+        # shellcheck source=scripts/workflow-command.sh
+        . "$GITHUB_ACTION_PATH/../scripts/workflow-command.sh"
+        # Each of these is one value, and a line break in one would end the
+        # line that prints it, and could start a workflow command (#267).
+        single_line "project-name=$PROJECT_NAME" "build-dir=$BUILD_DIR" "lectures-dir=$LECTURES_DIR" || exit 1
         case "$PLACEHOLDER" in
           true|false) ;;
           *) echo "::error::placeholder is [$(esc "$PLACEHOLDER")], not 'true' or 'false'"; exit 1 ;;
