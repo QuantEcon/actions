@@ -32,6 +32,7 @@ QuantEcon Actions is a set of composite GitHub Actions, workflow templates and c
 pip install -r scripts/requirements.txt
 python3 scripts/generate-docs.py --check --check-examples --actionlint "$(command -v actionlint)"
 actionlint
+python3 scripts/lint-shell.py
 ```
 
-The last command lints `.github/workflows/`, as the gate does. actionlint lints `run:` scripts only when it finds `shellcheck` on your `PATH`, so have one there. Run `shellcheck` on any other shell you change.
+As the gate does, `actionlint` lints `.github/workflows/`, and `scripts/lint-shell.py` the actions' `run:` scripts and `scripts/*.sh`. Both need `shellcheck` on your `PATH`: without it, actionlint skips the `run:` scripts without a word. Run `shellcheck` on any other shell you change.

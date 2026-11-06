@@ -121,9 +121,10 @@ jobs:
           # costs CI minutes (free on a public repo); forgetting to extend a
           # cover list would silently rubber-stamp untested action changes.
           #
-          # The docs generator and its requirements file are listed because no
-          # harness job uses them: the gate's own docs checks below are their test.
-          IGNORED='^(AGENTS|CHANGELOG|README|CONTRIBUTING|SECURITY)\.md$|^LICENSE$|^\.gitignore$|^docs/|^tests/|^templates/|^\.github/(ISSUE_TEMPLATE|PULL_REQUEST_TEMPLATE|dependabot\.yml)|^[A-Za-z0-9_.-]+/README\.md$|^scripts/(generate-docs\.py|requirements\.txt)$'
+          # The docs generator, the shell lint and their requirements file are
+          # listed because no harness job uses them: the gate's own checks below
+          # are their test.
+          IGNORED='^(AGENTS|CHANGELOG|README|CONTRIBUTING|SECURITY)\.md$|^LICENSE$|^\.gitignore$|^docs/|^tests/|^templates/|^\.github/(ISSUE_TEMPLATE|PULL_REQUEST_TEMPLATE|dependabot\.yml)|^[A-Za-z0-9_.-]+/README\.md$|^scripts/(generate-docs\.py|lint-shell\.py|requirements\.txt)$'
 
           run_everything() { echo "relevant=true" >> "$GITHUB_OUTPUT"; echo "$1"; exit 0; }
 
@@ -159,7 +160,7 @@ jobs:
               echo "::error::gate self-test: IGNORED matches [$p], which must always run the harness"; exit 1
             fi
           done
-          for p in CHANGELOG.md AGENTS.md SECURITY.md .gitignore docs/dev/PLAN.md tests/README.md scripts/generate-docs.py; do
+          for p in CHANGELOG.md AGENTS.md SECURITY.md .gitignore docs/dev/PLAN.md tests/README.md scripts/generate-docs.py scripts/lint-shell.py; do
             if ! grep -Eq "$IGNORED" <<< "$p"; then
               echo "::error::gate self-test: IGNORED no longer matches [$p]"; exit 1
             fi
@@ -329,6 +330,15 @@ jobs:
       - name: Lint .github/workflows/ with actionlint
         run: |
           "$RUNNER_TEMP/actionlint/actionlint"
+
+      # #100 (review M5): actionlint never reads an action.yml. This lints each
+      # action's run: scripts with shellcheck at --severity=warning, reporting
+      # at their lines in action.yml, and fails on any ${{ }} in one, since a
+      # value belongs in env: (AGENTS.md). Then scripts/*.sh, at the same
+      # severity. containers/ is left out: a change there rebuilds both images.
+      - name: Lint the actions' run scripts and scripts/*.sh with shellcheck
+        run: |
+          "$RUNNER_TEMP/docs-venv/bin/python" scripts/lint-shell.py
 
   # ==========================================================================
   # restore-jupyter-cache — unit jobs (synthetic fixtures, no conda, seconds)
