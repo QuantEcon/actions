@@ -24,6 +24,11 @@ on:
     workflows: ["Build QuantEcon Containers"]
     types:
       - completed
+    # After a promotion, which only main's runs make (#142). A dispatch from
+    # another branch dry-runs it and leaves :latest as it was, so it has
+    # nothing new for this matrix, and in this workflow's concurrency group it
+    # would cancel a scheduled run in progress.
+    branches: [main]
   # Weekly against the published :latest, with no image change behind it. The
   # image builds no longer run on a schedule (#235), and without this the matrix
   # would run only when an image changes, which can be weeks apart (none from

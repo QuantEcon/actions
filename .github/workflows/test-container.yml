@@ -3,15 +3,16 @@ name: Test Container
 # The `quantecon` GHCR org is intentionally hardcoded (GHCR image paths must be
 # lowercase, so github.repository_owner — which preserves casing — can't be substituted here).
 #
-# Three ways in, one set of jobs:
-#   workflow_run       :latest of both images, after every build-containers.yml
-#                      push. Unattended, so a failure opens an issue (notify-failure).
-#   workflow_call      a pull request's candidates, from validate-containers.yml
-#                      (#142). The result reaches the pull request's required check.
-#   workflow_dispatch  any tag of any image, by hand, e.g. a candidate from #150
-#                      or a pull request's pr-<N>.
-# The images and tag inputs mean the same on both of the last two; on
-# workflow_run there are no inputs, hence the `||` defaults below.
+# Two ways in, one set of jobs:
+#   workflow_call      candidates, before they can reach :latest (#142). Main's,
+#                      from build-containers.yml, which promotes them only if
+#                      the smoke test passes and reports a failure in a tracking
+#                      issue. A pull request's, from validate-containers.yml,
+#                      whose result reaches the pull request's required check.
+#   workflow_dispatch  any tag of any image, by hand, e.g. :latest, a pull
+#                      request's pr-<N>, or a candidate from #150.
+# The images and tag inputs mean the same on both. A caller can run the smoke
+# test or the size report alone (`checks`), and gate on that call only.
 
 on:
   workflow_dispatch:
@@ -24,10 +25,6 @@ on:
         description: 'Tag to test in each image'
         required: false
         default: 'latest'
-  workflow_run:
-    workflows: ["Build QuantEcon Containers"]
-    types:
-      - completed
   workflow_call:
     inputs:
       images:
@@ -38,13 +35,18 @@ on:
         description: 'Tag to test in each image'
         type: string
         required: true
+      checks:
+        description: 'The jobs to run: smoke, size, or all'
+        type: string
+        required: false
+        default: 'all'
 
 jobs:
   smoke:
     name: 'Smoke: ${{ matrix.image }}'
     runs-on: ubuntu-latest
-    # A call keeps its caller's event name, so it passes the first test.
-    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    # A dispatch has no checks input, and runs both jobs.
+    if: inputs.checks != 'size'
     timeout-minutes: 30
     permissions:
       contents: read
@@ -52,7 +54,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: ${{ fromJSON(inputs.images || '["quantecon", "quantecon-build"]') }}
+        image: ${{ fromJSON(inputs.images) }}
     # A real container job, not `docker run`. The runner mounts an empty
     # directory at /github/home and forces HOME=/github/home; `docker run` gets
     # HOME=/root. That is exactly how #85 (kaleido v1 losing its bundled
@@ -60,20 +62,16 @@ jobs:
     # workflow while failing test-containers-lectures.yml, which does use a
     # container job. Same pattern as that workflow.
     container:
-      image: ghcr.io/quantecon/${{ matrix.image }}:${{ inputs.tag || 'latest' }}
+      image: ghcr.io/quantecon/${{ matrix.image }}:${{ inputs.tag }}
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
       options: --user root
     steps:
+      # github.sha. For a call it is the commit that built the images: the
+      # push to main, or the pull request's merge commit.
       - name: Checkout
         uses: actions/checkout@v7
-        with:
-          # Test files must match the commit that built the image. For
-          # workflow_run events checkout defaults to the default branch, not the
-          # triggering commit; fall back to github.sha for workflow_dispatch,
-          # and for a call, where it is the pull request's merge commit.
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Assert the container-job environment
         run: |
@@ -136,7 +134,7 @@ jobs:
   size:
     name: 'Image size: ${{ matrix.image }}'
     runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    if: inputs.checks != 'smoke'
     # The pull dominates: the smoke job's container init takes ~2m10s.
     timeout-minutes: 15
     permissions:
@@ -145,7 +143,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: ${{ fromJSON(inputs.images || '["quantecon", "quantecon-build"]') }}
+        image: ${{ fromJSON(inputs.images) }}
     steps:
       # features.containerd-snapshotter=false is Docker's documented way back
       # to the classic store. The runner is fresh, so no images are lost.
@@ -176,7 +174,7 @@ jobs:
         env:
           NAME: ${{ matrix.image }}
           REPO: ghcr.io/quantecon/${{ matrix.image }}
-          TAG: ${{ inputs.tag || 'latest' }}
+          TAG: ${{ inputs.tag }}
         run: |
           fail() { echo "::error::$NAME: $*"; exit 1; }
           is_size() { [[ $1 =~ ^[1-9][0-9]*$ ]]; }
@@ -214,33 +212,3 @@ jobs:
             echo "- \`$NAME:$TAG\` compressed: $(gb "$compressed") ($compressed bytes), sum of the layer sizes in the registry's linux/amd64 manifest (what a cold pull downloads)"
             echo "- \`$NAME:$TAG\` on disk: $(gb "$on_disk") ($on_disk bytes), unpacked layers after docker pull, per docker image inspect (Docker $engine, $driver)"
           } | tee -a "$GITHUB_STEP_SUMMARY"
-
-  # Nobody watches a workflow_run, so a failure opens (or comments on) a
-  # tracking issue, as build-containers.yml and test-containers-lectures.yml
-  # already do. Without it, this smoke test was red for three weeks before
-  # anyone saw #222 (plotly 7 in the lean image broke every image export).
-  # workflow_run only: a dispatch has someone watching it, and a call's result
-  # reaches its caller, a pull request's required check. `cancelled` alerts
-  # too: a job killed by timeout-minutes concludes cancelled, not failed, which
-  # is how test-containers-lectures.yml went unreported in August.
-  notify-failure:
-    name: Report failure
-    runs-on: ubuntu-latest
-    needs: [smoke, size]
-    if: ${{ always() && github.event_name == 'workflow_run' && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      issues: write
-      actions: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Open or update the failure tracking issue
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ISSUE_LABELS: bug,infrastructure
-        run: ./scripts/create-ci-failure-issue.sh
