@@ -16,8 +16,9 @@
 //     scripts/detect-changed-lectures.sh, and the deploy's comment then
 //     replaces that one in place, while the placeholder never replaces the
 //     deploy's comment for its own commit;
-//   - the input check refuses a deploy without its secrets or build-dir, and
-//     a placeholder without a valid site name, and never sees a secret.
+//   - the input check refuses a deploy without its secrets or build-dir, a
+//     placeholder without a valid site name, and a line break in build-dir,
+//     lectures-dir or project-name (#267), and never sees a secret.
 //
 // Usage: node test.cjs STEPS_JSON, where STEPS_JSON maps each action's
 // directory to its `check-inputs`, `comment-script` and `comment` steps and
@@ -240,6 +241,15 @@ const CHECKS = [
   { name: 'placeholder with a line break, escaped into one annotation', action: 'preview-netlify',
     env: { PLACEHOLDER: 'true\n::warning::injected', DEPLOY: 'true', SITE_NAME: '', ...NETLIFY_SET }, rc: 1,
     out: /^::error::placeholder is \[true%0A::warning::injected\], not 'true' or 'false'\n?$/ },
+  { name: 'a deploy with build-dir and lectures-dir, each on one line', action: 'preview-netlify',
+    env: { PLACEHOLDER: 'false', DEPLOY: 'true', SITE_NAME: '', ...NETLIFY_SET, BUILD_DIR: '_build/html', LECTURES_DIR: 'lectures' },
+    rc: 0, out: 'quiet' },
+  { name: 'lectures-dir with a line break, refused before anything else and escaped', action: 'preview-netlify',
+    env: { PLACEHOLDER: 'false', DEPLOY: 'true', SITE_NAME: '', ...NETLIFY_SET, BUILD_DIR: '_build/html', LECTURES_DIR: 'lectures\n::warning::injected' },
+    rc: 1, out: /^::error::lectures-dir must be a single line, got 'lectures%0A::warning::injected'\n?$/ },
+  { name: "build-dir with a line break, on a fork's run that deploys nothing", action: 'preview-netlify',
+    env: { PLACEHOLDER: 'false', DEPLOY: 'false', SITE_NAME: '', ...NETLIFY_NONE, BUILD_DIR: '_build/html\r\n' },
+    rc: 1, out: /^::error::build-dir must be a single line, got '_build\/html%0D%0A'\n?$/ },
   { name: 'a deploy with every input, as every caller passes them', action: 'preview-cloudflare',
     env: { PLACEHOLDER: 'false', DEPLOY: 'true', ...CLOUDFLARE_SET }, rc: 0, out: 'quiet' },
   { name: 'a deploy without its account ID', action: 'preview-cloudflare',
@@ -258,6 +268,9 @@ const CHECKS = [
   { name: 'placeholder neither true nor false', action: 'preview-cloudflare',
     env: { PLACEHOLDER: 'True', DEPLOY: 'true', ...CLOUDFLARE_SET }, rc: 1,
     out: /^::error::placeholder is \[True\], not 'true' or 'false'$/m },
+  { name: 'project-name with a line break, refused before anything else and escaped', action: 'preview-cloudflare',
+    env: { PLACEHOLDER: 'false', DEPLOY: 'true', ...CLOUDFLARE_SET, PROJECT_NAME: 'harness\n::warning::injected', BUILD_DIR: '_build/html' },
+    rc: 1, out: /^::error::project-name must be a single line, got 'harness%0A::warning::injected'\n?$/ },
 ];
 
 // What each action's steps must say, where the cases above take a value for
@@ -284,6 +297,7 @@ const WIRING = {
     check: {
       PLACEHOLDER: '${{ inputs.placeholder }}', DEPLOY: '${{ steps.decide.outputs.deploy }}', SITE_NAME: '${{ inputs.netlify-site-name }}',
       HAVE_TOKEN: "${{ inputs.netlify-auth-token != '' }}", HAVE_SITE_ID: "${{ inputs.netlify-site-id != '' }}", HAVE_BUILD_DIR: "${{ inputs.build-dir != '' }}",
+      BUILD_DIR: '${{ inputs.build-dir }}', LECTURES_DIR: '${{ inputs.lectures-dir }}',
     },
   },
   'preview-cloudflare': {
@@ -291,6 +305,7 @@ const WIRING = {
     check: {
       PLACEHOLDER: '${{ inputs.placeholder }}', DEPLOY: '${{ steps.decide.outputs.deploy }}',
       HAVE_TOKEN: "${{ inputs.cloudflare-api-token != '' }}", HAVE_ACCOUNT_ID: "${{ inputs.cloudflare-account-id != '' }}", HAVE_BUILD_DIR: "${{ inputs.build-dir != '' }}",
+      PROJECT_NAME: '${{ inputs.project-name }}', BUILD_DIR: '${{ inputs.build-dir }}', LECTURES_DIR: '${{ inputs.lectures-dir }}',
     },
   },
 };
