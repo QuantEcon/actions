@@ -4144,7 +4144,11 @@ jobs:
             esac
             problems=()
             [ "$got_code" = "$want_code" ] || problems+=("the step exited $got_code, expected $want_code")
-            [ "$got_output" = "$want_output" ] || problems+=("GITHUB_OUTPUT holds [$got_output], expected [$want_output]")
+            # On one line each, for the annotation. Plain assignments, as in
+            # scripts/workflow-command.sh.
+            shown_got=${got_output//$'\n'/, }
+            shown_want=${want_output//$'\n'/, }
+            [ "$got_output" = "$want_output" ] || problems+=("GITHUB_OUTPUT holds [$shown_got], expected [$shown_want]")
             [ "$warnings" = "$want_w" ] || problems+=("$warnings fallback warnings, expected $want_w")
             [ "$notices" = "$want_n" ] || problems+=("$notices address notices, expected $want_n")
             ! grep -q '^::warning::harness-216' "$c/stdout" || problems+=("a line break in the record started a workflow command")
