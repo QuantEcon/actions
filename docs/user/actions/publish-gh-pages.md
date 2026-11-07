@@ -178,7 +178,7 @@ The `github-pages` environment must also allow the tags to deploy: under **Setti
 
 ### In the templates
 
-[`publish.yml`](https://github.com/QuantEcon/actions/blob/main/templates/publish.yml) publishes each push to `main`, and runs on manual dispatch too, as in [A build job and a deploy job](#a-build-job-and-a-deploy-job): its build job restores the build cache, builds the site and uploads it, and its deploy job deploys it. The release assets are there as comments: a hand-off step in the build job and a `release-assets` job, with the other changes a workflow needs before it can make them, a tag trigger and the tag pattern allowed in the `github-pages` environment.
+[`publish.yml`](https://github.com/QuantEcon/actions/blob/main/templates/publish.yml) publishes each push to `main`, and runs on manual dispatch too, as in [A build job and a deploy job](#a-build-job-and-a-deploy-job): its build job restores the execution cache, builds the site and uploads it, and its deploy job deploys it. The release assets are there as comments: a hand-off step in the build job and a `release-assets` job, with the other changes a workflow needs before it can make them, a tag trigger and the tag pattern allowed in the `github-pages` environment.
 
 ## Behaviour
 
