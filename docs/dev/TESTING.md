@@ -6,8 +6,8 @@ How a change to this repository is tested: the action harness on every pull requ
 |---|---|---|
 | [`test-actions.yml`](../../.github/workflows/test-actions.yml), the action harness | Each action at the pull request's commit, the templates' hand-offs between jobs, and the user manual | Every pull request, every push to `main`, and by hand |
 | [`validate-containers.yml`](../../.github/workflows/validate-containers.yml), called by the harness | Each image a pull request changes, built as a `pr-<N>` candidate and smoke-tested | Within the harness, on a pull request that changes an image |
-| [`test-container.yml`](../../.github/workflows/test-container.yml) | The smoke test and size report, on both `:latest` images | After each image build, and by hand for any tag |
-| [`test-containers-lectures.yml`](../../.github/workflows/test-containers-lectures.yml) | Four lecture repositories built in both images | After each image build, weekly on Monday at 02:00 UTC, and by hand |
+| [`test-container.yml`](../../.github/workflows/test-container.yml) | The smoke test and size report, on an image's candidates before they can reach `:latest` | Called by `validate-containers.yml` on a pull request's candidates and by `build-containers.yml` on main's, before it promotes them; and by hand for any tag |
+| [`test-containers-lectures.yml`](../../.github/workflows/test-containers-lectures.yml) | Four lecture repositories built in both images | After each promotion to `:latest`, weekly on Monday at 02:00 UTC, and by hand |
 | [QuantEcon/test-actions-lecture-intro](https://github.com/QuantEcon/test-actions-lecture-intro), the canary | A release, in a real lecture repository, with real deploys | On its own pull requests and weekly cache build, and in every staged release |
 
 ## The action harness
@@ -21,7 +21,7 @@ The workflow has no `paths:` filter: a filtered-out workflow publishes no check 
 - **`IGNORED`** is a list of paths that cannot, such as the root docs, `docs/`, `tests/` and `templates/`. It is an ignore list, not a cover list, so a path it does not recognise runs the whole harness: forgetting to extend it costs CI minutes, never a green check earned by running nothing.
 - **A self-test** fails the gate if `IGNORED` would match any file the harness must run for: each action's `action.yml`, which it reads from the workflow's own `uses: ./<action>` lines, the shared scripts and lockfiles, and the container files. It also checks that `IGNORED` still matches the paths it is meant to.
 - **The checks a docs-only change still needs** run in the gate itself, because such a change skips every other job: the templates pin the same third-party actions as `.github/workflows/`, and `scripts/generate-docs.py --check --check-examples --actionlint` finds the manual's generated tables current, a chapter for every action, and every example valid. [CHAPTER-TEMPLATE.md](CHAPTER-TEMPLATE.md) lists those checks.
-- **actionlint over `.github/workflows/`** runs in the gate too, on every event, so a problem in any workflow fails the required check. actionlint lints each `run:` script with shellcheck, and silently skips them when it finds none, so the gate fails when the runner image has no shellcheck, and logs both tools' versions. [`.github/actionlint.yaml`](../../.github/actionlint.yaml) holds the ignores, each limited to one file and saying why.
+- **actionlint over `.github/workflows/`** runs in the gate too, on every event, so a problem in any workflow fails the required check. actionlint lints each `run:` script with shellcheck, and silently skips them when it finds none, so the gate fails when the runner image has no shellcheck, and logs both tools' versions. An ignore goes in `.github/actionlint.yaml`, which actionlint reads by default, limited to one file and saying why.
 - **shellcheck over the actions' `run:` scripts and `scripts/*.sh`** runs in the gate as well, through [`scripts/lint-shell.py`](../../scripts/lint-shell.py), because actionlint never reads an `action.yml`. It fails on any `${{ }}` in a `run:` script, an action's or a workflow's, since a value belongs in the step's `env:`, and on any shellcheck finding of warning severity or above, reported at its line in `action.yml`. The container scripts under `containers/` are left out, since a change there rebuilds both images.
 
 `harness-summary`, the job behind `Action harness: all checks`, passes only if the gate succeeded and either every job succeeded, when the gate found the change relevant, or every job was skipped, when it did not. Any other mix fails it.
@@ -59,7 +59,7 @@ The templates have jobs of their own: `pdf-check-*` runs `ci.yml`'s PDF check ha
 
 ## Containers
 
-A pull request that changes an image builds and smoke-tests it before it can merge; the merge then rebuilds the images, moves `:latest`, and runs `test-container.yml` and the lecture matrix against them. [CONTAINERS.md](CONTAINERS.md) describes that path and the smoke test, and [CONTAINER-VALIDATION.md](CONTAINER-VALIDATION.md) the lecture matrix and its results.
+A pull request that changes an image builds and smoke-tests it before it can merge. The merge rebuilds the images, smoke-tests them again, and moves `:latest` only if every smoke test passes; the lecture matrix then runs against the promoted images. [CONTAINERS.md](CONTAINERS.md) describes that path and the smoke test, and [CONTAINER-VALIDATION.md](CONTAINER-VALIDATION.md) the lecture matrix and its results.
 
 ## The canary
 

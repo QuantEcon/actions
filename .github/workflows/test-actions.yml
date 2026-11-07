@@ -155,7 +155,7 @@ jobs:
           # The container-images job decides for itself which images to build,
           # but runs only when this gate says relevant: an IGNORED that matched
           # an image's files would pass a containers-only pull request unbuilt.
-          for f in containers/*/Dockerfile containers/*/environment.yml containers/quantecon/tests/smoke-test.sh .github/workflows/validate-containers.yml .github/workflows/test-container.yml scripts/detect-changed-images.sh scripts/delete-pr-images.sh scripts/check-base-pins.sh; do MUST_RUN="$MUST_RUN $f"; done
+          for f in containers/*/Dockerfile containers/*/environment.yml containers/quantecon/tests/smoke-test.sh .github/workflows/validate-containers.yml .github/workflows/test-container.yml scripts/detect-changed-images.sh scripts/delete-pr-images.sh scripts/promote-image.sh scripts/check-base-pins.sh; do MUST_RUN="$MUST_RUN $f"; done
           for p in $MUST_RUN; do
             if grep -Eq "$IGNORED" <<< "$p"; then
               echo "::error::gate self-test: IGNORED matches [$p], which must always run the harness"; exit 1
@@ -324,10 +324,10 @@ jobs:
 
       # #100 (review M5): this repository's own workflows, this one included,
       # which the step above never sees. With no arguments actionlint lints
-      # every workflow in .github/workflows/, with .github/actionlint.yaml's
-      # ignores. In the gate because it already has actionlint, and every event
-      # runs it and harness-summary requires it, so a problem fails the required
-      # check with no new job to wire into the summary.
+      # every workflow in .github/workflows/, with any ignores in
+      # .github/actionlint.yaml. In the gate because it already has actionlint,
+      # and every event runs it and harness-summary requires it, so a problem
+      # fails the required check with no new job to wire into the summary.
       - name: Lint .github/workflows/ with actionlint
         run: |
           "$RUNNER_TEMP/actionlint/actionlint"

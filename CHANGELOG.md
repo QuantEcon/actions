@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Container images**: `:latest` moves only once the image it will point at has passed the
+  smoke test. Until now the merge's own build pushed `:latest` directly, and `test-container.yml`
+  tested it afterwards. That build is not the image its pull request tested: it rebuilds the
+  changed layers, whose floating packages resolve again, and a dispatch or a direct push to
+  `main` was tested by nothing. `build-containers.yml` now pushes only candidates, `main-<sha>`
+  and one `main-<date>-<time>-<sha>` tag for the run, and calls `test-container.yml` on them
+  twice, for the smoke test and for the size report. When every smoke test passes, a new
+  `promote` job points `:latest` at the digest each build pushed, all the images together, with
+  `docker buildx imagetools create`, through a new `scripts/promote-image.sh`. The script first
+  checks that each candidate tag still resolves to the digest pushed, then that `:latest` does
+  after the move, and the job's step summary has the digests pushed, promoted and replaced, with
+  the rollback command. A failed smoke test or promotion leaves `:latest` where it was and opens
+  the failure tracking issue. A failed size report alerts too, but cannot hold a promotion back,
+  since it fails on the measurement, not the image. A cancelled run alerts only when no newer
+  run has superseded it. On any branch but `main` the promotion is a dry run, and
+  `validate-containers.yml` dry-runs it on each pull request's candidates, with a self-test of
+  the script on every harness run. `test-container.yml` loses its `workflow_run` trigger and its
+  own alert, now the build run's, and takes a `checks` input. The lecture matrix starts only
+  after a run on `main`, since a branch's run moves nothing. `:latest` moves a few minutes later
+  after a merge, by the smoke test's run time. Every `main-*` tag is kept as a rollback target.
+  The `sed` tag lists in `build-containers.yml` are rewritten, so `.github/actionlint.yaml` and
+  its ignores for them go. (#142)
+
 ## [0.16.0] - 2026-11-07
 
 ### Added

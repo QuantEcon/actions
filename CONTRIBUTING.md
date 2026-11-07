@@ -100,11 +100,14 @@ Known limits:
   tag) or `setup-environment` at the candidate ref.
 - Repositories pinned to an exact tag get a Dependabot bump PR on each repository's own
   Dependabot schedule, not when the tag is pushed; merging it stays a human decision.
-- Container images stage only on pull requests. A pull request that changes an image builds it
-  as a `:pr-<N>` candidate and smoke-tests it before merge (#142, phase 1). The merge's own
-  build and any dispatch of `build-containers.yml` still push `:latest` before any test runs
-  (phase 2). The workflow has no schedule since #235: a move of the pinned `ubuntu:24.04` base
-  arrives as a Dependabot pull request and is tested like any other image change.
+- Container images do not stage through the canary. A pull request that changes an image
+  builds it as a `:pr-<N>` candidate and smoke-tests it before merge. The merge's own build, and
+  any dispatch of `build-containers.yml`, pushes candidates and smoke-tests them again, and
+  moves `:latest` only when every smoke test passes (#142). The lecture matrix runs only after
+  `:latest` has moved, so a regression that only a lecture build shows reaches consumers before
+  it is seen: roll back as below. The workflow has no schedule since #235: a move of the pinned
+  `ubuntu:24.04` base arrives as a Dependabot pull request and is tested like any other image
+  change.
 
 **Rollback:** point `v0` back at the previous release and force-push it.
 
@@ -113,10 +116,10 @@ git tag -f v0 "v0.x.w^{}"   # v0.x.w = the previous release
 git push origin v0 --force
 ```
 
-**Rolling back a container image:** every `build-containers.yml` run writes to its step summary
-the digest it pushed, the digest `:latest` held before it, and the command that restores the
-latter. Each build is also tagged `main-<YYYYMMDD>-<HHMMSS>-<sha>`, so an earlier image can be
-found by date in GHCR as well. With a token that can write the package (`docker login ghcr.io`),
+**Rolling back a container image:** every `build-containers.yml` run that promotes writes to
+its `promote` job's step summary the digest it promoted, the digest `:latest` held before it, and
+the command that restores the latter. Each build is also tagged `main-<YYYYMMDD>-<HHMMSS>-<sha>`,
+and none of those tags is deleted, so an earlier image can be found by date in GHCR as well. With a token that can write the package (`docker login ghcr.io`),
 point `:latest` back at the previous digest:
 
 ```bash
@@ -125,9 +128,9 @@ docker buildx imagetools create --tag ghcr.io/quantecon/<image>:latest \
 ```
 
 This moves the tag without rebuilding, so consumers get back the exact image they had. Check it
-with `docker buildx imagetools inspect ghcr.io/quantecon/<image>:latest`. The next build moves
-`:latest` again, from a merge touching `containers/**` or `build-containers.yml`, or a
-dispatch, so revert or fix the change before then.
+with `docker buildx imagetools inspect ghcr.io/quantecon/<image>:latest`. The next build that
+passes its smoke test moves `:latest` again, from a merge touching `containers/**` or
+`build-containers.yml`, or a dispatch from `main`, so revert or fix the change before then.
 
 ## CI
 

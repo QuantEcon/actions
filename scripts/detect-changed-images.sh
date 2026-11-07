@@ -23,12 +23,13 @@
 #   - any other path under containers/   every image: build rather than skip what
 #                                        this script does not recognise.
 #   - the workflows that build and test  every image, so a pull request that
-#     candidates, this script and        changes them runs them (each build
-#     delete-pr-images.sh                dry-runs the cleanup script).
+#     candidates, this script,           changes them runs them (each build
+#     delete-pr-images.sh and            dry-runs the cleanup and promotion
+#     promote-image.sh                   scripts).
 #   - anything else                      nothing.
 set -euo pipefail
 
-WHOLE_SET='^(\.github/workflows/(build-containers|validate-containers|test-container)\.yml|scripts/(detect-changed-images|delete-pr-images)\.sh)$'
+WHOLE_SET='^(\.github/workflows/(build-containers|validate-containers|test-container)\.yml|scripts/(detect-changed-images|delete-pr-images|promote-image)\.sh)$'
 
 fail() { echo "::error::$*" >&2; exit 1; }
 
@@ -81,6 +82,7 @@ self_test() {
   check "$all" containers/quantecon/tests/minimal-jupyter-book/intro.md
   check "$all" containers/quantecon/tests/minimal-jupyter-book/README.md
   check "$all" .github/workflows/validate-containers.yml
+  check "$all" scripts/promote-image.sh
   check "$all" containers/unrecognised.txt
   check '[]' containers/quantecon/README.md containers/quantecon-build/README.md containers/README.md
   check '[]' CHANGELOG.md docs/dev/PLAN.md .github/workflows/test-actions.yml
