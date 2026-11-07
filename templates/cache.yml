@@ -1,6 +1,7 @@
 # Build Cache Generation Workflow (Container)
 #
-# Creates the build cache that ci.yml and publish.yml restore.
+# Creates the caches: the execution cache, which ci.yml and publish.yml
+# restore, and the build cache, the whole _build.
 # A successful run saves a new cache; a failed run preserves the
 # existing cache so PRs always have something to restore.
 #
