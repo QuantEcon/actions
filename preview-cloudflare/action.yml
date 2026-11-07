@@ -23,8 +23,10 @@ inputs:
     required: false
   project-name:
     description: >-
-      The Cloudflare Pages project to deploy to, which must already exist. Its name is part of
-      every preview URL, as in `<project-name>.pages.dev`, so `placeholder: 'true'` needs it too.
+      The Cloudflare Pages project to deploy to, which must already exist. A deploy's URLs are on
+      the address Cloudflare serves the project at, usually `<project-name>.pages.dev`.
+      `placeholder: 'true'` needs it too: having no deploy to ask, it builds its preview URL on
+      `<project-name>.pages.dev`.
     required: true
   build-dir:
     description: >-
@@ -73,14 +75,16 @@ outputs:
     description: >-
       The pull request's preview URL, `https://pr-<number>.<project-name>.pages.dev`, which always
       shows its newest push, so use it for anything a person will follow; on a `workflow_dispatch`
-      or `schedule` run, `https://<dispatch-alias>.<project-name>.pages.dev`. Empty when nothing
-      was deployed.
+      or `schedule` run, `https://<dispatch-alias>.<project-name>.pages.dev`. Its host is the
+      address the deployment is served at, so when Cloudflare serves the project at an address
+      other than `<project-name>.pages.dev`, the URL uses that one. Empty when nothing was
+      deployed.
     value: ${{ steps.deploy.outputs.deploy-url }}
   deployment-url:
     description: >-
       The URL of this one deployment, `https://<hash>.<project-name>.pages.dev`, which goes on
-      showing this push after later ones. Empty when wrangler's output does not name it, and when
-      nothing was deployed.
+      showing this push after later ones, from wrangler's record of the deploy. Empty when the
+      record does not name it, and when nothing was deployed.
     value: ${{ steps.deploy.outputs.deployment-url }}
   changed-files:
     description: >-
@@ -226,6 +230,8 @@ runs:
         BUILD_DIR: ${{ inputs.build-dir }}
         WRANGLER: ${{ steps.install-cli.outputs.bin }}
       run: |
+        # shellcheck source=scripts/workflow-command.sh
+        . "$GITHUB_ACTION_PATH/../scripts/workflow-command.sh"
         SHORT_SHA="${COMMIT_SHA:0:7}"
         if [ "$EVENT_NAME" = "pull_request" ]; then
           WHAT="PR #${PR_NUMBER}"
@@ -236,8 +242,10 @@ runs:
         echo "🔍 Deploying preview for ${WHAT} to Cloudflare Pages, branch ${BRANCH_ALIAS}..."
 
         # Deploy to Cloudflare Pages with branch alias. The output streams to
-        # the log as wrangler runs, stderr included, and tee keeps a copy for
-        # the URL extraction below.
+        # the log as wrangler runs, stderr included, and tee keeps a copy, so
+        # that the group below can be closed on a line of its own. wrangler
+        # also appends a JSON record of the deploy to WRANGLER_OUTPUT_FILE_PATH,
+        # which the URLs below are read from.
         #
         # `set +e` because the step runs under `bash -eo pipefail`: a failing
         # wrangler would otherwise abort the step before EXIT= could read
@@ -245,9 +253,10 @@ runs:
         # that, with wrangler's error captured into the variable, so a failed
         # deploy ended the log at the line above with no diagnostic (#105).
         LOG="$(mktemp)"
+        RECORD="$(mktemp)"
         echo "::group::Deployment Output"
         set +e
-        "$WRANGLER" pages deploy "${BUILD_DIR}" \
+        WRANGLER_OUTPUT_FILE_PATH="$RECORD" "$WRANGLER" pages deploy "${BUILD_DIR}" \
           --project-name="${PROJECT_NAME}" \
           --branch="${BRANCH_ALIAS}" \
           --commit-hash="${COMMIT_SHA}" \
@@ -259,7 +268,6 @@ runs:
         # unterminated last line first or ::endgroup:: is printed as text.
         [ -z "$(tail -c 1 "$LOG")" ] || echo
         echo "::endgroup::"
-        DEPLOY_OUTPUT="$(cat "$LOG")"
 
         if [ "$EXIT" -ne 0 ]; then
           echo "❌ Error: Cloudflare Pages deployment failed"
@@ -267,32 +275,57 @@ runs:
           exit "$EXIT"
         fi
 
-        # The alias URL is CONSTRUCTED, never parsed (#14). Two reasons:
+        # The alias URL is CONSTRUCTED, never taken from wrangler (#14). Two
+        # reasons:
         #
         #   1. It is stable. The hash URL names one deployment, so every push to
         #      the PR produced a different link — including every per-lecture
         #      deep link in the comment below, which is the bigger cost. The
         #      alias tracks the newest deployment, so a reviewer can keep one
         #      tab open across the whole review.
-        #   2. It needs no parsing at all. The branch is already alias-safe
-        #      (Cloudflare lowercases branch names and maps non-alphanumerics to
-        #      `-`), so the URL is fully determined by inputs we already hold.
+        #   2. It is always there. wrangler names the alias only when its
+        #      status checks see the deploy finish, within about 30 seconds.
         #
         # Cloudflare creates the alias for any non-production branch, and the
         # branch is `pr-N` or a `dispatch-` alias that preview-decide.sh has
         # checked is lowercase letters, digits and single dashes, at most 28
         # characters, so the alias is the branch name unchanged.
-        DEPLOY_URL="https://${BRANCH_ALIAS}.${PROJECT_NAME}.pages.dev"
-
-        # The per-deployment URL is still worth having — it is the only way to
-        # look at one specific revision — so keep it as a secondary output.
-        # Match a pages.dev host and drop the alias, rather than taking the
-        # first hit: wrangler prints both URLs in some versions, so `head -1`
-        # silently chose one or the other depending on the wrangler release.
-        DEPLOYMENT_URL=$(echo "$DEPLOY_OUTPUT" \
-          | grep -oE 'https://[a-zA-Z0-9.-]+\.pages\.dev' \
-          | grep -v "^https://${BRANCH_ALIAS}\." \
-          | head -1 || true)
+        #
+        # Its host is the project's own pages.dev address, which Cloudflare
+        # keeps apart from the project's name and which can differ from
+        # <project-name>.pages.dev (#216). wrangler's record of the deploy
+        # names the deployment's URL, https://<hash>.<address>, so the address
+        # is that host without its first label. wrangler writes the record, a
+        # `pages-deploy-detailed` line, after every deploy that exits 0, and
+        # Cloudflare's wrangler-action reads the same line. The URL is checked
+        # against a strict pattern before it goes anywhere; when the record
+        # gives none of that form, the address falls back to
+        # <project-name>.pages.dev, with a warning. The per-deployment URL, the
+        # only way to look at one specific revision, is the record's URL
+        # itself.
+        URL=$(node -e '
+          let url = "";
+          for (const line of require("fs").readFileSync(process.argv[1], "utf8").split("\n")) {
+            let entry;
+            try { entry = JSON.parse(line); } catch { continue; }
+            if (entry && entry.type === "pages-deploy-detailed" && entry.version === 1 && typeof entry.url === "string") url = entry.url;
+          }
+          process.stdout.write(url);
+        ' "$RECORD") || URL=""
+        re='^https://[a-z0-9-]+\.([a-z0-9][a-z0-9-]*\.pages\.dev)$'
+        if [[ "$URL" =~ $re ]]; then
+          ADDRESS="${BASH_REMATCH[1]}"
+          DEPLOYMENT_URL="$URL"
+        else
+          ADDRESS="${PROJECT_NAME}.pages.dev"
+          DEPLOYMENT_URL=""
+          annotate warning "wrangler's record of the deploy gives no deployment URL of the form https://<hash>.<name>.pages.dev (it gives [${URL}]), so deploy-url assumes the project is served at ${ADDRESS}, and deployment-url is empty"
+        fi
+        DEPLOY_URL="https://${BRANCH_ALIAS}.${ADDRESS}"
+        # The placeholder's comment has no deploy to ask, so it links to
+        # <project-name>.pages.dev until this deploy's comment replaces it.
+        [ "$ADDRESS" = "${PROJECT_NAME}.pages.dev" ] \
+          || annotate notice "Cloudflare serves the project ${PROJECT_NAME} at ${ADDRESS}, not ${PROJECT_NAME}.pages.dev. The preview URLs here use ${ADDRESS}; a comment posted with placeholder: 'true' links to ${PROJECT_NAME}.pages.dev until this deploy's comment replaces it."
 
         echo "deploy-url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
         echo "deployment-url=$DEPLOYMENT_URL" >> "$GITHUB_OUTPUT"
