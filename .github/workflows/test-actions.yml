@@ -2760,93 +2760,27 @@ jobs:
           team-domain: 'quantecon-harness'
           build-dir: 'harness-site'
 
-      # The deprecated forms, for the one release they are kept (#177): with
-      # neither input, and with require-access: 'true', the site is still
-      # checked as private, so the same Worker is refused the same way.
-      - name: The same, with neither visibility nor require-access (expected to refuse)
-        id: neither
-        continue-on-error: true
-        uses: ./deploy-cloudflare
-        with:
-          cloudflare-api-token: 'harness-fake-token'
-          cloudflare-account-id: '00000000000000000000000000000000'
-          worker-name: 'harness-no-such-worker'
-          account-subdomain: 'quantecon-harness-nonexistent'
-          team-domain: 'quantecon-harness'
-          build-dir: 'harness-site'
-
-      - name: The same, with require-access true (expected to refuse)
-        id: require-true
-        continue-on-error: true
-        uses: ./deploy-cloudflare
-        with:
-          cloudflare-api-token: 'harness-fake-token'
-          cloudflare-account-id: '00000000000000000000000000000000'
-          worker-name: 'harness-no-such-worker'
-          account-subdomain: 'quantecon-harness-nonexistent'
-          team-domain: 'quantecon-harness'
-          build-dir: 'harness-site'
-          require-access: 'true'
-
       # The visibility output is written only once every input is valid, so
-      # `private` there pins the refusal on the check, not on validation.
-      - name: Assert each refusal came from the private check, before wrangler
+      # `private` there pins the refusal on the check, not on validation. No
+      # input turns the check off, so this job has no positive control of
+      # its own. dc-refuses-mismatch's private-gated case is one: there the
+      # same mode, against a stand-in for a gated Worker, passes the check
+      # and reaches wrangler.
+      - name: Assert the refusal came from the private check, before wrangler
         env:
-          RESULTS: |
-            deploy ${{ steps.deploy.outcome }} ${{ steps.deploy.outputs.visibility }} ${{ steps.deploy.outputs.deploy-url }}
-            neither ${{ steps.neither.outcome }} ${{ steps.neither.outputs.visibility }} ${{ steps.neither.outputs.deploy-url }}
-            require-true ${{ steps.require-true.outcome }} ${{ steps.require-true.outputs.visibility }} ${{ steps.require-true.outputs.deploy-url }}
+          OUTCOME: ${{ steps.deploy.outcome }}
+          VISIBILITY: ${{ steps.deploy.outputs.visibility }}
+          DEPLOY_URL: ${{ steps.deploy.outputs.deploy-url }}
         run: |
           set -euo pipefail
-          bad=0 n=0
-          while read -r case outcome visibility url; do
-            [ -n "$case" ] || continue
-            n=$((n + 1))
-            if [ "$outcome" != "failure" ] || [ "${visibility:-}" != "private" ] || [ -n "${url:-}" ]; then
-              echo "::error::[$case]: expected outcome=failure, visibility=private and no deploy-url, got outcome=[$outcome] visibility=[${visibility:-}] deploy-url=[${url:-}]"
-              bad=1
-            else
-              echo "✓ $case checked as private and refused"
-            fi
-          done <<< "$RESULTS"
-          [ "$n" -eq 3 ] || { echo "::error::expected 3 cases, read $n"; exit 1; }
+          if [ "$OUTCOME" != "failure" ] || [ "$VISIBILITY" != "private" ] || [ -n "$DEPLOY_URL" ]; then
+            echo "::error::expected outcome=failure, visibility=private and no deploy-url, got outcome=[$OUTCOME] visibility=[$VISIBILITY] deploy-url=[$DEPLOY_URL]"
+            exit 1
+          fi
           # The prevention claim: wrangler was never even installed, so nothing
           # can have been uploaded.
-          [ ! -e "$RUNNER_TEMP/deploy-cloudflare" ] || { echo "::error::$RUNNER_TEMP/deploy-cloudflare exists — the action reached the wrangler install despite the failed gate check"; bad=1; }
-          [ "$bad" -eq 0 ]
-          echo "✅ an ungated Worker is refused before anything is installed or uploaded, with visibility: private and with both deprecated forms"
-
-      # Positive control, so the refusal above is attributable to the gate
-      # check: the same inputs with the gate off pass validation, set up Node
-      # and install the pinned wrangler, and only then fail (the token is fake).
-      # The gate is off through the deprecated require-access: 'false', the
-      # only way there is; it goes when require-access does.
-      - name: Same inputs with the gate off (expected to reach wrangler, then fail)
-        id: control
-        continue-on-error: true
-        uses: ./deploy-cloudflare
-        with:
-          cloudflare-api-token: 'harness-fake-token'
-          cloudflare-account-id: '00000000000000000000000000000000'
-          worker-name: 'harness-no-such-worker'
-          account-subdomain: 'quantecon-harness-nonexistent'
-          team-domain: 'quantecon-harness'
-          build-dir: 'harness-site'
-          require-access: 'false'
-
-      - name: Assert only the gate check stood between these inputs and wrangler
-        env:
-          OUTCOME: ${{ steps.control.outcome }}
-          DEPLOY_URL: ${{ steps.control.outputs.deploy-url }}
-          VISIBILITY: ${{ steps.control.outputs.visibility }}
-        run: |
-          [ "$OUTCOME" = "failure" ] || { echo "::error::outcome: expected [failure] with a fake token, got [$OUTCOME]"; exit 1; }
-          [ -z "$DEPLOY_URL" ] || { echo "::error::deploy-url: expected empty with a fake token, got [$DEPLOY_URL]"; exit 1; }
-          # Empty: require-access: 'false' checks nothing, so claims no audience.
-          [ -z "$VISIBILITY" ] || { echo "::error::visibility: expected empty with require-access: 'false', got [$VISIBILITY]"; exit 1; }
-          [ -x "$RUNNER_TEMP/deploy-cloudflare/node_modules/.bin/wrangler" ] || { echo "::error::wrangler was not installed — the same inputs did not get past validation and the Node/npm steps with the gate off"; exit 1; }
-          [ -f "$RUNNER_TEMP/deploy-cloudflare/harness-no-such-worker.wrangler.jsonc" ] || { echo "::error::the generated config is missing — the action stopped before writing it"; exit 1; }
-          echo "✅ with the gate off the same inputs reach wrangler, so the refusal above came from the gate check"
+          [ ! -e "$RUNNER_TEMP/deploy-cloudflare" ] || { echo "::error::$RUNNER_TEMP/deploy-cloudflare exists — the action reached the wrangler install despite the failed gate check"; exit 1; }
+          echo "✅ an ungated Worker is refused before anything is installed or uploaded"
 
   dc-refuses-mismatch:
     # #177: visibility is checked in both directions, so a Worker whose Access
@@ -3090,9 +3024,16 @@ jobs:
           build-dir: 'harness-site'
           visibility: 'private'
 
-      # A typo must never read as "off", nor as the other audience (#177).
-      - name: require-access that is neither true nor false
-        id: require
+      # #177: visibility is required, and require-access is removed. Each of
+      # these was accepted with a warning while require-access was
+      # deprecated: the first two checked the site as private, and
+      # require-access: 'false' checked nothing at all. Its visibility output
+      # was empty then too, so the install assertion at the end is what
+      # tells it apart. visibility: '' is what leaving it out gives the
+      # action, since it has no default. It is written out because actionlint
+      # refuses a step that leaves out a required input.
+      - name: Neither visibility nor require-access
+        id: neither
         continue-on-error: true
         uses: ./deploy-cloudflare
         with:
@@ -3102,8 +3043,37 @@ jobs:
           account-subdomain: 'quantecon-harness'
           team-domain: 'quantecon-harness'
           build-dir: 'harness-site'
-          require-access: 'yes'
+          visibility: ''
 
+      - name: require-access true, without visibility
+        id: require-true
+        continue-on-error: true
+        uses: ./deploy-cloudflare
+        with:
+          cloudflare-api-token: 'harness-fake-token'
+          cloudflare-account-id: '00000000000000000000000000000000'
+          worker-name: 'harness-worker'
+          account-subdomain: 'quantecon-harness'
+          team-domain: 'quantecon-harness'
+          build-dir: 'harness-site'
+          visibility: ''
+          require-access: 'true'
+
+      - name: require-access false, without visibility
+        id: require-false
+        continue-on-error: true
+        uses: ./deploy-cloudflare
+        with:
+          cloudflare-api-token: 'harness-fake-token'
+          cloudflare-account-id: '00000000000000000000000000000000'
+          worker-name: 'harness-worker'
+          account-subdomain: 'quantecon-harness'
+          team-domain: 'quantecon-harness'
+          build-dir: 'harness-site'
+          visibility: ''
+          require-access: 'false'
+
+      # A typo must never read as the other audience.
       - name: visibility that is neither private nor public
         id: visibility
         continue-on-error: true
@@ -3116,7 +3086,7 @@ jobs:
           build-dir: 'harness-site'
           visibility: 'Public'
 
-      # The deprecated alias may not ride along with what replaces it.
+      # Nor beside what replaced it.
       - name: visibility and require-access both set
         id: both
         continue-on-error: true
@@ -3193,7 +3163,9 @@ jobs:
             alias-digit ${{ steps.alias-digit.outcome }} ${{ steps.alias-digit.outputs.deploy-url }}
             alias-long ${{ steps.alias-long.outcome }} ${{ steps.alias-long.outputs.deploy-url }}
             team ${{ steps.team.outcome }} ${{ steps.team.outputs.deploy-url }}
-            require ${{ steps.require.outcome }} ${{ steps.require.outputs.deploy-url }}
+            neither ${{ steps.neither.outcome }} ${{ steps.neither.outputs.deploy-url }}
+            require-true ${{ steps.require-true.outcome }} ${{ steps.require-true.outputs.deploy-url }}
+            require-false ${{ steps.require-false.outcome }} ${{ steps.require-false.outputs.deploy-url }}
             visibility ${{ steps.visibility.outcome }} ${{ steps.visibility.outputs.deploy-url }}
             both ${{ steps.both.outcome }} ${{ steps.both.outputs.deploy-url }}
             private-no-team ${{ steps.private-no-team.outcome }} ${{ steps.private-no-team.outputs.deploy-url }}
@@ -3207,7 +3179,9 @@ jobs:
             alias-digit [${{ steps.alias-digit.outputs.visibility }}]
             alias-long [${{ steps.alias-long.outputs.visibility }}]
             team [${{ steps.team.outputs.visibility }}]
-            require [${{ steps.require.outputs.visibility }}]
+            neither [${{ steps.neither.outputs.visibility }}]
+            require-true [${{ steps.require-true.outputs.visibility }}]
+            require-false [${{ steps.require-false.outputs.visibility }}]
             visibility [${{ steps.visibility.outputs.visibility }}]
             both [${{ steps.both.outputs.visibility }}]
             private-no-team [${{ steps.private-no-team.outputs.visibility }}]
@@ -3227,7 +3201,7 @@ jobs:
               echo "✓ $case rejected"
             fi
           done <<< "$RESULTS"
-          [ "$n" -eq 12 ] || { echo "::error::expected 12 cases, read $n"; exit 1; }
+          [ "$n" -eq 14 ] || { echo "::error::expected 14 cases, read $n"; exit 1; }
           while read -r case visibility; do
             [ -n "$case" ] || continue
             [ "$visibility" = "[]" ] || { echo "::error::[$case]: visibility is $visibility, so the inputs passed validation and the case failed later, for another reason"; bad=1; }
