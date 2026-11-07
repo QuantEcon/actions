@@ -82,9 +82,10 @@ outputs:
     value: ${{ steps.deploy.outputs.deploy-url }}
   deployment-url:
     description: >-
-      The URL of this one deployment, `https://<hash>.<project-name>.pages.dev`, which goes on
-      showing this push after later ones, from wrangler's record of the deploy. Empty when the
-      record does not name it, and when nothing was deployed.
+      The URL of this one deployment, `https://<hash>.<project-name>.pages.dev` for a project
+      served at its own name, which goes on showing this push after later ones. It is read from
+      wrangler's record of the deploy, so its host is the address the deployment is served at, as
+      `deploy-url`'s is. Empty when the record does not name it, and when nothing was deployed.
     value: ${{ steps.deploy.outputs.deployment-url }}
   changed-files:
     description: >-
