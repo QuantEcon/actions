@@ -415,10 +415,12 @@ runs:
             echo "   Conda: Installed fresh"
           fi
           if [ "$INSTALL_LATEX" == "true" ]; then
+            # The install step's log says if an exact match still had to
+            # download, which its warning says the key should rule out.
             if [ "$LATEX_CACHE_HIT" == "true" ]; then
-              echo "   LaTeX: Installed from the cache, with no download ✅"
+              echo "   LaTeX: Installed from an exact cache match ✅"
             elif [ "$LATEX_CACHE_HIT" == "false" ]; then
-              echo "   LaTeX: Installed, downloading only what an earlier cache lacked"
+              echo "   LaTeX: Installed from an earlier cache, downloading what it lacked"
             else
               echo "   LaTeX: Installed, downloading every package"
             fi

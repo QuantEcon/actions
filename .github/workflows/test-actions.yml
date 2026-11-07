@@ -2039,10 +2039,12 @@ jobs:
         run: |
           set -euo pipefail
           python3 .github/fixtures/setup-latex/apt-proxy.py trickle 3128 "$RUNNER_TEMP/apt-proxy.log" > "$RUNNER_TEMP/apt-proxy.out" 2>&1 &
+          up=false
           for _ in $(seq 50); do
-            (exec 3<> /dev/tcp/127.0.0.1/3128) 2> /dev/null && break
+            (exec 3<> /dev/tcp/127.0.0.1/3128) 2> /dev/null && { up=true; break; }
             sleep 0.2
           done
+          [ "$up" = true ] || { cat "$RUNNER_TEMP/apt-proxy.out"; echo "::error::apt-proxy.py was not listening on 127.0.0.1:3128 after 10 s (its output is above)"; exit 1; }
           printf '%s\n' 'Acquire::http::Proxy "http://127.0.0.1:3128";' 'Acquire::https::Proxy "http://127.0.0.1:3128";' \
             | sudo tee /etc/apt/apt.conf.d/zzz-harness-proxy
           echo "t0=$(date +%s)" >> "$GITHUB_OUTPUT"

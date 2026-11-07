@@ -23,10 +23,16 @@ fi
 
 log="$RUNNER_TEMP/apt-proxy.log"
 python3 "$(dirname "${BASH_SOURCE[0]}")/apt-proxy.py" refuse 3128 "$log" > "$RUNNER_TEMP/apt-proxy.out" 2>&1 &
+up=false
 for _ in $(seq 50); do
-  curl -s -o /dev/null http://127.0.0.1:3128/ && break
+  curl -s -o /dev/null http://127.0.0.1:3128/ && { up=true; break; }
   sleep 0.2
 done
+if [ "$up" != true ]; then
+  cat "$RUNNER_TEMP/apt-proxy.out"
+  echo "::error::apt-proxy.py was not listening on 127.0.0.1:3128 after 10 s (its output is above), so the job cannot test the hit"
+  exit 1
+fi
 printf '%s\n' 'Acquire::http::Proxy "http://127.0.0.1:3128";' 'Acquire::https::Proxy "http://127.0.0.1:3128";' \
   | sudo tee /etc/apt/apt.conf.d/zzz-harness-proxy
 : > "$log"
