@@ -6,8 +6,8 @@ How QuantEcon Actions is built, and why. Using the actions is the [user manual](
 
 | Part | Where | What it is |
 |---|---|---|
-| Eight composite actions | `<action>/action.yml` | The steps a lecture repository runs: `setup-environment`, `build-lectures`, `build-jupyter-cache`, `restore-jupyter-cache`, `preview-netlify`, `preview-cloudflare`, `publish-gh-pages` and `deploy-cloudflare`. A workflow calls one as `quantecon/actions/<action>@v0`. An action that installs a CLI keeps its `package.json` and `package-lock.json` beside its `action.yml` |
-| Shared scripts | `scripts/` | What more than one action, or an action and its tests, run: change detection, the preview deploy decision and comment, the Access gate probe, release-asset packaging. Also the repository's own tooling: the manual's generator, and the container checks |
+| Nine composite actions | `<action>/action.yml` | The steps a lecture repository runs: `setup-environment`, `setup-latex`, `build-lectures`, `build-jupyter-cache`, `restore-jupyter-cache`, `preview-netlify`, `preview-cloudflare`, `publish-gh-pages` and `deploy-cloudflare`. A workflow calls one as `quantecon/actions/<action>@v0`. An action that installs a CLI keeps its `package.json` and `package-lock.json` beside its `action.yml` |
+| Shared scripts | `scripts/` | What more than one action, or an action and its tests, run: change detection, the preview deploy decision and comment, the Access gate probe, release-asset packaging, the cached LaTeX package install. Also the repository's own tooling: the manual's generator, and the container checks |
 | Two container images | `containers/` | `quantecon` (full) and `quantecon-build` (lean), the environment most lecture builds run in. See [CONTAINERS.md](CONTAINERS.md) |
 | Workflow templates | `templates/` | `cache.yml`, `ci.yml` and `publish.yml`, which each lecture repository copies |
 | The user manual | `docs/user/` | A chapter per action, with input and output tables generated from each `action.yml`, and the guides |
