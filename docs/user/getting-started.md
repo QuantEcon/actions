@@ -41,7 +41,7 @@ Where the jobs run:
 | Job | What it does | What it holds |
 |---|---|---|
 | `placeholder` | Comments on the pull request within seconds of a push, with the preview's link and the lectures the pull request changed, before the build has finished; `deploy`'s comment replaces it | `contents: read`, `pull-requests: write`, no secrets |
-| `build` | Restores the build cache, builds the HTML, executing only the notebooks the pull request changed, and uploads the site and the execution cache as artifacts | `contents: read`, no secrets |
+| `build` | Restores the execution cache, builds the HTML, executing only the notebooks the pull request changed, and uploads the site and the execution cache as artifacts | `contents: read`, no secrets |
 | `deploy` | Downloads the site and deploys it as a preview, then comments on the pull request with its link and the lectures the pull request changed | The provider's secrets, `pull-requests: write` |
 | `pdf-check` | Builds the PDF from the notebooks `build` executed, and fails the pull request's checks when the LaTeX build fails | `contents: read`, no secrets |
 
@@ -51,7 +51,7 @@ Where the jobs run:
 
 | Job | What it does | What it holds |
 |---|---|---|
-| `build` | Restores the build cache, builds the site, and uploads it as the run's `github-pages` artifact, with `publish-gh-pages`' `mode: upload` | `contents: read` |
+| `build` | Restores the execution cache, builds the site, and uploads it as the run's `github-pages` artifact, with `publish-gh-pages`' `mode: upload` | `contents: read` |
 | `deploy` | Deploys that artifact to GitHub Pages with `mode: deploy`, in the `github-pages` environment. It runs nothing else: no checkout, no container | `pages: write`, `id-token: write` |
 | `release-assets`, commented out | On a tag, once the deploy has succeeded, attaches the site to the tag's release with `mode: release` | `contents: write` |
 
@@ -84,7 +84,7 @@ For download links to the PDF and the notebooks on every page:
 
 - **Switching it off.** A site that publishes no PDF sets `PDF_CHECK: 'false'` in the workflow's top-level `env:` block. The job is then reported as skipped, and `build` uploads nothing for it. The switch is in the file rather than a repository variable because a run for a pull request from a fork does not receive repository variables.
 - **Blocking merges.** A failed `pdf-check` turns the checks red, but blocks nothing. To make a broken PDF block a merge, make `pdf-check` a required status check, under **Settings**, **Branches**, or in a ruleset, and require `build` as well: `pdf-check` is skipped whenever `build` fails, and GitHub counts a skipped required check as passed. For the same reason, a site that requires `deploy` must require `build` too.
-- **What it builds from.** `build` uploads `_build/.jupyter_cache` after the site. That cache holds every lecture's outputs, those restored from the build cache and those the pull request's build executed, so `pdf-check` builds the PDF without executing anything, needs `execute_notebooks: cache`, and runs on `ubuntu-latest` even where `build` needs a GPU. It passes `build-lectures` the same arguments as the PDF builds in `cache.yml` and `publish.yml`, so it fails where they would. On a failure it uploads the LaTeX log as the `latex-log` artifact.
+- **What it builds from.** `build` uploads `_build/.jupyter_cache` after the site. That cache holds every lecture's outputs, those restored from the cache build and those the pull request's build executed, so `pdf-check` builds the PDF without executing anything, needs `execute_notebooks: cache`, and runs on `ubuntu-latest` even where `build` needs a GPU. It passes `build-lectures` the same arguments as the PDF builds in `cache.yml` and `publish.yml`, so it fails where they would. On a failure it uploads the LaTeX log as the `latex-log` artifact.
 - **Running it again.** The hand-off artifact is kept for one day. After that, re-running `pdf-check` alone fails at the download; use **Re-run all jobs**, which runs `build` again and uploads a fresh one.
 
 ### A standard runner
@@ -111,6 +111,6 @@ A lecture repository with its own build steps moves onto the actions one workflo
 4. **Replace the publish workflow** with `publish.yml`. A site that publishes by pushing to a `gh-pages` branch also changes its Pages source, as [Moving from a `gh-pages` branch](actions/publish-gh-pages.md#moving-from-a-gh-pages-branch) describes, and a site that makes release assets on a tag keeps them with `publish-gh-pages`' [release assets](actions/publish-gh-pages.md#release-assets), following the comments in the template. Once it has published, check that each page's "Last changed" date is its own: `publish.yml` checks out the full history for that, where `ci.yml`'s shallow checkout dates every preview page to its commit.
 5. **Watch the first runs** of each workflow: the next scheduled cache build, the next pull requests, and the next publish.
 
-**Drop any interim prune of the restored `_build/html`** as you replace each workflow, such as a `jb clean . --html` step after the cache restore. `restore-jupyter-cache` removes the restored HTML itself, so a page or file deleted from the source is not published again.
+**Drop any interim prune of the restored `_build`** as you replace each workflow, such as a `jb clean . --html` step after the cache restore. The templates restore only the execution cache, and `restore-jupyter-cache` removes the HTML from a restored build cache itself, so a page or file deleted from the source is not published again.
 
 **To roll back,** revert the pull request that changed the workflow: the repository's previous workflow comes back unchanged. If the publish move changed the Pages source, set it back to **Deploy from a branch** as well, which works only while the `gh-pages` branch still exists, so keep that branch until the new publish has run for a while.
