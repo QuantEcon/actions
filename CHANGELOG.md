@@ -49,6 +49,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on the restore step of both. `build-jupyter-cache` still saves the build cache, since
   `restore-jupyter-cache`'s default restores it; whether it stops, or becomes opt-in, goes with
   a later change of that default (review M3). (#270)
+- **`setup-environment`**: `install-latex` installs the LaTeX packages as `setup-latex` does,
+  through the same script: from a cache of their downloaded archives, keyed on `cache-version`,
+  the list and the packages installed on the host, with no `apt-get update` and no download on
+  an exact hit. It used to download them from the runner's Ubuntu mirror on every run, which a
+  slow mirror can stall for hours. A new output, `latex-cache-hit`, says which way they came. On
+  a run that downloads, `apt-get update` and the download together are now stopped after 30
+  minutes, with no input to change it: a download that runs past 30 minutes now fails, where it
+  used to finish slowly. No QuantEcon repository passes `install-latex`. `build-jupyter-cache`
+  passes it for a `pdflatex` build in standard mode, and its three QuantEcon callers all run in a
+  container. A repository that needs another limit can install LaTeX with `setup-latex` and its
+  `download-timeout-minutes` instead. `cache-version` now keys the LaTeX cache too, so a bump also
+  downloads the packages afresh. Each entry in the list must be an apt package name, so an option
+  such as `--no-install-recommends`, which apt used to take from the file, now fails the job. The
+  messages for a missing or empty list now name the file. (#224)
 
 ### Fixed
 - **`preview-cloudflare`**: `deploy-url`, and with it the comment's preview URL and every lecture

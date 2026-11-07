@@ -1944,30 +1944,7 @@ jobs:
         id: offline
         env:
           SEED_IMAGE: ${{ needs.latex-seed.outputs.image }}
-        run: |
-          set -euo pipefail
-          image="${ImageOS:-unknown}/${ImageVersion:-unknown}"
-          if [ "$image" != "$SEED_IMAGE" ]; then
-            echo "::notice::This job runs on $image and the seed ran on $SEED_IMAGE, as during a runner image rollout, so the installed packages and the key differ: an exact hit cannot be tested on this run, and the job checks the fallback install instead"
-            echo "same=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          log="$RUNNER_TEMP/apt-proxy.log"
-          python3 .github/fixtures/setup-latex/apt-proxy.py refuse 3128 "$log" > "$RUNNER_TEMP/apt-proxy.out" 2>&1 &
-          for _ in $(seq 50); do
-            curl -s -o /dev/null http://127.0.0.1:3128/ && break
-            sleep 0.2
-          done
-          printf '%s\n' 'Acquire::http::Proxy "http://127.0.0.1:3128";' 'Acquire::https::Proxy "http://127.0.0.1:3128";' \
-            | sudo tee /etc/apt/apt.conf.d/zzz-harness-proxy
-          # Show the stand-in sees apt's requests, so that an empty log after
-          # the action means apt made none.
-          : > "$log"
-          sudo apt-get update -qq > /dev/null 2>&1 || true
-          [ -s "$log" ] || { echo "::error::apt-get update reached no mirror through the stand-in, so it cannot show the action made no request"; exit 1; }
-          echo "apt-get update went through the stand-in: $(wc -l < "$log") requests, all refused"
-          : > "$log"
-          echo "same=true" >> "$GITHUB_OUTPUT"
+        run: bash .github/fixtures/setup-latex/refuse-mirrors.sh "$SEED_IMAGE"
 
       - name: setup-latex, warm
         id: latex
@@ -2062,10 +2039,12 @@ jobs:
         run: |
           set -euo pipefail
           python3 .github/fixtures/setup-latex/apt-proxy.py trickle 3128 "$RUNNER_TEMP/apt-proxy.log" > "$RUNNER_TEMP/apt-proxy.out" 2>&1 &
+          up=false
           for _ in $(seq 50); do
-            (exec 3<> /dev/tcp/127.0.0.1/3128) 2> /dev/null && break
+            (exec 3<> /dev/tcp/127.0.0.1/3128) 2> /dev/null && { up=true; break; }
             sleep 0.2
           done
+          [ "$up" = true ] || { cat "$RUNNER_TEMP/apt-proxy.out"; echo "::error::apt-proxy.py was not listening on 127.0.0.1:3128 after 10 s (its output is above)"; exit 1; }
           printf '%s\n' 'Acquire::http::Proxy "http://127.0.0.1:3128";' 'Acquire::https::Proxy "http://127.0.0.1:3128";' \
             | sudo tee /etc/apt/apt.conf.d/zzz-harness-proxy
           echo "t0=$(date +%s)" >> "$GITHUB_OUTPUT"
@@ -2240,6 +2219,106 @@ jobs:
           ! command -v pdflatex || { echo "::error::pdflatex is installed: the action installed packages in a container"; exit 1; }
           [ "$NEITHER" = failure ] || { echo "::error::a call with no list: expected [failure] in a container too, got [$NEITHER]"; exit 1; }
           echo "✅ every bad input failed in the first step, and in a container the action checked its inputs and installed nothing"
+
+  # setup-environment's install-latex goes through the same script and cache
+  # (#224). The seed builds a Conda environment and installs LaTeX on a
+  # miss; the hit restores both, and must install LaTeX with no request to
+  # any mirror. The Conda restore and its update use no apt.
+  env-latex-seed:
+    name: 'setup-environment: install-latex on a miss downloads, installs, and saves the LaTeX cache'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    env:
+      LATEX_CV: harness.${{ github.run_id }}.${{ github.run_attempt }}.env
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Record the runner image, check it has no TeX, and write the list
+        id: image
+        run: |
+          echo "image=${ImageOS:-unknown}/${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+          if command -v pdflatex; then
+            echo "::error::pdflatex is on the runner image already, so this job cannot tell whether the action installed it"
+            exit 1
+          fi
+          printf 'texlive-latex-base   # one package, with TeX triggers\n' > harness-latex.txt
+
+      - name: setup-environment with install-latex, cold
+        id: setup
+        uses: ./setup-environment
+        with:
+          environment: .github/fixtures/mini-lectures/environment.yml
+          cache-version: ${{ env.LATEX_CV }}
+          install-latex: 'true'
+          latex-requirements-file: harness-latex.txt
+
+      - name: Assert a LaTeX cache miss and a working pdflatex
+        env:
+          LATEX_CACHE_HIT: ${{ steps.setup.outputs.latex-cache-hit }}
+        run: |
+          set -euo pipefail
+          [ -z "$LATEX_CACHE_HIT" ] || { echo "::error::latex-cache-hit: expected [] on a salted cache-version, got [$LATEX_CACHE_HIT]"; exit 1; }
+          bash .github/fixtures/setup-latex/check-tex.sh texlive-latex-base
+          echo "✅ install-latex on a miss: downloaded, installed, and saved for the next run"
+
+  env-latex-hit:
+    name: 'setup-environment: install-latex on an exact hit installs from the cache and contacts no mirror'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: env-latex-seed
+    env:
+      LATEX_CV: harness.${{ github.run_id }}.${{ github.run_attempt }}.env
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: On the seed's image, put a refusing stand-in in front of every mirror
+        id: offline
+        env:
+          SEED_IMAGE: ${{ needs.env-latex-seed.outputs.image }}
+        run: |
+          printf 'texlive-latex-base   # one package, with TeX triggers\n' > harness-latex.txt
+          bash .github/fixtures/setup-latex/refuse-mirrors.sh "$SEED_IMAGE"
+
+      - name: setup-environment with install-latex, warm
+        id: setup
+        uses: ./setup-environment
+        with:
+          environment: .github/fixtures/mini-lectures/environment.yml
+          cache-version: ${{ env.LATEX_CV }}
+          install-latex: 'true'
+          latex-requirements-file: harness-latex.txt
+
+      - name: Assert an exact hit, no request to any mirror, and a working pdflatex
+        env:
+          SAME: ${{ steps.offline.outputs.same }}
+          LATEX_CACHE_HIT: ${{ steps.setup.outputs.latex-cache-hit }}
+        run: |
+          set -euo pipefail
+          if [ "$SAME" = true ]; then
+            [ "$LATEX_CACHE_HIT" = true ] || { echo "::error::latex-cache-hit: expected [true] on the seed's image with the seed's list, got [$LATEX_CACHE_HIT]"; exit 1; }
+            log="$RUNNER_TEMP/apt-proxy.log"
+            if [ -s "$log" ]; then
+              cat "$log"
+              echo "::error::install-latex made $(wc -l < "$log") requests through apt on an exact hit (above): it ran apt-get update or downloaded"
+              exit 1
+            fi
+          else
+            [ "$LATEX_CACHE_HIT" = false ] || { echo "::error::latex-cache-hit: expected [false], a fallback restore of the seed's cache, got [$LATEX_CACHE_HIT]"; exit 1; }
+          fi
+          bash .github/fixtures/setup-latex/check-tex.sh texlive-latex-base
+          if [ "$SAME" = true ]; then
+            echo "✅ install-latex on an exact hit: installed from the cache with no request to any mirror"
+          else
+            echo "✅ install-latex on another runner image: a fallback restore installed working TeX"
+          fi
 
   # ==========================================================================
   # templates/ci.yml pdf-check (#230) — the hand-off, in the real lean image
@@ -4955,6 +5034,8 @@ jobs:
       - latex-fallback
       - latex-timeout
       - latex-inputs
+      - env-latex-seed
+      - env-latex-hit
       - pdf-check-handoff
       - pdf-check-build
       - pdf-check-switch-off
