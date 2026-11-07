@@ -15,7 +15,7 @@ It caches the downloaded `.deb` archives, not the installed files, so dpkg still
 Use it in a job on a standard runner that needs LaTeX, in place of an inline `sudo apt-get install texlive-…` step. It is one step, and takes the same list.
 
 - **Not needed in a QuantEcon container.** The images carry TeX Live, and the action installs nothing when it finds the container marker file, `/etc/quantecon-container`. So the same step works in a job that moves between a container and a standard runner.
-- **With `setup-environment`.** Its [`install-latex`](setup-environment.md) input installs a list in the same format, with a plain `apt-get install` on every run. In a job that runs `setup-environment` in standard mode, use this action for the cache, and leave `install-latex` off.
+- **With `setup-environment`.** Its [`install-latex`](setup-environment.md) input installs a list from a file the same way, through the same script and cache, with the download limit fixed at 30 minutes. A job needs one or the other, not both.
 - **Prefer a container** where you can: the [`setup-environment` chapter](setup-environment.md#when-to-use-it) says why.
 
 ## Requirements
