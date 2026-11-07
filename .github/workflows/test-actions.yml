@@ -15,8 +15,9 @@
 # Consequence: "Re-run failed jobs" can never go green. It increments
 # run_attempt — and therefore the salt, and therefore every cache key — but
 # does NOT re-run the already-green seed jobs, so unit-build-restore,
-# unit-build-restore-save, unit-exec-restore*, env-hit-build and the bjc-*
-# round-trips all end up looking for caches nobody saved under the new salt.
+# unit-build-restore-save, unit-exec-restore*, unit-exec-env-miss,
+# env-hit-build and the bjc-* round-trips all end up looking for caches nobody
+# saved under the new salt.
 # Always use "Re-run all jobs". Do not "fix" this by dropping run_attempt from
 # the salt: run_id alone would let attempt 2 reuse attempt 1's caches and
 # silently invalidate the miss assertions.
@@ -26,11 +27,14 @@
 #   1. actions/cache matches a key only when the cache "version" (a hash of
 #      the `path` input) also matches — so every restore here uses the same
 #      path the corresponding save used.
-#   2. The execution cache keeps a bare `jupyter-cache-` restore-key fallback
-#      (deliberately — .jupyter_cache is content-addressed and revalidates
-#      itself), so a *genuine miss* for the execution type is not constructible
-#      once any execution cache exists in scope. Miss assertions therefore use
-#      the build type, whose fallbacks all include the salted env hash.
+#   2. A *genuine miss* needs every restore-key fallback to include something
+#      salted. Both cache types' fallbacks all include the hash of the
+#      `environment` file, which never crosses an environment change (the
+#      execution cache's since #270; it used to fall back to any
+#      `jupyter-cache-`). So every restore here that uses the generated keys
+#      passes a salted `environment`, whichever type it restores: with none,
+#      the hash of a missing file is empty, and the fallback would match other
+#      runs' caches.
 #
 # Structural limitation (see #100 for the full argument): build-jupyter-cache
 # calls setup-environment and build-lectures at the pinned @v0 ref, and
@@ -693,7 +697,7 @@ jobs:
           echo "✅ fail-on-miss guard fired on a genuine miss"
 
   unit-exec-seed:
-    name: 'restore-jupyter-cache: seed execution cache (save mode)'
+    name: 'restore-jupyter-cache: seed execution cache (save mode, genuine miss)'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: gate
@@ -704,19 +708,32 @@ jobs:
       - name: Create salted fixture
         run: |
           mkdir -p harness/lectures
+          printf 'harness-env-salt: %s-unit-exec\n' "$SALT" > harness/environment.yml
           printf '%% harness salt: %s-unit-exec\n' "$SALT" > harness/lectures/note.md
 
-      # No miss assertion here: the bare `jupyter-cache-` fallback (see header)
-      # can legitimately restore an older cache. The payload STAMP written
-      # below is what downstream jobs assert on, so a wrong restore cannot
-      # produce a false pass.
-      - name: Restore (save mode)
+      # Every fallback includes the salted environment's hash (see header), so
+      # nothing saved before this run can match.
+      - name: Restore (save mode, expecting a miss)
+        id: restore
         uses: ./restore-jupyter-cache
         with:
           cache-type: 'execution'
+          environment: 'harness/environment.yml'
           source-dir: 'harness/lectures'
           save-cache: 'true'
 
+      - name: Assert outputs report a miss
+        env:
+          CACHE_HIT: ${{ steps.restore.outputs.cache-hit }}
+          CACHE_KEY: ${{ steps.restore.outputs.cache-key }}
+        run: |
+          [ "$CACHE_HIT" = "false" ] || { echo "::error::cache-hit: expected [false], got [$CACHE_HIT] with key [$CACHE_KEY]: an execution cache from another environment was restored (#270)"; exit 1; }
+          [ -z "$CACHE_KEY" ] || { echo "::error::cache-key: expected empty, got [$CACHE_KEY]"; exit 1; }
+          echo "✅ miss reported correctly (cache-hit=false, cache-key empty)"
+
+      # Written after the action ran: the save happens in a post: hook at job
+      # end, so this payload is what gets cached under
+      # jupyter-cache-{env hash}--{md hash}-{run_id}.
       - name: Write payload for downstream restore jobs
         run: |
           mkdir -p _build/.jupyter_cache
@@ -735,6 +752,7 @@ jobs:
       - name: Recreate salted fixture, with an html already in place
         run: |
           mkdir -p harness/lectures _build/html
+          printf 'harness-env-salt: %s-unit-exec\n' "$SALT" > harness/environment.yml
           printf '%% harness salt: %s-unit-exec\n' "$SALT" > harness/lectures/note.md
           echo "harness: not the execution cache's to remove" > _build/html/keep.txt
 
@@ -743,6 +761,7 @@ jobs:
         uses: ./restore-jupyter-cache
         with:
           cache-type: 'execution'
+          environment: 'harness/environment.yml'
           source-dir: 'harness/lectures'
           fail-on-miss: 'true'
 
@@ -750,7 +769,7 @@ jobs:
         env:
           CACHE_HIT: ${{ steps.restore.outputs.cache-hit }}
           CACHE_KEY: ${{ steps.restore.outputs.cache-key }}
-          EXPECTED_KEY: jupyter-cache-${{ hashFiles('harness/lectures/**/*.md') }}-${{ github.run_id }}
+          EXPECTED_KEY: jupyter-cache-${{ hashFiles('harness/environment.yml') }}--${{ hashFiles('harness/lectures/**/*.md') }}-${{ github.run_id }}
         run: |
           [ "$CACHE_HIT" = "true" ] || { echo "::error::cache-hit: expected [true], got [$CACHE_HIT]"; exit 1; }
           [ "$CACHE_KEY" = "$EXPECTED_KEY" ] || { echo "::error::cache-key: expected [$EXPECTED_KEY], got [$CACHE_KEY]"; exit 1; }
@@ -769,6 +788,7 @@ jobs:
       - name: Recreate salted fixture
         run: |
           mkdir -p harness/lectures
+          printf 'harness-env-salt: %s-unit-exec\n' "$SALT" > harness/environment.yml
           printf '%% harness salt: %s-unit-exec\n' "$SALT" > harness/lectures/note.md
 
       - name: Restore (save mode)
@@ -776,6 +796,7 @@ jobs:
         uses: ./restore-jupyter-cache
         with:
           cache-type: 'execution'
+          environment: 'harness/environment.yml'
           source-dir: 'harness/lectures'
           save-cache: 'true'
 
@@ -783,12 +804,78 @@ jobs:
         env:
           CACHE_HIT: ${{ steps.restore.outputs.cache-hit }}
           CACHE_KEY: ${{ steps.restore.outputs.cache-key }}
-          EXPECTED_KEY: jupyter-cache-${{ hashFiles('harness/lectures/**/*.md') }}-${{ github.run_id }}
+          EXPECTED_KEY: jupyter-cache-${{ hashFiles('harness/environment.yml') }}--${{ hashFiles('harness/lectures/**/*.md') }}-${{ github.run_id }}
         run: |
           [ "$CACHE_HIT" = "true" ] || { echo "::error::cache-hit: expected [true], got [$CACHE_HIT]"; exit 1; }
           [ "$CACHE_KEY" = "$EXPECTED_KEY" ] || { echo "::error::cache-key: expected [$EXPECTED_KEY], got [$CACHE_KEY]"; exit 1; }
           [ "$(cat _build/.jupyter_cache/STAMP)" = "$SALT-unit-exec" ] || { echo "::error::payload STAMP mismatch: got [$(cat _build/.jupyter_cache/STAMP)]"; exit 1; }
           echo "✅ execution cache save-mode restore verified"
+
+  # #270: the execution cache's key hashes the environment, and never falls
+  # back across a change to it, so a pull request that changes the
+  # environment executes every lecture with the new packages. The lectures
+  # here are the seed's byte for byte, and only the environment differs: the
+  # key used to hash the lectures alone, and restored the seed's own cache.
+  # The second restore is the control, and what nearly every pull request
+  # does: it edits a lecture and leaves the environment alone, and must still
+  # fall back to the cache build's outputs.
+  unit-exec-env-miss:
+    name: 'restore-jupyter-cache: an execution restore misses after an environment change, and falls back after a lecture edit (#270)'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: unit-exec-seed
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: The seed's lectures, with another environment
+        run: |
+          mkdir -p harness/lectures
+          printf 'harness-env-salt: %s-unit-exec-changed\n' "$SALT" > harness/environment.yml
+          printf '%% harness salt: %s-unit-exec\n' "$SALT" > harness/lectures/note.md
+
+      - name: Restore (read-only, expecting a miss)
+        id: changed-env
+        uses: ./restore-jupyter-cache
+        with:
+          cache-type: 'execution'
+          environment: 'harness/environment.yml'
+          source-dir: 'harness/lectures'
+
+      - name: Assert the changed environment missed
+        env:
+          CACHE_HIT: ${{ steps.changed-env.outputs.cache-hit }}
+          CACHE_KEY: ${{ steps.changed-env.outputs.cache-key }}
+        run: |
+          [ "$CACHE_HIT" = "false" ] || { echo "::error::cache-hit: expected [false], got [$CACHE_HIT] with key [$CACHE_KEY]: outputs executed under another environment were restored (#270)"; exit 1; }
+          [ -z "$CACHE_KEY" ] || { echo "::error::cache-key: expected empty, got [$CACHE_KEY]"; exit 1; }
+          [ ! -e _build/.jupyter_cache ] || { echo "::error::_build/.jupyter_cache exists after a miss: something was restored"; exit 1; }
+          echo "✅ an environment change missed the execution cache, so every lecture would execute"
+
+      - name: The seed's environment, with a lecture edited
+        run: |
+          printf 'harness-env-salt: %s-unit-exec\n' "$SALT" > harness/environment.yml
+          printf '%% harness salt: %s-unit-exec, edited\n' "$SALT" > harness/lectures/note.md
+
+      - name: Restore (read-only, expecting the fallback)
+        id: edited-lecture
+        uses: ./restore-jupyter-cache
+        with:
+          cache-type: 'execution'
+          environment: 'harness/environment.yml'
+          source-dir: 'harness/lectures'
+          fail-on-miss: 'true'
+
+      - name: Assert the lecture edit fell back to the seed's cache
+        env:
+          CACHE_KEY: ${{ steps.edited-lecture.outputs.cache-key }}
+          ENV_PREFIX: jupyter-cache-${{ hashFiles('harness/environment.yml') }}--
+        run: |
+          case "$CACHE_KEY" in
+            "$ENV_PREFIX"*) ;;
+            *) echo "::error::cache-key: expected a key that starts [$ENV_PREFIX], got [$CACHE_KEY]"; exit 1 ;;
+          esac
+          [ "$(cat _build/.jupyter_cache/STAMP)" = "$SALT-unit-exec" ] || { echo "::error::payload STAMP mismatch: got [$(cat _build/.jupyter_cache/STAMP)]: the fallback did not restore the seed's cache"; exit 1; }
+          echo "✅ a lecture edit fell back to the seed's execution cache, within the same environment"
 
   # #228: the custom key and path, as a caller writes them. Both used to be
   # expanded into the run: text, where the shell read a '$' in the path as a
@@ -2632,18 +2719,22 @@ jobs:
           printf '\n# harness-salt: %s-book\n' "$SALT" >> harness/environment.yml
           printf '%% harness salt: %s-book\n' "$SALT" > harness/lectures/salt.md
 
+      # The key build-jupyter-cache saved under, and the one this restore
+      # looks up, both hash the environment (#270): the same file is given to
+      # both, as cache.yml and ci.yml give it.
       - name: Restore execution cache
         id: restore
         uses: ./restore-jupyter-cache
         with:
           cache-type: 'execution'
+          environment: 'harness/environment.yml'
           source-dir: 'harness/lectures'
           fail-on-miss: 'true'
 
       - name: Assert only the execution cache round-tripped
         env:
           CACHE_KEY: ${{ steps.restore.outputs.cache-key }}
-          EXPECTED_KEY: jupyter-cache-${{ hashFiles('harness/lectures/**/*.md') }}-${{ github.run_id }}
+          EXPECTED_KEY: jupyter-cache-${{ hashFiles('harness/environment.yml') }}--${{ hashFiles('harness/lectures/**/*.md') }}-${{ github.run_id }}
         run: |
           [ "$CACHE_KEY" = "$EXPECTED_KEY" ] || { echo "::error::cache-key: expected [$EXPECTED_KEY], got [$CACHE_KEY]"; exit 1; }
           [ -f _build/.jupyter_cache/global.db ] || { echo "::error::restored execution cache is missing global.db"; exit 1; }
@@ -4262,6 +4353,7 @@ jobs:
       - unit-exec-seed
       - unit-exec-restore
       - unit-exec-restore-save
+      - unit-exec-env-miss
       - unit-custom-seed
       - unit-custom-restore
       - unit-line-break
