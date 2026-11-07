@@ -50,6 +50,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `restore-jupyter-cache`'s default restores it; whether it stops, or becomes opt-in, goes with
   a later change of that default (review M3). (#270)
 
+### Fixed
+- **`preview-cloudflare`**: `deploy-url`, and with it the comment's preview URL and every lecture
+  link, is built on the address Cloudflare serves the project at, which it keeps apart from the
+  project's name and which can differ from `<project-name>.pages.dev`. The address comes from the
+  deployment's own URL in wrangler's record of the deploy, the `pages-deploy-detailed` line it
+  writes to `WRANGLER_OUTPUT_FILE_PATH`, so no other call is made, and the alias URL is still built,
+  stable across pushes, as #14 made it. `deployment-url` is read from the same record, in place of
+  the first matching URL in wrangler's log. When the record gives no URL of the form
+  `https://<hash>.<name>.pages.dev`, the step warns, `deploy-url` falls back to
+  `<project-name>.pages.dev` as before, and `deployment-url` is empty. When the address is not
+  `<project-name>.pages.dev`, a notice says so: a comment posted with `placeholder: 'true'` still
+  links there, having no deploy to ask, until the deploy's comment replaces it (#216).
+
 ## [0.16.0] - 2026-11-07
 
 ### Added
