@@ -188,15 +188,19 @@ fetch() {
   return "$rc"
 }
 
-# 0 when installing the archives as local files needs nothing they lack,
-# judged from apt-get's simulation, which reads no mirror.
+# Installing the cached archives, given as local files, with the cache as
+# apt's archive directory. A version the image's lists also carry, apt would
+# fetch from a mirror rather than read from the file; with its archive
+# already in Dir::Cache::archives, it fetches nothing. A version only the file
+# carries is read in place. (--no-download cannot be used: apt then refuses
+# the local files too.)
+offline=()
+# 0 when that install would fetch nothing from a mirror: apt's --print-uris
+# lists each archive it would fetch, and reads no mirror to do it.
 complete() {
-  local sim have want f
-  sim=$("${SUDO[@]}" apt-get install --simulate --no-download "$@" 2>&1) || return 1
-  # apt names each archive <package>_<version>_<arch>.deb.
-  have=$(for f in "$@"; do f=${f##*/}; echo "${f%%_*}"; done | LC_ALL=C sort -u)
-  want=$(sed -n 's/^Inst \([^ :]*\).*/\1/p' <<< "$sim" | LC_ALL=C sort -u)
-  [ -z "$(LC_ALL=C comm -13 <(echo "$have") <(echo "$want"))" ]
+  local uris
+  uris=$("${SUDO[@]}" apt-get install --print-uris -qq "${offline[@]}" "$@" 2>&1) || return 1
+  ! grep -v "^'file:" <<< "$uris" | grep -q .
 }
 
 cmd_install() {
@@ -206,6 +210,7 @@ cmd_install() {
   mapfile -t pkgs < "$list"
   shopt -s nullglob
   debs=("$ARCHIVES"/*.deb)
+  offline=(-o "Dir::Cache::archives=$ARCHIVES/")
 
   if [ -n "$matched" ] && [ "$matched" = "$primary" ]; then
     hit=true
@@ -215,7 +220,7 @@ cmd_install() {
 
   if [ "$hit" = true ] && [ "${#debs[@]}" -gt 0 ] && complete "${debs[@]}"; then
     echo "::group::Install ${#debs[@]} cached archives (exact cache hit: no apt-get update, no download)"
-    "${SUDO[@]}" "${apt_env[@]}" apt-get install -y --no-download "${debs[@]}"
+    "${SUDO[@]}" "${apt_env[@]}" apt-get install -y "${offline[@]}" "${debs[@]}"
     echo "::endgroup::"
     echo "✅ Installed from the cache: ${#debs[@]} archives, no mirror contacted"
   else
