@@ -23,6 +23,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shows. The work is in `scripts/latex-packages.sh`, for `setup-environment`'s `install-latex` to
   share. (#224)
 
+### Changed
+- **`build-jupyter-cache`, `restore-jupyter-cache`**: the execution cache's key hashes the
+  environment files too, as
+  `jupyter-cache-<hash of environment>-<hash of environment-update>-<hash of the lectures>-<run id>`,
+  and a restore falls back to `jupyter-cache-<env>-<update>-`, then `jupyter-cache-<env>-`: the
+  build cache's fallbacks. It used to hash the lectures alone and fall back to any execution
+  cache. `.jupyter_cache` checks each notebook against its code, but not against the packages
+  that executed it, so a pull request that changed the environment file restored outputs made
+  with the old packages, re-executed nothing, and passed. Now it misses and executes every
+  lecture, as it does with the build cache. `environment` and `environment-update` apply to both
+  cache types. A workflow that already restores `cache-type: execution` misses once after `v0`
+  moves, until its next cache build, and one that also sets `fail-on-miss: 'true'` should run
+  its cache workflow once then; no QuantEcon workflow restores `execution`. The harness's new
+  `unit-exec-env-miss` restores the seed's lectures under another environment file, and must
+  miss. (#270)
+- **`templates/ci.yml`, `templates/publish.yml`**: both restore `cache-type: 'execution'`,
+  `_build/.jupyter_cache` alone, instead of the build cache. The build cache brings back what the
+  last cache build made, including what the source has deleted since. Since #160 the restore
+  removes its `html`, but a build that makes the notebooks or the PDF over it can still copy a
+  removed lecture's notebook, or a deleted PDF, into the site. The execution cache leaves nothing
+  of the kind, and is several times smaller, so a restore downloads less, and a pull request's
+  `save-cache` stores less. The rest of `_build` saves no work: a fresh checkout makes Sphinx
+  rewrite every page. A repository that copied an older template sets `cache-type: 'execution'`
+  on the restore step of both. `build-jupyter-cache` still saves the build cache, since
+  `restore-jupyter-cache`'s default restores it; whether it stops, or becomes opt-in, goes with
+  a later change of that default (review M3). (#270)
+
 ## [0.16.0] - 2026-11-07
 
 ### Added

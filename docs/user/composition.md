@@ -29,7 +29,7 @@ The actions are steps in one chain. A cache build on the default branch executes
 Three settings have to agree across the chain:
 
 - **`execute_notebooks: cache`** under `execute:` in the book's `_config.yml`. Without it Jupyter Book executes the notebooks without jupyter-cache, and there is no execution cache to save or restore.
-- **The environment files.** The build cache's key hashes `environment` and `environment-update`, so give `restore-jupyter-cache` the same files as `build-jupyter-cache`. A different `environment` file restores nothing, on purpose: the old `_build` was made with other packages.
+- **The environment files.** Both caches' keys hash `environment` and `environment-update`, so give `restore-jupyter-cache` the same files as `build-jupyter-cache`. A different `environment` file restores nothing, on purpose: the old outputs were made with other packages.
 - **`source-dir`.** The execution cache's key hashes the lectures under it, and every action that builds needs the same book.
 
 ## Formats

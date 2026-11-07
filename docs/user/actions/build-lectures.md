@@ -12,7 +12,7 @@ An `html` build can also copy in the PDF and the notebooks from earlier builds, 
 
 ## When to use it
 
-Use it in any job that builds lectures, after [`setup-environment`](setup-environment.md), and after [`restore-jupyter-cache`](restore-jupyter-cache.md) in a job that starts from the build cache. A preview or publish step then deploys the directory in its `build-path` output.
+Use it in any job that builds lectures, after [`setup-environment`](setup-environment.md), and after [`restore-jupyter-cache`](restore-jupyter-cache.md) in a job that starts from a cache. A preview or publish step then deploys the directory in its `build-path` output.
 
 - **One step per format.** For a site that offers the PDF and the notebooks, build `jupyter` and `pdflatex` first, then `html` with `html-copy-pdf` and `html-copy-notebooks`, all in one job. See [Downloads on the site](#downloads-on-the-site).
 - **Not in the weekly cache build.** [`build-jupyter-cache`](build-jupyter-cache.md) runs this action itself, once for each of its builders.

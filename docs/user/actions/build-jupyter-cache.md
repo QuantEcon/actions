@@ -5,7 +5,7 @@
 Builds the lectures from scratch, in each format listed in `builders`, and saves the result as the cache that pull-request and publish builds restore with [`restore-jupyter-cache`](restore-jupyter-cache.md). It saves two caches:
 
 - **The build cache**: the whole `_build` directory, with the output of each builder in `builders` and the execution cache.
-- **The execution cache**: `_build/.jupyter_cache` alone, which holds each notebook's executed outputs.
+- **The execution cache**: `_build/.jupyter_cache` alone, which holds each notebook's executed outputs. The templates restore this one.
 
 Both are saved only when every build passes. A failed run saves nothing, so the builds that restore keep the last good cache, and it files an issue, so that the failure is seen.
 
@@ -33,8 +33,8 @@ Use it in a workflow of its own, on the default branch: weekly, on demand, and w
 | Input | Required | Default | Description |
 |---|---|---|---|
 | `builders` | no | `html` | The formats to build and cache: any of `jupyter`, `pdflatex` and `html`, separated by commas or whitespace, as in `jupyter,pdflatex,html`. They run in that order whatever order they are listed in, and the `html` build copies in the PDF and the notebooks when those are listed too. An unknown name, or none at all, fails the run before anything is built. |
-| `environment` | no | `environment.yml` | Path to the Conda environment file. In standard mode `setup-environment` builds the environment from it, and fails if it does not exist. In either mode its hash is part of the build cache's key, so give `restore-jupyter-cache` the same file. |
-| `environment-update` | no | `''` | Container mode: path to a Conda environment file of packages to add to the image's environment, which `setup-environment` installs. Empty, the default, adds none. In either mode its hash is part of the build cache's key, so give `restore-jupyter-cache` the same file. |
+| `environment` | no | `environment.yml` | Path to the Conda environment file. In standard mode `setup-environment` builds the environment from it, and fails if it does not exist. In either mode its hash is part of both caches' keys, so give `restore-jupyter-cache` the same file. |
+| `environment-update` | no | `''` | Container mode: path to a Conda environment file of packages to add to the image's environment, which `setup-environment` installs. Empty, the default, adds none. In either mode its hash is part of both caches' keys, so give `restore-jupyter-cache` the same file. |
 | `source-dir` | no | `lectures` | The book to build, as `build-lectures` takes it: the directory that holds its `_config.yml` and `_toc.yml`. The execution cache's key hashes every `.md` file under it. |
 | `latex-requirements-file` | no | `latex-requirements.txt` | Standard mode, with `pdflatex` among the builders: path to the list of apt packages that `setup-environment` installs for LaTeX. The job fails if the file is missing or names no package. Ignored in container mode, whose images carry LaTeX. |
 | `upload-artifact` | no | `true` | `'true'`, the default, uploads the whole `_build` directory as the artifact `build-cache-<run id>` when a build fails, since no cache is saved then. `'false'` uploads nothing. A run whose builds all pass uploads no artifact either way: the cache holds `_build`. |
@@ -102,7 +102,7 @@ For a site that offers the PDF and the notebooks as downloads:
     builders: jupyter,pdflatex,html
 ```
 
-The cache then holds `_build/latex` and `_build/jupyter` too, so a build that restores it can offer the PDF and the notebooks without building them again, with `html-copy-pdf` and `html-copy-notebooks`: see [`build-lectures`](build-lectures.md#downloads-on-the-site).
+The build cache then holds `_build/latex` and `_build/jupyter` too, so a build that restores it can offer the PDF and the notebooks without building them again, with `html-copy-pdf` and `html-copy-notebooks`: see [`build-lectures`](build-lectures.md#downloads-on-the-site).
 
 ### On a standard runner
 
@@ -122,9 +122,9 @@ Leave out the `container:` block. `setup-environment` then builds the Conda envi
    | Cache | Path | Key |
    |---|---|---|
    | Build | `_build` | `build-<hash of environment>-<hash of environment-update>-<run id>` |
-   | Execution | `_build/.jupyter_cache` | `jupyter-cache-<hash of the .md files under source-dir>-<run id>` |
+   | Execution | `_build/.jupyter_cache` | `jupyter-cache-<hash of environment>-<hash of environment-update>-<hash of the .md files under source-dir>-<run id>` |
 
-   A file that does not exist hashes to an empty string, so with no `environment-update` the build cache's key is `build-<hash>--<run id>`. Every successful run saves new entries, and `restore-jupyter-cache` restores the newest through a prefix match. GitHub removes a cache that has not been restored for 7 days, and the least recently used caches first when the repository's cache storage is full.
+   Both keys start with the environment files' hashes, so neither cache is restored after a change to `environment`. A file that does not exist hashes to an empty string, so with no `environment-update` the build cache's key is `build-<hash>--<run id>`. Every successful run saves new entries, and `restore-jupyter-cache` restores the newest through a prefix match. GitHub removes a cache that has not been restored for 7 days, and the least recently used caches first when the repository's cache storage is full.
 5. **Job summary.** "Jupyter Cache Build Summary" gives the outcome, the cache key, the trigger, the commit, the mode `setup-environment` ran in, each builder's result, and the size of `_build` and of each builder's directory in it.
 
 The action runs `setup-environment` and `build-lectures` at `@v0`, whichever version of `build-jupyter-cache` the workflow pins. So inside it they behave as in the latest release, not as this manual describes `main`: a change listed under `[Unreleased]` in the CHANGELOG reaches them only when a release moves `v0`.
