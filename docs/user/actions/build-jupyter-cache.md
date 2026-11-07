@@ -15,7 +15,7 @@ Use it in a workflow of its own, on the default branch: weekly, on demand, and w
 
 - **On the default branch.** A cache saved there can be restored by every branch and pull request. One saved on another branch serves only that branch, and the pull requests that target it.
 - **On its own.** The action runs [`setup-environment`](setup-environment.md) and [`build-lectures`](build-lectures.md) itself, so the job needs neither.
-- **From scratch.** Do not restore a cache before it. Its fresh build is what clears out what incremental builds leave behind, such as the pages of a lecture that has been removed.
+- **From scratch.** Do not restore a cache before it. Its fresh build is what clears out what builds over a restored cache leave behind, such as a removed lecture's notebook in `_build/jupyter`, or a deleted PDF in `_build/latex`. [`restore-jupyter-cache`](restore-jupyter-cache.md) removes the restored HTML itself.
 
 ## Requirements
 
@@ -102,7 +102,7 @@ For a site that offers the PDF and the notebooks as downloads:
     builders: jupyter,pdflatex,html
 ```
 
-The cached `_build/html` then holds the PDF and the notebooks too, so a build that restores it can offer them without building them again: see [`build-lectures`](build-lectures.md#downloads-on-the-site).
+The cache then holds `_build/latex` and `_build/jupyter` too, so a build that restores it can offer the PDF and the notebooks without building them again, with `html-copy-pdf` and `html-copy-notebooks`: see [`build-lectures`](build-lectures.md#downloads-on-the-site).
 
 ### On a standard runner
 
