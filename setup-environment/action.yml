@@ -116,12 +116,17 @@ runs:
         fi
 
     # ============================================================
-    # CONTAINER MODE: Only install delta packages from environment.yml
-    # Note: Conda environment caching is disabled in container mode because
-    #       the Conda env lives outside the workspace mount, so actions/cache
-    #       cannot persist it. Other host-mounted paths (e.g., pip cache) may
-    #       still be cached.
-    # See: https://github.com/QuantEcon/actions/issues/18
+    # CONTAINER MODE: Only install delta packages from environment-update
+    # Nothing is cached in container mode: the delta is installed afresh on
+    # every run. In a `container:` job, actions/cache runs inside the
+    # container and could reach the image's environment. But a cache of it
+    # would be as large as the environment, gigabytes for the full image,
+    # against GitHub's default 10 GB per repository, evicting the build
+    # caches; and restoring it over the image's own environment mixes the
+    # two. Standard mode avoids that by removing its fresh environment first
+    # (#209). Here the image's environment is the target, so there is
+    # nothing to remove.
+    # See https://github.com/QuantEcon/actions/issues/18 for when that changes.
     # ============================================================
 
     - name: Update environment (container mode)
