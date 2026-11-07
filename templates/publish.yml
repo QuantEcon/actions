@@ -85,6 +85,9 @@ jobs:
         #   install-latex: 'true'
 
       # ─── Cache Restore ───────────────────────────────────────────
+      # The action removes the restored _build/html, so the build
+      # writes the site afresh and nothing deleted from the source
+      # since the cache build is published again.
       - name: Restore build cache
         uses: quantecon/actions/restore-jupyter-cache@v0
 

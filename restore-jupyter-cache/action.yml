@@ -12,9 +12,12 @@ inputs:
   cache-type:
     description: >-
       What to restore. `build`, the default, restores the whole `_build` directory the last cache
-      build saved: its HTML, PDF and notebooks, and the execution cache in `_build/.jupyter_cache`.
+      build saved, then removes its HTML, `<path>/html`, so the build writes the site afresh and
+      nothing deleted from the source since that cache build is published again. What stays is
+      the execution cache in `_build/.jupyter_cache`, and the PDF and notebooks if the cache build
+      made them.
       `execution` restores only `_build/.jupyter_cache`, which holds each notebook's executed
-      outputs. Any other value fails the run before anything is restored.
+      outputs, and removes nothing. Any other value fails the run before anything is restored.
     required: false
     default: 'build'
   path:
@@ -231,6 +234,31 @@ runs:
         path: ${{ steps.cache-path.outputs.path }}
         key: ${{ steps.cache-key.outputs.key }}
         restore-keys: ${{ steps.cache-key.outputs.restore-keys }}
+
+    # #160. A build writes over a restored _build/html but removes nothing from
+    # it, so a site built over it publishes again every page and file deleted
+    # from the source since the cache build: a removed lecture's pages, a deleted
+    # _static file or dataset, and the _pdf/ and _notebooks/ copies the cache
+    # build staged. The restored html saves no work: a fresh checkout gives
+    # every source file a new mtime, so Sphinx rewrites every page anyway.
+    # jupyter and latex stay, as html-copy-notebooks and html-copy-pdf take a
+    # restored build cache as their source. After any build restore that
+    # matched, exactly or by prefix, a custom key's included.
+    - name: Remove the restored HTML
+      if: inputs.cache-type == 'build' && steps.restore.outputs.cache-matched-key != ''
+      shell: bash
+      env:
+        HTML_DIR: ${{ inputs.path }}/html
+      run: |
+        # find would read a path that starts with - as an option.
+        case "$HTML_DIR" in -*) HTML_DIR="./$HTML_DIR" ;; esac
+        if [ -e "$HTML_DIR" ] || [ -L "$HTML_DIR" ]; then
+          COUNT=$(find "$HTML_DIR" -type f | wc -l | tr -d ' ')
+          rm -rf "$HTML_DIR"
+          echo "Removed $HTML_DIR, $COUNT files restored from the build cache: the build writes the site afresh, so nothing deleted from the source since the cache build is published again (#160)"
+        else
+          echo "No $HTML_DIR in the restored cache, so nothing to remove"
+        fi
 
     # Registers the job-end save. actions/cache saves from a `post:` hook, which
     # is the only way a composite action can defer work to the end of the job:

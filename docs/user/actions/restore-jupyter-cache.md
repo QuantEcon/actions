@@ -6,7 +6,7 @@ Restores a cache that [`build-jupyter-cache`](build-jupyter-cache.md) saved, bef
 
 It restores one of two caches, chosen with `cache-type`:
 
-- **`build`**, the default: the whole `_build` directory, as the cache build left it. That is the HTML and the execution cache, and the PDF and notebooks if the cache build made them.
+- **`build`**, the default: the whole `_build` directory, as the cache build left it, less its HTML, which the action removes so that the build writes the site afresh (see [The restored HTML is removed](#the-restored-html-is-removed)). What stays is the execution cache, and the PDF and notebooks if the cache build made them.
 - **`execution`**: only `_build/.jupyter_cache`, which holds each notebook's executed outputs. It is much smaller, and saves the execution time, but not the rest of the build.
 
 By default it only restores. With `save-cache: 'true'` it also saves a cache at the end of the job, which, saved from a pull request's run, only that pull request's later runs can restore.
@@ -34,7 +34,7 @@ Use it in a job that builds lectures, after `setup-environment` and before [`bui
 
 | Input | Required | Default | Description |
 |---|---|---|---|
-| `cache-type` | no | `build` | What to restore. `build`, the default, restores the whole `_build` directory the last cache build saved: its HTML, PDF and notebooks, and the execution cache in `_build/.jupyter_cache`. `execution` restores only `_build/.jupyter_cache`, which holds each notebook's executed outputs. Any other value fails the run before anything is restored. |
+| `cache-type` | no | `build` | What to restore. `build`, the default, restores the whole `_build` directory the last cache build saved, then removes its HTML, `<path>/html`, so the build writes the site afresh and nothing deleted from the source since that cache build is published again. What stays is the execution cache in `_build/.jupyter_cache`, and the PDF and notebooks if the cache build made them. `execution` restores only `_build/.jupyter_cache`, which holds each notebook's executed outputs, and removes nothing. Any other value fails the run before anything is restored. |
 | `path` | no | `_build` | The build directory to restore into. The path is part of what identifies a cache, so only `_build`, the default, finds the caches that `build-jupyter-cache` saves; any other path finds only what this action saved with `save-cache` and the same `path`. With `cache-type: execution` the cache goes into `<path>/.jupyter_cache`. An empty path, or one with a line break in it, fails the run before anything is restored. |
 | `source-dir` | no | `lectures` | With `cache-type: execution`: the book's directory. The key hashes every `.md` file under it, as `build-jupyter-cache` does with its own `source-dir`. Ignored for the build cache. |
 | `environment` | no | `environment.yml` | With `cache-type: build`: the Conda environment file whose hash is part of the key. Give the same file that `build-jupyter-cache` was given, or no cache matches. Ignored for the execution cache. |
@@ -137,7 +137,15 @@ GitHub looks first among the caches of the branch or pull request the job runs f
 
 - **The build cache never falls back across `environment` files.** `_build` does not record the packages that produced it. Restored after a change to the environment file, it would hand the build pages and outputs made with the old packages. An edited environment file is a miss on purpose, and the build starts from scratch. The fallback does cross `environment-update` files, and neither key records the container image, so a job on a newer image restores a `_build` made on the old one.
 - **The execution cache does fall back to any execution cache.** Jupyter Book checks each cached notebook against the notebook's current code, and re-executes any that no longer match, so a cache made from other lectures is safe as far as the code goes. It does not check the packages: the key hashes only the lectures, so after a change to the environment the execution cache hands back outputs made with the old packages, until the next cache build replaces it.
-- **The build cache's key does not hash the lectures.** The key is the same for every pull request, so every pull request restores the last cache build and re-executes only its own changes. A key that hashed the lectures would change with every edit, and miss on nearly every pull request. The cost is that a lecture removed since the last cache build keeps its old pages, which nothing links to, until the next cache build replaces `_build`.
+- **The build cache's key does not hash the lectures.** The key is the same for every pull request, so every pull request restores the last cache build and re-executes only its own changes. A key that hashed the lectures would change with every edit, and miss on nearly every pull request. The cost is that the restored `_build` holds what the last cache build made from the lectures as they were then, including files since deleted. The action removes the HTML for that reason (below). A removed lecture's notebook in `_build/jupyter`, and a deleted PDF in `_build/latex`, stay until the next cache build replaces `_build`.
+
+### The restored HTML is removed
+
+After a build-cache restore that matched, exactly or by prefix, the action removes `<path>/html`, and its log says how many files went. A build writes over `_build/html` but removes nothing from it, so a site built over a restored copy would publish again every page and file deleted from the source since the cache build: a removed lecture's pages, a deleted `_static` file, image or dataset, and the `_pdf/` and `_notebooks/` copies that the cache build staged there. Removing it costs the build nothing: a fresh checkout gives every source file a new modification time, so Sphinx re-reads and rewrites every page whether or not the HTML was restored.
+
+Everything else stays: `_build/.jupyter_cache`, which saves the execution time, and `_build/jupyter` and `_build/latex`, from which [`build-lectures`](build-lectures.md)' `html-copy-notebooks` and `html-copy-pdf` can take a site's downloads. An execution-cache restore removes nothing.
+
+A workflow that builds `jupyter` or `pdflatex` over the restored cache, and copies their output into the site, can still publish a removed lecture's notebook, or a deleted PDF, until the next cache build: neither builder removes what it no longer makes. [#270](https://github.com/QuantEcon/actions/issues/270) tracks restoring the execution cache alone in the templates, which leaves nothing of the kind.
 
 ### Status report
 
@@ -178,6 +186,6 @@ The action prints what it asked for and what it found. On a typical read-only re
 
 **`key must be a single line`, `path must be a single line`, or the same for another input.** The value holds a line break. `key` and `path` are written as step outputs, where it would end the value and start another output, and in any input a line break would end the line that prints it, where the runner reads a next line that starts with `::` as a workflow command. Nothing was restored. A YAML block scalar (`|`) or a value built from a multi-line expression puts one there: write the value on one line.
 
-**The site shows pages of a lecture that was removed.** They come from the build cache, and the next cache build clears them. To clear them now, run the cache workflow by hand.
+**The site offers the notebook or PDF of a lecture that was removed.** It comes from `_build/jupyter` or `_build/latex` in the build cache, which a `jupyter` or `pdflatex` build over the restored cache leaves in place, and `html-copy-notebooks` or `html-copy-pdf` copies into the site. The next cache build clears it. To clear it now, run the cache workflow by hand. A removed lecture's pages, and a deleted static file, no longer come from the build cache, since the action removes the restored HTML: the restore step's log says `Removed _build/html`.
 
 **The restored build is broken.** Delete the repository's `build-` caches on the Caches page of its Actions tab, then run the cache workflow.

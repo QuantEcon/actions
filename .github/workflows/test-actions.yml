@@ -578,11 +578,16 @@ jobs:
 
       # Written after the action ran: the save happens in a post: hook at job
       # end, so this payload is what gets cached under build-{hash}--{run_id}.
+      # html/stale.txt stands for a page or file since deleted from the
+      # source, which a build restore must remove (#160); the rest must
+      # come back.
       - name: Write payload for downstream restore jobs
         run: |
-          mkdir -p _build/html
-          echo "<html>harness</html>" > _build/html/index.html
-          printf '%s-unit-build\n' "$SALT" > _build/STAMP
+          mkdir -p _build/html _build/.jupyter_cache _build/jupyter _build/latex
+          echo "harness: deleted from the source since the cache build" > _build/html/stale.txt
+          for f in _build/STAMP _build/.jupyter_cache/STAMP _build/jupyter/STAMP _build/latex/STAMP; do
+            printf '%s-unit-build\n' "$SALT" > "$f"
+          done
 
   unit-build-restore:
     name: 'restore-jupyter-cache: build cache read-only restore + quiet guard'
@@ -615,8 +620,12 @@ jobs:
           [ "$CACHE_HIT" = "true" ] || { echo "::error::cache-hit: expected [true], got [$CACHE_HIT]"; exit 1; }
           [ "$CACHE_KEY" = "$EXPECTED_KEY" ] || { echo "::error::cache-key: expected [$EXPECTED_KEY], got [$CACHE_KEY]"; exit 1; }
           [ "$(cat _build/STAMP)" = "$SALT-unit-build" ] || { echo "::error::payload STAMP mismatch: got [$(cat _build/STAMP)]"; exit 1; }
-          [ -f _build/html/index.html ] || { echo "::error::restored payload is missing _build/html/index.html"; exit 1; }
-          echo "✅ read-only restore reported the hit and delivered the payload"
+          # #160: the restored html is removed, and nothing else is.
+          [ ! -e _build/html ] || { echo "::error::_build/html survived a build restore, so a site built over it would publish again what the source has deleted (#160)"; find _build/html; exit 1; }
+          for d in .jupyter_cache jupyter latex; do
+            [ "$(cat "_build/$d/STAMP")" = "$SALT-unit-build" ] || { echo "::error::_build/$d did not come back from the build cache: only html is to be removed (#160)"; exit 1; }
+          done
+          echo "✅ read-only restore reported the hit, delivered the payload, and removed the restored html"
 
   unit-build-restore-save:
     # The #104 regression scenario: save mode must still report the hit.
@@ -649,7 +658,8 @@ jobs:
           [ "$CACHE_HIT" = "true" ] || { echo "::error::cache-hit: expected [true], got [$CACHE_HIT] — this is the exact #104 failure mode"; exit 1; }
           [ "$CACHE_KEY" = "$EXPECTED_KEY" ] || { echo "::error::cache-key: expected [$EXPECTED_KEY], got [$CACHE_KEY]"; exit 1; }
           [ "$(cat _build/STAMP)" = "$SALT-unit-build" ] || { echo "::error::payload STAMP mismatch: got [$(cat _build/STAMP)]"; exit 1; }
-          echo "✅ save-mode restore reported the hit (outputs alive, #104 stays fixed)"
+          [ ! -e _build/html ] || { echo "::error::_build/html survived a build restore in save mode (#160)"; exit 1; }
+          echo "✅ save-mode restore reported the hit (outputs alive, #104 stays fixed), and removed the restored html"
 
   unit-build-miss-guard:
     name: 'restore-jupyter-cache: fail-on-miss fires on a genuine miss'
@@ -720,10 +730,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Recreate salted fixture
+      # The control for #160's prune: an html already in place must survive an
+      # execution restore, which removes nothing.
+      - name: Recreate salted fixture, with an html already in place
         run: |
-          mkdir -p harness/lectures
+          mkdir -p harness/lectures _build/html
           printf '%% harness salt: %s-unit-exec\n' "$SALT" > harness/lectures/note.md
+          echo "harness: not the execution cache's to remove" > _build/html/keep.txt
 
       - name: Restore (read-only)
         id: restore
@@ -742,7 +755,8 @@ jobs:
           [ "$CACHE_HIT" = "true" ] || { echo "::error::cache-hit: expected [true], got [$CACHE_HIT]"; exit 1; }
           [ "$CACHE_KEY" = "$EXPECTED_KEY" ] || { echo "::error::cache-key: expected [$EXPECTED_KEY], got [$CACHE_KEY]"; exit 1; }
           [ "$(cat _build/.jupyter_cache/STAMP)" = "$SALT-unit-exec" ] || { echo "::error::payload STAMP mismatch: got [$(cat _build/.jupyter_cache/STAMP)]"; exit 1; }
-          echo "✅ execution cache read-only restore verified"
+          [ -f _build/html/keep.txt ] || { echo "::error::an execution restore removed _build/html: only a build restore may (#160)"; exit 1; }
+          echo "✅ execution cache read-only restore verified, with _build/html left alone"
 
   unit-exec-restore-save:
     name: 'restore-jupyter-cache: execution cache restore in save mode'
@@ -2591,15 +2605,18 @@ jobs:
           environment: 'harness/environment.yml'
           fail-on-miss: 'true'
 
-      - name: Assert the built site round-tripped
+      # The restore removes the cache build's html (#160), so the executed
+      # output is checked where it stays: the notebook myst-nb wrote.
+      - name: Assert the build round-tripped, less its html
         env:
           CACHE_KEY: ${{ steps.restore.outputs.cache-key }}
           EXPECTED_KEY: build-${{ hashFiles('harness/environment.yml') }}--${{ github.run_id }}
         run: |
           [ "$CACHE_KEY" = "$EXPECTED_KEY" ] || { echo "::error::cache-key: expected [$EXPECTED_KEY], got [$CACHE_KEY]"; exit 1; }
-          [ -f _build/html/index.html ] || { echo "::error::restored cache is missing _build/html/index.html"; exit 1; }
-          grep -q "sum of squares: 285" _build/html/lecture1.html || { echo "::error::executed cell output missing from restored HTML"; exit 1; }
-          echo "✅ full build cache round-trip: build-jupyter-cache → restore-jupyter-cache"
+          [ ! -e _build/html ] || { echo "::error::_build/html survived the build restore (#160)"; exit 1; }
+          [ -f _build/.jupyter_cache/global.db ] || { echo "::error::restored cache is missing the execution cache"; exit 1; }
+          grep -q "sum of squares: 285" _build/jupyter_execute/lecture1.ipynb || { echo "::error::executed cell output missing from the restored _build/jupyter_execute/lecture1.ipynb"; exit 1; }
+          echo "✅ full build cache round-trip: build-jupyter-cache → restore-jupyter-cache, with the restored html removed"
 
   bjc-restore-exec:
     name: 'round-trip: restore-jupyter-cache reads build-jupyter-cache (execution)'

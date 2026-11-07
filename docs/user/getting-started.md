@@ -78,8 +78,6 @@ For download links to the PDF and the notebooks on every page:
 2. In `publish.yml`, uncomment the `jupyter` and `pdflatex` build steps, and set `html-copy-pdf: 'true'` and `html-copy-notebooks: 'true'` on the `html` build.
 3. In `ci.yml`, do the same in the `build` job, if the previews should offer downloads too.
 
-Notebooks from lectures in subdirectories have broken download links: see [Downloads on the site](actions/build-lectures.md#downloads-on-the-site).
-
 ### The PDF check
 
 `ci.yml`'s `pdf-check` job builds the PDF on every pull request, because malformed LaTeX can pass the HTML build and still break the PDF build, and with it the publish.
@@ -112,5 +110,7 @@ A lecture repository with its own build steps moves onto the actions one workflo
    - the preview matches the published site, downloads included if the site offers them.
 4. **Replace the publish workflow** with `publish.yml`. A site that publishes by pushing to a `gh-pages` branch also changes its Pages source, as [Moving from a `gh-pages` branch](actions/publish-gh-pages.md#moving-from-a-gh-pages-branch) describes, and a site that makes release assets on a tag keeps them with `publish-gh-pages`' [release assets](actions/publish-gh-pages.md#release-assets), following the comments in the template. Once it has published, check that each page's "Last changed" date is its own: `publish.yml` checks out the full history for that, where `ci.yml`'s shallow checkout dates every preview page to its commit.
 5. **Watch the first runs** of each workflow: the next scheduled cache build, the next pull requests, and the next publish.
+
+**Drop any interim prune of the restored `_build/html`** as you replace each workflow, such as a `jb clean . --html` step after the cache restore. `restore-jupyter-cache` removes the restored HTML itself, so a page or file deleted from the source is not published again.
 
 **To roll back,** revert the pull request that changed the workflow: the repository's previous workflow comes back unchanged. If the publish move changed the Pages source, set it back to **Deploy from a branch** as well, which works only while the `gh-pages` branch still exists, so keep that branch until the new publish has run for a while.
