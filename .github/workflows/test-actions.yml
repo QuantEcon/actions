@@ -495,6 +495,15 @@ jobs:
           build-dir: '.'
           lectures-dir: ${{ env.LINE_BREAK }}
 
+      # setup-latex came after #267. Past its first check it would make its
+      # $RUNNER_TEMP directory, which the assertion below looks for.
+      - name: 'setup-latex: requirements-file'
+        id: setup-latex
+        continue-on-error: true
+        uses: ./setup-latex
+        with:
+          requirements-file: ${{ env.LINE_BREAK }}
+
       - name: Mark the runner as a container-mode host
         run: |
           printf 'quantecon-container\nimage=harness-container-mode-host\n' | sudo tee /etc/quantecon-container
@@ -520,6 +529,7 @@ jobs:
             deploy-cloudflare|${{ steps.deploy-cloudflare.outcome }}|${{ steps.deploy-cloudflare.outputs.visibility }}
             preview-netlify|${{ steps.preview-netlify.outcome }}|${{ steps.preview-netlify.outputs.deploy-url }}
             preview-cloudflare|${{ steps.preview-cloudflare.outcome }}|${{ steps.preview-cloudflare.outputs.deploy-url }}
+            setup-latex|${{ steps.setup-latex.outcome }}|${{ steps.setup-latex.outputs.cache-hit }}
             build-jupyter-cache|${{ steps.build-jupyter-cache.outcome }}|${{ steps.build-jupyter-cache.outputs.jupyter-status }}${{ steps.build-jupyter-cache.outputs.pdflatex-status }}${{ steps.build-jupyter-cache.outputs.html-status }}
         run: |
           set -euo pipefail
@@ -537,7 +547,7 @@ jobs:
               echo "✓ $action: refused the line break in its first step"
             fi
           done <<< "$RESULTS"
-          [ "$n" -eq 8 ] || { echo "::error::expected 8 cases, read $n"; exit 1; }
+          [ "$n" -eq 9 ] || { echo "::error::expected 9 cases, read $n"; exit 1; }
           [ "$bad" -eq 0 ]
           echo "✅ every action refused a line break in an input that is one value, before anything printed it"
 
@@ -1748,6 +1758,382 @@ jobs:
           python -c 'import jupyter_book, numpy' \
             || { echo "::error::the image's own packages are gone from $PREFIX after the update: was it run with --prune?"; exit 1; }
           echo "✅ the delta landed in $PREFIX, the environment on PATH, and the image's packages survived"
+
+  # ==========================================================================
+  # setup-latex — the TeX Live package cache (#224)
+  # ==========================================================================
+  #
+  # One small package with TeX's triggers, texlive-latex-base, so that
+  # check-tex.sh's pdflatex page compiles only if dpkg ran the maintainer
+  # scripts: on a hit as on a miss. LATEX_CV salts cache-version with the
+  # run, so the seed is a true miss and nothing outside the run can satisfy
+  # the hit. It is written without '-', which cache-version refuses.
+  #
+  # The hit is proved offline: a stand-in for apt's proxy refuses and records
+  # every request, and must record none. The key hashes the installed
+  # packages, so the hit job can only expect an exact hit on the seed's
+  # runner image. During a runner image rollout the two can differ, and the
+  # hit job then checks the fallback install instead, with a notice, rather
+  # than fail.
+
+  latex-seed:
+    name: 'setup-latex: a miss downloads, installs, and saves the cache'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    env:
+      LATEX_CV: harness.${{ github.run_id }}.${{ github.run_attempt }}
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Record the runner image, and check it has no TeX
+        id: image
+        run: |
+          echo "image=${ImageOS:-unknown}/${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+          if command -v pdflatex; then
+            echo "::error::pdflatex is on the runner image already, so this job cannot tell whether the action installed it"
+            exit 1
+          fi
+
+      - name: setup-latex, cold
+        id: latex
+        uses: ./setup-latex
+        with:
+          packages: texlive-latex-base
+          cache-version: ${{ env.LATEX_CV }}
+
+      - name: Assert a miss and a working pdflatex
+        env:
+          CACHE_HIT: ${{ steps.latex.outputs.cache-hit }}
+        run: |
+          set -euo pipefail
+          [ -z "$CACHE_HIT" ] || { echo "::error::cache-hit: expected [] on a salted cache-version, got [$CACHE_HIT]"; exit 1; }
+          bash .github/fixtures/setup-latex/check-tex.sh texlive-latex-base
+          n=$(find /var/cache/quantecon-actions/latex-apt -maxdepth 1 -name '*.deb' | wc -l)
+          [ "$n" -gt 0 ] || { echo "::error::no archive left in the cache directory to save"; exit 1; }
+          echo "✅ a miss: downloaded and installed, with $n archives kept for the cache"
+
+      - name: Compute this run's key prefix
+        id: prefix
+        run: |
+          # shellcheck source=/dev/null
+          . /etc/os-release
+          echo "prefix=latex-apt-$ID-$VERSION_ID-$(dpkg --print-architecture)-$LATEX_CV-" >> "$GITHUB_OUTPUT"
+
+      - name: Look the saved cache up
+        id: lookup
+        uses: actions/cache/restore@v6
+        with:
+          path: /var/cache/quantecon-actions/latex-apt/*.deb
+          key: ${{ steps.prefix.outputs.prefix }}harness-none
+          restore-keys: ${{ steps.prefix.outputs.prefix }}
+          lookup-only: true
+
+      - name: Assert the action saved it
+        env:
+          MATCHED: ${{ steps.lookup.outputs.cache-matched-key }}
+        run: |
+          [ -n "$MATCHED" ] || { echo "::error::no cache under this run's prefix: the action did not save after the miss"; exit 1; }
+          echo "✅ saved as $MATCHED"
+
+  latex-hit:
+    name: 'setup-latex: an exact hit installs from the cache and contacts no mirror'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: latex-seed
+    env:
+      LATEX_CV: harness.${{ github.run_id }}.${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: On the seed's image, put a refusing stand-in in front of every mirror
+        id: offline
+        env:
+          SEED_IMAGE: ${{ needs.latex-seed.outputs.image }}
+        run: |
+          set -euo pipefail
+          image="${ImageOS:-unknown}/${ImageVersion:-unknown}"
+          if [ "$image" != "$SEED_IMAGE" ]; then
+            echo "::notice::This job runs on $image and the seed ran on $SEED_IMAGE, as during a runner image rollout, so the installed packages and the key differ: an exact hit cannot be tested on this run, and the job checks the fallback install instead"
+            echo "same=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          log="$RUNNER_TEMP/apt-proxy.log"
+          python3 .github/fixtures/setup-latex/apt-proxy.py refuse 3128 "$log" > "$RUNNER_TEMP/apt-proxy.out" 2>&1 &
+          for _ in $(seq 50); do
+            curl -s -o /dev/null http://127.0.0.1:3128/ && break
+            sleep 0.2
+          done
+          printf '%s\n' 'Acquire::http::Proxy "http://127.0.0.1:3128";' 'Acquire::https::Proxy "http://127.0.0.1:3128";' \
+            | sudo tee /etc/apt/apt.conf.d/zzz-harness-proxy
+          # Show the stand-in sees apt's requests, so that an empty log after
+          # the action means apt made none.
+          : > "$log"
+          sudo apt-get update -qq > /dev/null 2>&1 || true
+          [ -s "$log" ] || { echo "::error::apt-get update reached no mirror through the stand-in, so it cannot show the action made no request"; exit 1; }
+          echo "apt-get update went through the stand-in: $(wc -l < "$log") requests, all refused"
+          : > "$log"
+          echo "same=true" >> "$GITHUB_OUTPUT"
+
+      - name: setup-latex, warm
+        id: latex
+        uses: ./setup-latex
+        with:
+          packages: texlive-latex-base
+          cache-version: ${{ env.LATEX_CV }}
+
+      - name: Assert an exact hit, no request to any mirror, and a working pdflatex
+        env:
+          SAME: ${{ steps.offline.outputs.same }}
+          CACHE_HIT: ${{ steps.latex.outputs.cache-hit }}
+        run: |
+          set -euo pipefail
+          if [ "$SAME" = true ]; then
+            [ "$CACHE_HIT" = true ] || { echo "::error::cache-hit: expected [true] on the seed's image with the seed's list, got [$CACHE_HIT]: the key is not the same on two runners of one image"; exit 1; }
+            log="$RUNNER_TEMP/apt-proxy.log"
+            if [ -s "$log" ]; then
+              cat "$log"
+              echo "::error::the action made $(wc -l < "$log") requests through apt on an exact hit (above): it ran apt-get update or downloaded"
+              exit 1
+            fi
+          else
+            [ "$CACHE_HIT" = false ] || { echo "::error::cache-hit: expected [false], a fallback restore of the seed's cache, got [$CACHE_HIT]"; exit 1; }
+          fi
+          bash .github/fixtures/setup-latex/check-tex.sh texlive-latex-base
+          if [ "$SAME" = true ]; then
+            echo "✅ an exact hit: installed from the cache with no request to any mirror, and the maintainer scripts ran"
+          else
+            echo "✅ a fallback restore on another runner image installed working TeX"
+          fi
+
+  latex-fallback:
+    name: 'setup-latex: a changed list restores through the fallback, downloads the rest, and prunes'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: latex-seed
+    env:
+      LATEX_CV: harness.${{ github.run_id }}.${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: setup-latex, with a package the seed did not have
+        id: latex
+        uses: ./setup-latex
+        with:
+          packages: |
+            texlive-latex-base
+            dvipng   # not in the seed's list
+          cache-version: ${{ env.LATEX_CV }}
+
+      - name: Assert a fallback restore, both packages working, and only needed archives kept
+        env:
+          CACHE_HIT: ${{ steps.latex.outputs.cache-hit }}
+        run: |
+          set -euo pipefail
+          [ "$CACHE_HIT" = false ] || { echo "::error::cache-hit: expected [false], the seed's cache through the fallback, got [$CACHE_HIT]"; exit 1; }
+          bash .github/fixtures/setup-latex/check-tex.sh texlive-latex-base dvipng
+          dvipng --version | sed -n 1p
+          dvipng_kept=0
+          # shellcheck disable=SC2016 # dpkg's own ${field} format strings, not the shell's
+          for f in /var/cache/quantecon-actions/latex-apt/*.deb; do
+            read -r p v a <<< "$(dpkg-deb --show --showformat='${Package} ${Version} ${Architecture}' "$f")"
+            q=$p
+            [ "$a" = all ] || q="$p:$a"
+            got=$(dpkg-query -W -f='${db:Status-Abbrev}|${Version}' "$q" 2> /dev/null || true)
+            [ "$got" = "ii |$v" ] || { echo "::error::$f was kept for the cache, but $q is [$got], not installed at $v"; exit 1; }
+            [ "$p" != dvipng ] || dvipng_kept=1
+          done
+          [ "$dvipng_kept" -eq 1 ] || { echo "::error::dvipng's archive is not among those kept for the cache"; exit 1; }
+          echo "✅ a fallback restore: dvipng downloaded, both work, and every archive kept is installed at its version"
+
+  latex-timeout:
+    name: 'setup-latex: download-timeout-minutes stops a mirror that never finishes'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    env:
+      # Its own cache-version, so the seed's cache, saved meanwhile, cannot
+      # turn this miss into a hit.
+      LATEX_CV: harness.${{ github.run_id }}.${{ github.run_attempt }}.timeout
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Put a stand-in that trickles one byte every 2 s in front of every mirror
+        id: start
+        run: |
+          set -euo pipefail
+          python3 .github/fixtures/setup-latex/apt-proxy.py trickle 3128 "$RUNNER_TEMP/apt-proxy.log" > "$RUNNER_TEMP/apt-proxy.out" 2>&1 &
+          for _ in $(seq 50); do
+            (exec 3<> /dev/tcp/127.0.0.1/3128) 2> /dev/null && break
+            sleep 0.2
+          done
+          printf '%s\n' 'Acquire::http::Proxy "http://127.0.0.1:3128";' 'Acquire::https::Proxy "http://127.0.0.1:3128";' \
+            | sudo tee /etc/apt/apt.conf.d/zzz-harness-proxy
+          echo "t0=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: setup-latex, with a one-minute limit
+        id: latex
+        continue-on-error: true
+        uses: ./setup-latex
+        with:
+          packages: texlive-latex-base
+          cache-version: ${{ env.LATEX_CV }}
+          download-timeout-minutes: '1'
+
+      - name: Assert it failed at the limit, with apt stopped
+        env:
+          OUTCOME: ${{ steps.latex.outcome }}
+          T0: ${{ steps.start.outputs.t0 }}
+        run: |
+          set -euo pipefail
+          elapsed=$(($(date +%s) - T0))
+          [ "$OUTCOME" = failure ] || { echo "::error::expected the action to fail at its one-minute limit, got [$OUTCOME] after ${elapsed}s"; exit 1; }
+          [ -s "$RUNNER_TEMP/apt-proxy.log" ] || { echo "::error::apt made no request through the stand-in, so the failure was not the slow mirror's"; exit 1; }
+          [ "$elapsed" -ge 55 ] || { echo "::error::it failed after ${elapsed}s, before the one-minute limit, so something else failed it"; exit 1; }
+          [ "$elapsed" -le 150 ] || { echo "::error::it failed after ${elapsed}s, well past the one-minute limit"; exit 1; }
+          if pgrep -a apt-get; then
+            echo "::error::apt-get is still running after the timeout (above)"
+            exit 1
+          fi
+          echo "✅ the download was stopped at the limit after ${elapsed}s, and apt-get is not left running"
+
+  latex-inputs:
+    # Each case differs from a working call in one input, and must fail in
+    # the first step: the cache directory, which the next step creates, must
+    # not exist. Then the runner is marked a container-mode host, as in
+    # inputs-line-break, so that a working call returns in seconds having
+    # installed nothing, and the checks are shown to run there too.
+    name: 'setup-latex: a bad list or input fails before anything is installed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Write the list files
+        run: |
+          mkdir -p harness
+          printf 'texlive-latex-base\n' > harness/list.txt
+          printf '# only a comment\n\n   \n' > harness/comments-only.txt
+
+      - name: 'both packages and requirements-file'
+        id: both
+        continue-on-error: true
+        uses: ./setup-latex
+        with:
+          packages: texlive-latex-base
+          requirements-file: harness/list.txt
+
+      - name: 'neither packages nor requirements-file'
+        id: neither
+        continue-on-error: true
+        uses: ./setup-latex
+
+      - name: 'an option among the packages'
+        id: option
+        continue-on-error: true
+        uses: ./setup-latex
+        with:
+          packages: texlive-latex-base --allow-unauthenticated
+
+      - name: 'a requirements-file that does not exist'
+        id: missing
+        continue-on-error: true
+        uses: ./setup-latex
+        with:
+          requirements-file: harness/no-such-file.txt
+
+      - name: 'a requirements-file of comments only'
+        id: comments
+        continue-on-error: true
+        uses: ./setup-latex
+        with:
+          requirements-file: harness/comments-only.txt
+
+      - name: 'a download-timeout-minutes that is not a number'
+        id: timeout
+        continue-on-error: true
+        uses: ./setup-latex
+        with:
+          packages: texlive-latex-base
+          download-timeout-minutes: 'ten'
+
+      - name: "a cache-version with a '-'"
+        id: version
+        continue-on-error: true
+        uses: ./setup-latex
+        with:
+          packages: texlive-latex-base
+          cache-version: 'v1-2'
+
+      - name: Assert each failed before preparing anything
+        env:
+          RESULTS: |
+            both|${{ steps.both.outcome }}
+            neither|${{ steps.neither.outcome }}
+            option|${{ steps.option.outcome }}
+            missing|${{ steps.missing.outcome }}
+            comments|${{ steps.comments.outcome }}
+            timeout|${{ steps.timeout.outcome }}
+            version|${{ steps.version.outcome }}
+        run: |
+          set -euo pipefail
+          bad=0 n=0
+          while IFS='|' read -r case outcome; do
+            [ -n "$case" ] || continue
+            n=$((n + 1))
+            if [ "$outcome" != failure ]; then
+              echo "::error::$case: expected [failure], got [$outcome]"
+              bad=1
+            else
+              echo "✓ $case: failed"
+            fi
+          done <<< "$RESULTS"
+          [ "$n" -eq 7 ] || { echo "::error::expected 7 cases, read $n"; exit 1; }
+          [ ! -e /var/cache/quantecon-actions ] || { echo "::error::/var/cache/quantecon-actions exists: a case got past the first step"; exit 1; }
+          [ "$bad" -eq 0 ]
+
+      - name: Mark the runner as a container-mode host
+        run: |
+          printf 'quantecon-container\nimage=harness-container-mode-host\n' | sudo tee /etc/quantecon-container
+
+      - name: 'in a container: a working call'
+        id: container-ok
+        uses: ./setup-latex
+        with:
+          requirements-file: harness/list.txt
+
+      - name: 'in a container: neither packages nor requirements-file'
+        id: container-neither
+        continue-on-error: true
+        uses: ./setup-latex
+
+      - name: Assert the container installs nothing, and still checks the inputs
+        env:
+          CACHE_HIT: ${{ steps.container-ok.outputs.cache-hit }}
+          NEITHER: ${{ steps.container-neither.outcome }}
+        run: |
+          set -euo pipefail
+          [ -z "$CACHE_HIT" ] || { echo "::error::cache-hit: expected [] in a container, got [$CACHE_HIT]"; exit 1; }
+          [ ! -e /var/cache/quantecon-actions ] || { echo "::error::/var/cache/quantecon-actions exists: the action prepared a cache in a container"; exit 1; }
+          ! command -v pdflatex || { echo "::error::pdflatex is installed: the action installed packages in a container"; exit 1; }
+          [ "$NEITHER" = failure ] || { echo "::error::a call with no list: expected [failure] in a container too, got [$NEITHER]"; exit 1; }
+          echo "✅ every bad input failed in the first step, and in a container the action checked its inputs and installed nothing"
 
   # ==========================================================================
   # templates/ci.yml pdf-check (#230) — the hand-off, in the real lean image
@@ -4277,6 +4663,11 @@ jobs:
       - build-display-error-guard
       - build-html-copy
       - env-container-update
+      - latex-seed
+      - latex-hit
+      - latex-fallback
+      - latex-timeout
+      - latex-inputs
       - pdf-check-handoff
       - pdf-check-build
       - pdf-check-switch-off
