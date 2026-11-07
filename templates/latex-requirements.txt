@@ -1,13 +1,14 @@
 # Example latex-requirements.txt for QuantEcon lecture builds on a standard
 # (non-container) runner. Copy it to your repository root, where
 # setup-environment's install-latex step reads it by default
-# (latex-requirements-file: 'latex-requirements.txt').
+# (latex-requirements-file: 'latex-requirements.txt'), and setup-latex reads
+# it when named in its requirements-file input.
 #
-# Not needed in the QuantEcon containers: LaTeX is pre-installed there and
-# install-latex is ignored.
+# Not needed in the QuantEcon containers: LaTeX is pre-installed there,
+# install-latex is ignored, and setup-latex installs nothing.
 #
-# Format: one Ubuntu apt package per line; blank lines are skipped. Put
-# comments on lines of their own, with '#' as the first character.
+# Format: Ubuntu apt package names, separated by spaces or newlines; '#'
+# starts a comment anywhere on a line, and blank lines are skipped.
 #
 # These are the TeX packages and build tools both container images install
 # (containers/*/Dockerfile in QuantEcon/actions), without the full image's

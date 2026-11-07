@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`setup-latex`**: a new action that installs TeX Live, or any apt packages, on a standard
+  Ubuntu runner, from a cache of the downloaded `.deb` archives. A plain `apt-get install`
+  downloads TeX Live from the runner's Ubuntu mirror on every run, 1.1 GB for the usual lecture
+  list, and a slow mirror stalls that without ever failing: since September, 12 of 220 such steps
+  in the lecture repositories took over 5 minutes, and the slowest ran for nearly 6 hours. The
+  cache key hashes the packages installed on the host, so an exact hit installs the archives as
+  local files with no `apt-get update` and no download. A fallback restore, as after a new
+  runner image, downloads only what the cache lacks. It caches archives, not installed files, so
+  dpkg runs TeX Live's maintainer scripts as before. `download-timeout-minutes`, 30 by default,
+  stops a download that runs longer, and `'0'` sets no limit. The cache is saved after the
+  install, except on an exact hit or from a tag. The 15 lecture repositories that inline their
+  own `apt-get install texlive-…` step can switch with a one-step change, which the chapter
+  shows. The work is in `scripts/latex-packages.sh`, for `setup-environment`'s `install-latex` to
+  share. (#224)
+
 ## [0.16.0] - 2026-11-07
 
 ### Added
