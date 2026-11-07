@@ -21,16 +21,15 @@ inputs:
   environment:
     description: >-
       Path to the Conda environment file. In standard mode `setup-environment` builds the
-      environment from it, and fails if it does not exist. In either mode its hash is part of the
-      build cache's key, so give `restore-jupyter-cache` the same file.
+      environment from it, and fails if it does not exist. In either mode its hash is part of both
+      caches' keys, so give `restore-jupyter-cache` the same file.
     required: false
     default: 'environment.yml'
   environment-update:
     description: >-
       Container mode: path to a Conda environment file of packages to add to the image's
       environment, which `setup-environment` installs. Empty, the default, adds none. In either
-      mode its hash is part of the build cache's key, so give `restore-jupyter-cache` the same
-      file.
+      mode its hash is part of both caches' keys, so give `restore-jupyter-cache` the same file.
     required: false
     default: ''
   source-dir:
@@ -147,18 +146,26 @@ runs:
     # SETUP
     # ============================================================
     
-    - name: Generate cache key
+    # Both caches' keys start with the environment files' hashes, so neither is
+    # restored across a change to `environment` (restore-jupyter-cache looks
+    # them up with the same prefixes). The execution cache's then hashes the
+    # lectures, as it always has (#270).
+    - name: Generate cache keys
       id: cache-key
       shell: bash
       env:
-        # Include both environment files in hash for cache key stability
-        # hashFiles returns empty string for non-existent files, which is fine
+        # hashFiles returns an empty string for a file that does not exist,
+        # as for an empty environment-update.
         ENV_HASH: ${{ hashFiles(inputs.environment) }}
         UPDATE_HASH: ${{ hashFiles(inputs.environment-update) }}
+        SOURCE_HASH: ${{ hashFiles(format('{0}/**/*.md', inputs.source-dir)) }}
       run: |
         KEY="build-${ENV_HASH}-${UPDATE_HASH}-${GITHUB_RUN_ID}"
+        EXEC_KEY="jupyter-cache-${ENV_HASH}-${UPDATE_HASH}-${SOURCE_HASH}-${GITHUB_RUN_ID}"
         echo "key=$KEY" >> "$GITHUB_OUTPUT"
-        echo "Cache key: $KEY"
+        echo "exec-key=$EXEC_KEY" >> "$GITHUB_OUTPUT"
+        echo "Build cache key: $KEY"
+        echo "Execution cache key: $EXEC_KEY"
 
     # One step validates and parses, token by token. Matching the whole string
     # by substring let 'html,pdf' through as html alone, with no warning, and
@@ -435,7 +442,7 @@ runs:
       uses: actions/cache/save@v6
       with:
         path: _build/.jupyter_cache
-        key: jupyter-cache-${{ hashFiles(format('{0}/**/*.md', inputs.source-dir)) }}-${{ github.run_id }}
+        key: ${{ steps.cache-key.outputs.exec-key }}
 
     # ============================================================
     # UPLOAD ARTIFACT
