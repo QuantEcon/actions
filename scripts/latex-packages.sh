@@ -117,6 +117,12 @@ cmd_prepare() {
       return 1
     fi
   done
+  # apt runs as root. On a self-hosted runner, sudo's own message for a
+  # missing sudo or a password prompt says nothing about why it was needed.
+  if [ "${#SUDO[@]}" -gt 0 ] && ! sudo -n true 2> /dev/null; then
+    annotate error "Installing apt packages needs root: the job runs as $(id -un), and sudo is missing or asks for a password. Run the job as root, or give its user passwordless sudo, as GitHub's hosted runners do"
+    return 1
+  fi
 
   # shellcheck source=/dev/null
   os=$(. /etc/os-release && printf '%s-%s' "${ID:-linux}" "${VERSION_ID:-unknown}")

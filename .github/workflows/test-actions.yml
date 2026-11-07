@@ -2195,6 +2195,25 @@ jobs:
           [ ! -e /var/cache/quantecon-actions ] || { echo "::error::/var/cache/quantecon-actions exists: a case got past the first step"; exit 1; }
           [ "$bad" -eq 0 ]
 
+      # A self-hosted runner whose user has no passwordless sudo: the script's
+      # prepare, run with a sudo on PATH that asks for a password, must fail
+      # and say why, before it makes anything.
+      - name: 'without passwordless sudo, prepare fails and says why'
+        run: |
+          set -uo pipefail
+          stub=$(mktemp -d)
+          printf '#!/bin/sh\necho "sudo: a password is required" >&2\nexit 1\n' > "$stub/sudo"
+          chmod +x "$stub/sudo"
+          printf 'texlive-latex-base\n' > "$RUNNER_TEMP/harness-list"
+          rc=0
+          out=$(PATH="$stub:$PATH" LIST_FILE="$RUNNER_TEMP/harness-list" CACHE_VERSION=v1 GITHUB_OUTPUT="$RUNNER_TEMP/harness-out" \
+            bash scripts/latex-packages.sh prepare 2>&1) || rc=$?
+          while IFS= read -r line; do echo "  | $line"; done <<< "$out"
+          [ "$rc" -ne 0 ] || { echo "::error::prepare succeeded with a sudo that asks for a password"; exit 1; }
+          grep -q 'passwordless sudo' <<< "$out" || { echo "::error::prepare failed without saying that sudo was why"; exit 1; }
+          [ ! -e /var/cache/quantecon-actions ] || { echo "::error::prepare made the cache directory anyway"; exit 1; }
+          echo "✅ without passwordless sudo, prepare failed before making anything, and said why"
+
       - name: Mark the runner as a container-mode host
         run: |
           printf 'quantecon-container\nimage=harness-container-mode-host\n' | sudo tee /etc/quantecon-container

@@ -160,7 +160,7 @@ The standard list above is about 1.1 GB, and 1.4 GB with `latex-cjk-all`. It nor
 
 - Neither or both of `packages` and `requirements-file` set, a missing file, a list that names no package, or an entry that is not an apt package name.
 - A `cache-version` with anything but letters, digits, `.` and `_`, or a `download-timeout-minutes` that is not a whole number.
-- A host without apt.
+- A host without apt, or a job whose user is not root and has no passwordless `sudo`.
 - A failing `apt-get update` or `apt-get install`, or a download that runs past `download-timeout-minutes`.
 
 A failed save does not fail the job: `actions/cache` reports it as a warning.
@@ -178,6 +178,8 @@ A failed save does not fail the job: `actions/cache` reports it as a warning.
 **`The package download did not finish within … minutes, so it was stopped …`.** The mirror the runner was given is slow. Re-run the job. If it keeps happening, raise `download-timeout-minutes`; see [The download timeout](#the-download-timeout).
 
 **`apt-get is not on PATH: installing LaTeX this way needs an apt-based runner …`.** The job runs on macOS, Windows or a Linux without apt. Use an Ubuntu runner, or a QuantEcon container.
+
+**`Installing apt packages needs root: the job runs as …, and sudo is missing or asks for a password …`.** A self-hosted runner whose user cannot `sudo` without a password. Run the job as root, or give the runner's user passwordless `sudo`, as GitHub's hosted runners have.
 
 **A warning that `The cached archives for this key do not cover the package list …`.** The run went on to download as on a miss, so the job is unaffected. If it repeats, change `cache-version` and say so in an issue.
 
