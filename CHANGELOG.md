@@ -113,6 +113,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   caveat on lectures in subdirectories. The harness's `build-html-copy` job copies a second
   `lecture1.ipynb` from a subdirectory, and shows a read-only destination failing each copy.
   (#217)
+- **`build-jupyter-cache`**: the failure issue's commands to reproduce each failed build pass
+  `--path-output .`, as `build-lectures` does for the action's own builds, so a local repro run
+  from the repository's root builds into `_build` there. Without it, `jb build` wrote into the
+  book's own directory, `lectures/_build` by default, away from where the action, its artifact
+  and its caches put the build. No harness job can file a real issue, so a new one, `bjc-alert`,
+  runs the alert step's own script against a stand-in for the GitHub API, and checks the command
+  it gives for each failed builder. (#229)
+- **`build-jupyter-cache`**: a failure is reported on the open issue that carries the first of
+  `issue-labels`, never on a pull request that carries it. The Issues API lists pull requests
+  too, newest first, and the lookup took the newest item of either kind. So a newer labelled pull
+  request got the report as a comment, no issue was filed, and `failure-issue-url` pointed at the
+  pull request. The lookup now takes the newest open issue among the first 100 items, and with
+  only pull requests labelled the action files a new issue. The step that checks the alert was
+  filed now also fails unless the URL ends in `/issues/<number>`, and says so when it is a pull
+  request's. No QuantEcon pull request has ever carried `build-failure`, the default first
+  label, so a caller who keeps the defaults has not met this. `bjc-alert` covers a labelled pull
+  request alone, a newer one beside an older issue, an issue after more than 30 newer pull
+  requests, and nothing labelled. PLAN drops backlog item 15, and TESTING lists the new job.
+  (#238)
 
 ## [0.15.0] - 2026-11-05
 

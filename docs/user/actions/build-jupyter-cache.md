@@ -133,7 +133,7 @@ The action runs `setup-environment` and `build-lectures` at `@v0`, whichever ver
 
 1. **Nothing is saved.** The last good caches stay, and the builds that restore them carry on as before.
 2. **Artifacts.** With `upload-artifact`, the whole `_build` directory as `build-cache-<run id>`. With `upload-failure-reports`, each failed build's reports as `execution-reports-<builder>`.
-3. **The failure issue.** With `create-issue-on-failure`, the action files an issue titled `🔴 Cache Build Failed - <date>`, with the labels in `issue-labels` and the assignees in `issue-assignees`. If an open issue already carries the first of those labels, it adds a comment there instead. Either way the text links to the run, gives each builder's result, and gives a command to reproduce each failed build locally. It names the `_build` artifact only if the run uploaded one. With `upload-failure-reports`, it also names an `execution-reports-<builder>` artifact for each failed builder, although a build that failed before writing any report uploads none. The action then checks that the issue was filed, and fails if it was not.
+3. **The failure issue.** With `create-issue-on-failure`, the action files an issue titled `🔴 Cache Build Failed - <date>`, with the labels in `issue-labels` and the assignees in `issue-assignees`. If an open issue already carries the first of those labels, it adds a comment to the newest such issue instead. A pull request that carries the label is passed over. Either way the text links to the run, gives each builder's result, and gives a command to reproduce each failed build locally: run from the repository's root, it builds into `_build` there, as the action does. It names the `_build` artifact only if the run uploaded one. With `upload-failure-reports`, it also names an `execution-reports-<builder>` artifact for each failed builder, although a build that failed before writing any report uploads none. The action then checks that an issue was filed or commented on, not a pull request, and fails if not.
 4. **The job fails**, with `One or more builds failed - see summary above`.
 
 A run can also stop before any lecture is built: on an invalid `builders`, or when `setup-environment` fails. It then fails with `The cache build aborted during …, before any lecture was built`, and the issue says that no lecture was built, so that the failure is not mistaken for a broken lecture. Every builder then reads `not run`.
@@ -145,6 +145,8 @@ A run can also stop before any lecture is built: on an invalid `builders`, or wh
 **`Could not file the failure issue: the token lacks issue permissions`.** Add `issues: write` to the job's `permissions:`, or set `create-issue-on-failure: 'false'`.
 
 **`create-issue-on-failure is enabled but no failure issue was filed (…)`.** The step that files the issue failed, and the reason is in its log, just above. The run's own failure is in the job summary.
+
+**`create-issue-on-failure is enabled but the failure report went to a pull request, not an issue: …`.** The report was posted on that pull request, and no issue was filed. The action passes over pull requests when it looks for an open failure issue, so this should not happen: please report it as an issue in this repository. The run's own failure is in the job summary.
 
 **`The cache build aborted during setup, before any lecture was built`.** `setup-environment` failed: its log, and the [`setup-environment` troubleshooting](setup-environment.md#troubleshooting), give the cause.
 
