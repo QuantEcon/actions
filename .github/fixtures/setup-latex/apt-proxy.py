@@ -9,11 +9,12 @@ every request apt makes to a mirror, http or https, reaches it first:
   trickle  answers a GET 200 and sends one byte every 2 seconds, without
            end: a mirror that never fails, and never finishes. That is
            under apt's 15-second timeout, so only setup-latex's
-           download-timeout-minutes can stop it. The response has no
-           Content-Length, so it is read until the connection closes,
-           which it never does: apt fails at once a length it knows to be
-           wrong, such as one past its 10 MB limit for an InRelease file. A
-           CONNECT, for an https mirror, is refused 503 as in refuse mode.
+           download-timeout-minutes can stop it. The response says it is
+           5 MB long. In the harness apt failed at once both a length past
+           its 10 MB limit for an InRelease file and a response with no
+           length, so apt-get update ended in milliseconds instead of
+           hanging. A CONNECT, for an https mirror, is refused 503 as in
+           refuse mode.
 
 Usage: python3 apt-proxy.py <refuse|trickle> <port> <logfile>
 """
@@ -45,6 +46,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         self.record()
         self.send_response(200)
+        self.send_header("Content-Length", str(5 * 10**6))
         self.end_headers()
         try:
             while True:
