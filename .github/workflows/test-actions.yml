@@ -4096,6 +4096,182 @@ jobs:
       - name: Run them against a stand-in GitHub API
         run: node .github/fixtures/preview-comment/test.cjs "$RUNNER_TEMP/comment-steps.json"
 
+  preview-cloudflare-url:
+    # #216: preview-cloudflare builds deploy-url on the pages.dev address the
+    # project is served at, which Cloudflare keeps apart from the project's
+    # name, and takes that address from the deployment's URL in wrangler's
+    # record of the deploy. A real deploy needs a Cloudflare token, so this
+    # job reads the deploy step from action.yml and runs its script, as
+    # preview-comment runs the comment steps, with a stub in place of
+    # wrangler. The stub prints what wrangler prints and, as wrangler does,
+    # appends the case's record to WRANGLER_OUTPUT_FILE_PATH when the step
+    # sets it. Each case is one of the step's promises:
+    #   - deploy-url on the record's address, whether or not that is
+    #     <project-name>.pages.dev, with a notice when it is not, and
+    #     deployment-url the record's own URL;
+    #   - the same when wrangler could not confirm that the deploy finished,
+    #     and so named no alias;
+    #   - with no such record, or a URL not of the form
+    #     https://<hash>.<name>.pages.dev, a warning, deploy-url on
+    #     <project-name>.pages.dev, deployment-url empty and the step
+    #     passing, with nothing of the URL in GITHUB_OUTPUT;
+    #   - a failed deploy failing the step, with no outputs.
+    # The release canary runs the real wrangler, against qe-preview-canary.
+    name: 'preview-cloudflare: deploy-url is built on the address the deployment is served at'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # The Node the manual tells hosted-runner callers to set up, which the
+      # step reads the record with, as it runs wrangler.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      # PyYAML, at the pin in scripts/requirements.txt, as the gate installs it.
+      - name: Read the deploy step
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --disable-pip-version-check --quiet -r scripts/requirements.txt
+          "$RUNNER_TEMP/venv/bin/python" - preview-cloudflare/action.yml "$RUNNER_TEMP/deploy" <<'PY'
+          import os, sys, yaml
+          with open(sys.argv[1]) as f:
+              step = {s['id']: s for s in yaml.safe_load(f)['runs']['steps'] if 'id' in s}['deploy']
+          assert step['shell'] == 'bash', step['shell']
+          os.makedirs(sys.argv[2])
+          with open(os.path.join(sys.argv[2], 'run.sh'), 'w') as f:
+              f.write(step['run'])
+          # The names the step reads from env, each of which the cases set.
+          with open(os.path.join(sys.argv[2], 'env'), 'w') as f:
+              f.write(' '.join(sorted(step['env'])) + '\n')
+          PY
+
+      - name: Run it against a stub wrangler
+        run: |
+          set -euo pipefail
+          d="$RUNNER_TEMP/deploy"
+          want="BRANCH_ALIAS BUILD_DIR CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN COMMIT_SHA EVENT_NAME PROJECT_NAME PR_NUMBER REF_NAME WRANGLER"
+          got=$(cat "$d/env")
+          [ "$got" = "$want" ] || { echo "::error::the deploy step reads [$got] from env, and this job sets [$want]"; exit 1; }
+
+          # wrangler pages deploy, as the step runs it: its output, then the
+          # record it appends where WRANGLER_OUTPUT_FILE_PATH says, after the
+          # session line it writes first.
+          cat > "$d/wrangler" <<'STUB'
+          #!/usr/bin/env bash
+          [ "$1 $2" = "pages deploy" ] || { echo "stub: expected pages deploy, got [$*]" >&2; exit 64; }
+          out="${WRANGLER_OUTPUT_FILE_PATH:-}"
+          echo " ⛅️ wrangler (harness stub)"
+          [ -z "$out" ] || echo '{"type":"wrangler-session","version":1,"wrangler_version":"stub","command_line_args":["pages","deploy"],"log_file_path":"","timestamp":"2026-11-07T00:00:00.000Z"}' >> "$out"
+          if [ "$STUB_EXIT" -ne 0 ]; then
+            echo "✘ [ERROR] A request to the Cloudflare API failed (harness stub)."
+            exit "$STUB_EXIT"
+          fi
+          echo "🌎 Deploying..."
+          if [ -n "$STUB_ALIAS" ]; then
+            echo "✨ Deployment complete! Take a peek over at $STUB_URL"
+            echo "✨ Deployment alias URL: $STUB_ALIAS"
+          else
+            echo "✨ Deployment complete! However, we couldn't ascertain the final status of your deployment."
+            echo
+            echo "⚡️ Visit your deployment at $STUB_URL"
+          fi
+          [ -z "$out" ] || [ -z "$STUB_RECORD" ] || printf '%s\n' "$STUB_RECORD" >> "$out"
+          STUB
+          chmod +x "$d/wrangler"
+
+          SHA=0123456789abcdef0123456789abcdef01234567
+          # record KIND URL ALIAS: the lines wrangler writes for a deploy of
+          # harness. detailed is what the pinned wrangler writes, both lines;
+          # basic is the older line alone; v2 is a version the step does not
+          # know; none is a wrangler that writes nothing.
+          record() {
+            local alias="" version=1 common='"pages_project":"harness","deployment_id":"0f0f0f0f-0000-4000-8000-000000000000"'
+            [ -z "$3" ] || alias=",\"alias\":\"$3\""
+            [ "$1" != v2 ] || version=2
+            case "$1" in
+              detailed | v2)
+                printf '{"type":"pages-deploy","version":1,%s,"url":"%s","timestamp":"2026-11-07T00:00:01.000Z"}\n' "$common" "$2"
+                printf '{"type":"pages-deploy-detailed","version":%s,%s,"url":"%s"%s,"environment":"preview","production_branch":"main","deployment_trigger":{"metadata":{"commit_hash":"%s"}},"timestamp":"2026-11-07T00:00:01.000Z"}' \
+                  "$version" "$common" "$2" "$alias" "$SHA" ;;
+              basic) printf '{"type":"pages-deploy","version":1,%s,"url":"%s","timestamp":"2026-11-07T00:00:01.000Z"}' "$common" "$2" ;;
+              none) ;;
+            esac
+          }
+
+          bad=0 n=0
+          # name|event|branch|record|url|alias|wrangler's exit|the step's exit|deploy-url|deployment-url|annotation
+          while IFS='|' read -r name event branch kind url alias code want_code want_deploy want_deployment want_note; do
+            case "$name" in '' | '#'*) continue ;; esac
+            n=$((n + 1))
+            c="$d/cases/$name"
+            mkdir -p "$c"
+            : > "$c/output"
+            set +e
+            env GITHUB_OUTPUT="$c/output" GITHUB_ACTION_PATH="$PWD/preview-cloudflare" \
+              CLOUDFLARE_API_TOKEN=harness-not-a-token CLOUDFLARE_ACCOUNT_ID=00000000000000000000000000000000 \
+              BRANCH_ALIAS="$branch" EVENT_NAME="$event" PR_NUMBER=5 REF_NAME=main COMMIT_SHA="$SHA" \
+              PROJECT_NAME=harness BUILD_DIR=harness-site WRANGLER="$d/wrangler" \
+              STUB_EXIT="$code" STUB_URL="$url" STUB_ALIAS="$alias" STUB_RECORD="$(record "$kind" "$url" "$alias")" \
+              bash --noprofile --norc -eo pipefail "$d/run.sh" > "$c/stdout" 2>&1
+            got_code=$?
+            set -e
+
+            want_output=""
+            [ "$want_code" -ne 0 ] || want_output=$(printf 'deploy-url=%s\ndeployment-url=%s' "$want_deploy" "$want_deployment")
+            got_output=$(cat "$c/output")
+            warnings=$(grep -c "^::warning::wrangler's record of the deploy gives no deployment URL" "$c/stdout" || true)
+            notices=$(grep -c '^::notice::Cloudflare serves the project harness at harness-x7k.pages.dev, not harness.pages.dev' "$c/stdout" || true)
+            case "$want_note" in
+              none) want_w=0 want_n=0 ;;
+              notice) want_w=0 want_n=1 ;;
+              warning) want_w=1 want_n=0 ;;
+            esac
+            problems=()
+            [ "$got_code" = "$want_code" ] || problems+=("the step exited $got_code, expected $want_code")
+            # On one line each, for the annotation. Plain assignments, as in
+            # scripts/workflow-command.sh.
+            shown_got=${got_output//$'\n'/, }
+            shown_want=${want_output//$'\n'/, }
+            [ "$got_output" = "$want_output" ] || problems+=("GITHUB_OUTPUT holds [$shown_got], expected [$shown_want]")
+            [ "$warnings" = "$want_w" ] || problems+=("$warnings fallback warnings, expected $want_w")
+            [ "$notices" = "$want_n" ] || problems+=("$notices address notices, expected $want_n")
+            ! grep -q '^::warning::harness-216' "$c/stdout" || problems+=("a line break in the record started a workflow command")
+            [ "$want_code" -eq 0 ] || grep -q '^::error::wrangler pages deploy failed (exit 1)' "$c/stdout" || problems+=("no error names the failed deploy")
+            if [ "${#problems[@]}" -gt 0 ]; then
+              echo "::group::$name: the step's output"
+              sed 's/^/  | /' "$c/stdout"
+              echo "::endgroup::"
+              for p in "${problems[@]}"; do echo "::error::$name: $p"; done
+              bad=1
+            else
+              echo "✓ $name: exit $got_code, deploy-url [$want_deploy], deployment-url [$want_deployment], annotation: $want_note"
+            fi
+          done <<'CASES'
+          same-name|pull_request|pr-5|detailed|https://abcd1234.harness.pages.dev|https://pr-5.harness.pages.dev|0|0|https://pr-5.harness.pages.dev|https://abcd1234.harness.pages.dev|none
+          other-address|pull_request|pr-5|detailed|https://abcd1234.harness-x7k.pages.dev|https://pr-5.harness-x7k.pages.dev|0|0|https://pr-5.harness-x7k.pages.dev|https://abcd1234.harness-x7k.pages.dev|notice
+          other-address-dispatch|workflow_dispatch|dispatch-harness|detailed|https://abcd1234.harness-x7k.pages.dev|https://dispatch-harness.harness-x7k.pages.dev|0|0|https://dispatch-harness.harness-x7k.pages.dev|https://abcd1234.harness-x7k.pages.dev|notice
+          not-confirmed|pull_request|pr-5|detailed|https://abcd1234.harness-x7k.pages.dev||0|0|https://pr-5.harness-x7k.pages.dev|https://abcd1234.harness-x7k.pages.dev|notice
+          no-record|pull_request|pr-5|none|https://abcd1234.harness-x7k.pages.dev|https://pr-5.harness-x7k.pages.dev|0|0|https://pr-5.harness.pages.dev||warning
+          older-line-only|pull_request|pr-5|basic|https://abcd1234.harness-x7k.pages.dev|https://pr-5.harness-x7k.pages.dev|0|0|https://pr-5.harness.pages.dev||warning
+          unknown-version|pull_request|pr-5|v2|https://abcd1234.harness-x7k.pages.dev|https://pr-5.harness-x7k.pages.dev|0|0|https://pr-5.harness.pages.dev||warning
+          no-hash|pull_request|pr-5|detailed|https://harness-x7k.pages.dev|https://pr-5.harness-x7k.pages.dev|0|0|https://pr-5.harness.pages.dev||warning
+          with-path|pull_request|pr-5|detailed|https://abcd1234.harness-x7k.pages.dev/index.html|https://pr-5.harness-x7k.pages.dev|0|0|https://pr-5.harness.pages.dev||warning
+          not-pages-dev|pull_request|pr-5|detailed|https://abcd1234.harness-x7k.example.com|https://pr-5.harness-x7k.example.com|0|0|https://pr-5.harness.pages.dev||warning
+          line-break|pull_request|pr-5|detailed|https://abcd1234.harness-x7k.pages.dev\n::warning::harness-216 a line break reached the log|https://pr-5.harness-x7k.pages.dev|0|0|https://pr-5.harness.pages.dev||warning
+          deploy-fails|pull_request|pr-5|none|||1|1|||none
+          CASES
+
+          [ "$n" -eq 12 ] || { echo "::error::expected 12 cases, ran $n"; exit 1; }
+          [ "$bad" -eq 0 ]
+          echo "✅ preview-cloudflare builds deploy-url on the address in wrangler's record, and falls back to <project-name>.pages.dev with a warning ($n cases)"
+
   preview-wiring:
     # What preview-decide above cannot see: that each action follows the
     # decision. An invalid dispatch-alias or placeholder input must stop it
@@ -4394,6 +4570,7 @@ jobs:
       - preview-change-detection
       - preview-decide
       - preview-comment
+      - preview-cloudflare-url
       - preview-wiring
     steps:
       # This is the job intended to be the single required status check, so it
