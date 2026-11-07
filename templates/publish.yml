@@ -2,7 +2,7 @@
 #
 # Builds the lecture site and deploys it to GitHub Pages when changes are
 # pushed to main, in two jobs:
-#   build   restores the build cache, so only changed notebooks are
+#   build   restores the execution cache, so only changed notebooks are
 #           re-executed, builds the site, and uploads it as the run's
 #           github-pages artifact.
 #   deploy  deploys that artifact to GitHub Pages.
@@ -18,7 +18,7 @@
 # Copy to your repository as .github/workflows/publish.yml
 #
 # Prerequisites:
-#   1. cache.yml workflow running (provides the build cache)
+#   1. cache.yml workflow running (provides the caches)
 #   2. GitHub Pages enabled: Settings → Pages → Source → "GitHub Actions"
 #   3. (Optional) Custom domain configured in Settings → Pages → Custom domain.
 #      That setting is the only one that applies: this deploy ignores a CNAME
@@ -85,11 +85,15 @@ jobs:
         #   install-latex: 'true'
 
       # ─── Cache Restore ───────────────────────────────────────────
-      # The action removes the restored _build/html, so the build
-      # writes the site afresh and nothing deleted from the source
-      # since the cache build is published again.
-      - name: Restore build cache
+      # Only _build/.jupyter_cache, not the whole _build, so nothing
+      # deleted from the source since the cache build, such as a removed
+      # lecture's notebook or PDF, is published again. Its key hashes
+      # the environment, so a publish never restores outputs that
+      # other packages made.
+      - name: Restore execution cache
         uses: quantecon/actions/restore-jupyter-cache@v0
+        with:
+          cache-type: 'execution'      # _build/.jupyter_cache only
 
       # ─── Build ───────────────────────────────────────────────────
       # Build HTML (and optionally other formats). The cache gives
