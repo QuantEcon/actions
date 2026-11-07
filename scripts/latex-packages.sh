@@ -160,7 +160,9 @@ cmd_prepare() {
 }
 
 timed_out() {
-  local msg="The package download did not finish within ${TIMEOUT_MINUTES} minutes, so it was stopped: the Ubuntu mirror this runner was given is slow (the download usually takes under a minute). Re-run the job"
+  local unit=minutes msg
+  [ "$TIMEOUT_MINUTES" != 1 ] || unit=minute
+  msg="The package download did not finish within $TIMEOUT_MINUTES $unit, so it was stopped: the Ubuntu mirror this runner was given is slow (the download usually takes under a minute). Re-run the job"
   if [ -n "${TIMEOUT_INPUT:-}" ]; then
     msg="$msg, or raise $TIMEOUT_INPUT ('0' sets no limit)"
   fi
@@ -243,10 +245,10 @@ cmd_install() {
     fetch apt-get update
     echo "::endgroup::"
     echo "::group::Download"
-    fetch "${apt_env[@]}" apt-get install -y --download-only -o "Dir::Cache::archives=$ARCHIVES/" "${pkgs[@]}"
+    fetch "${apt_env[@]}" apt-get install -y --download-only "${offline[@]}" "${pkgs[@]}"
     echo "::endgroup::"
     echo "::group::Install"
-    "${SUDO[@]}" "${apt_env[@]}" apt-get install -y -o "Dir::Cache::archives=$ARCHIVES/" "${pkgs[@]}"
+    "${SUDO[@]}" "${apt_env[@]}" apt-get install -y "${offline[@]}" "${pkgs[@]}"
     echo "::endgroup::"
 
     # Keep exactly the archives this install needed: each installed now at
@@ -264,7 +266,7 @@ cmd_install() {
         removed=$((removed + 1))
       fi
     done
-    echo "Archives kept for the cache: $kept; removed as no longer installed: $removed"
+    echo "Archives kept for the cache: $kept; removed as not needed on this host: $removed"
 
     if [ "$hit" = true ]; then
       : # the key already has a cache, and a cache cannot be replaced
