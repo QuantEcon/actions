@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-11-07
+
 ### Added
 - **CI**: the harness gate lints this repository's own workflows with actionlint. Until now it
   linted only the templates and the manual's examples, so `.github/workflows/` had never been
