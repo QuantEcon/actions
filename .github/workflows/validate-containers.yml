@@ -78,6 +78,10 @@ jobs:
       - name: Self-test the newer-run count
         run: scripts/newer-runs.sh --self-test
 
+      # The pruner's selection and guards, against stand-ins for gh and docker.
+      - name: Self-test the pruner
+        run: scripts/prune-images.sh --self-test
+
       - name: Decide which images to build
         id: plan
         env:

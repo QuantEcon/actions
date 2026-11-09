@@ -98,6 +98,8 @@ container:
 
 Each build is also tagged `main-<YYYYMMDD>-<HHMMSS>-<commit>`, which finds an image by date, and the step summary of each [`Build QuantEcon Containers`](https://github.com/QuantEcon/actions/actions/workflows/build-containers.yml) run records the digest it pushed. A digest always names the same image. Rebuilding an image exactly from its recipe is another matter, which [#129](https://github.com/QuantEcon/actions/issues/129) covers.
 
+Old images are deleted. The newest 10 builds, and every build of the last 90 days, are kept. To keep a pinned digest for longer, add it to [`.github/container-pins.txt`](https://github.com/QuantEcon/actions/blob/main/.github/container-pins.txt) in a pull request to this repository, and say which workflows pin it. Otherwise the pin stops working once its build is deleted.
+
 ## On a GPU
 
 The images have no GPU support. GPU builds run on RunsOn self-hosted runners, from a machine image that carries the same marker file and a Conda environment, so `setup-environment` treats it like a container. See [Running on your own host](actions/setup-environment.md#running-on-your-own-host), and [GPU-AMI-SETUP.md](../dev/GPU-AMI-SETUP.md) for how that machine image is built.

@@ -1,0 +1,137 @@
+name: Prune Container Images
+
+# Deletes the container images' old candidate versions from GHCR, through
+# scripts/prune-images.sh (#277): main's builds that are neither among the
+# newest 10 nor under 90 days old, branch dispatches after 14 days, and
+# untagged manifests that nothing kept lists, after 7. It never deletes
+# :latest, a digest in .github/container-pins.txt, a pull request's
+# candidates or a version carrying a tag it does not own, nor any manifest
+# those list. A deletion cannot be undone.
+#
+#   schedule           monthly, live. An image with more than 50 versions to
+#                      delete has none deleted, and the run files the
+#                      tracking issue.
+#   workflow_dispatch  a dry run unless dry-run is false. max-delete raises
+#                      the ceiling, for a run someone is watching.
+#   pull_request       a dry run of the pull request's script and pins, when
+#                      it changes them: its summary lists what a live run
+#                      would delete.
+on:
+  schedule:
+    - cron: '0 3 1 * *'   # 03:00 UTC on the 1st, clear of Monday's lecture matrix
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: 'List what would be deleted, and delete nothing'
+        type: boolean
+        default: true
+      max-delete:
+        description: 'The most versions to delete per image: with more, nothing is deleted'
+        type: string
+        default: '50'
+  pull_request:
+    paths:
+      - scripts/prune-images.sh
+      - .github/container-pins.txt
+      - .github/workflows/prune-images.yml
+
+concurrency:
+  group: prune-images-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  prune:
+    name: Prune
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write   # list and delete package versions
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prune
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ github.repository_owner }}
+          # A dispatch is a dry run unless it says otherwise; the schedule is live.
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry-run || 'false' }}
+          MAX_DELETE: ${{ inputs.max-delete || '50' }}
+        run: |
+          set -euo pipefail
+          IMAGES=$(scripts/detect-changed-images.sh --all | jq -r '.[]' | paste -sd' ' -)
+          export IMAGES
+          echo "images: $IMAGES, dry run: $DRY_RUN, at most $MAX_DELETE deletions per image"
+          scripts/prune-images.sh | tee -a "$GITHUB_STEP_SUMMARY"
+
+  dry-run:
+    name: Dry run
+    # A fork's pull request has no read access to the packages.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read   # list package versions; nothing here can delete
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Self-test the pruner
+        run: scripts/prune-images.sh --self-test
+
+      - name: Dry-run the pruner against GHCR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ github.repository_owner }}
+          DRY_RUN: 'true'
+        run: |
+          set -euo pipefail
+          IMAGES=$(scripts/detect-changed-images.sh --all | jq -r '.[]' | paste -sd' ' -)
+          export IMAGES
+          scripts/prune-images.sh | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # The schedule runs unattended, and a dispatch has someone watching it.
+  notify-failure:
+    name: Report failure
+    needs: [prune]
+    if: ${{ always() && github.event_name == 'schedule' && (needs.prune.result == 'failure' || needs.prune.result == 'cancelled') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      actions: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Open or update the failure tracking issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_LABELS: bug,infrastructure
+        run: ./scripts/create-ci-failure-issue.sh

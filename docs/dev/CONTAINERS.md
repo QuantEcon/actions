@@ -30,7 +30,18 @@ docker build -t ghcr.io/quantecon/quantecon-build:local containers/quantecon-bui
 
 A push run that fails opens or updates a tracking issue, so a `:latest` that stops moving is reported. So does one that is cancelled, as a timeout is, unless a newer run of the workflow has superseded it. `scripts/newer-runs.sh` counts the newer runs on the run's branch, and when it cannot list them the cancellation is reported; `validate-containers.yml` self-tests it on every harness run. A dispatch reports nothing: someone is watching it.
 
-The image that reaches `:latest` is the one the merge built and tested, not the pull request's candidate: the merge rebuilds the changed layers, and their floating packages resolve again. Every `main-*` tag is kept, as a rollback target.
+The image that reaches `:latest` is the one the merge built and tested, not the pull request's candidate: the merge rebuilds the changed layers, and their floating packages resolve again. Its `main-*` tags are kept as a rollback target for as long as the next section says.
+
+## Which versions are kept
+
+Each build of `main` is three package versions in GHCR: an index, tagged, and the image manifest and provenance attestation it lists, untagged. A pull request's candidates are deleted when it closes. Everything else is pruned by [`prune-images.yml`](../../.github/workflows/prune-images.yml), through `scripts/prune-images.sh`, on the 1st of each month (#277):
+
+- **`main`'s builds** are kept while they are among the newest 10, or under 90 days old: these are the rollback targets;
+- **a dispatch from a branch,** tagged `<branch>-<sha7>`, is kept for 14 days;
+- **an untagged version** is kept for 7 days, and for as long as a kept image lists it;
+- **always kept:** `:latest`, each digest in [`.github/container-pins.txt`](../../.github/container-pins.txt), a pull request's `pr-<N>` candidates, any version carrying a tag the pruner does not own (one that does not end in `-<7 hex digits>`), and every manifest these list.
+
+A digest pinned anywhere else must be in the pins file, or it goes with its build. The run deletes nothing when it cannot read a listing or a kept manifest, or when an image has more than 50 versions to delete; a scheduled run that stops files the tracking issue. A dispatch is a dry run unless `dry-run` is false, and `max-delete` raises the ceiling for a run someone is watching. A pull request that changes the script or the pins file dry-runs it against GHCR, and its step summary lists every version a live run would delete. `validate-containers.yml` self-tests the script on every harness run. A deletion cannot be undone.
 
 ## Updating dependencies
 
