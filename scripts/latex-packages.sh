@@ -4,8 +4,8 @@
 # downloaded archives (#224). The Ubuntu mirror a runner is given can trickle
 # at 60 kB/s without ever failing, which stalls a TeX Live download of 1 GB
 # or more for hours; with the archives in the repository's Actions cache, a
-# run that finds them contacts no mirror at all. Used by setup-latex, which
-# runs, in order:
+# run that finds them contacts no mirror at all. Used by setup-latex and by
+# setup-environment's install-latex, which each run, in order:
 #
 #   latex-packages.sh list      parse and check the package list
 #   latex-packages.sh prepare   the cache key, and an empty archive directory
@@ -31,7 +31,8 @@
 #
 #   list     PACKAGES, REQUIREMENTS_FILE: the two ways to give the list, of
 #            which exactly one must be set; PACKAGES_INPUT and
-#            REQUIREMENTS_INPUT name them in messages
+#            REQUIREMENTS_INPUT name them in messages. An action with only
+#            a file input sets PACKAGES_INPUT to ''
 #            -> list-file: the parsed list, one package per line
 #   prepare  LIST_FILE, CACHE_VERSION
 #            -> key, restore-keys, path: actions/cache's inputs
@@ -63,7 +64,7 @@ PKG_RE='^[a-z0-9][a-z0-9+.-]+(:[a-z0-9-]+)?(=[A-Za-z0-9.+~:-]+|/[A-Za-z0-9.+-]+)
 
 cmd_list() {
   local packages=${PACKAGES:-} file=${REQUIREMENTS_FILE:-}
-  local pi=${PACKAGES_INPUT:-packages} ri=${REQUIREMENTS_INPUT:-requirements-file}
+  local pi=${PACKAGES_INPUT-packages} ri=${REQUIREMENTS_INPUT:-requirements-file}
   local dir source tok bad=0
   local -a tokens=()
 
@@ -86,6 +87,9 @@ cmd_list() {
   elif [ -n "${packages//[[:space:]]/}" ]; then
     source=$pi
     mapfile -t tokens < <(printf '%s\n' "$packages" | sed -e 's/#.*//' -e 's/\r$//' | tr -s '[:space:]' '\n' | grep -v '^$' || true)
+  elif [ -z "$pi" ]; then
+    annotate error "$ri is empty: set it to the file that lists the packages"
+    return 1
   else
     annotate error "Set one of $pi and $ri: there is no default list of packages"
     return 1

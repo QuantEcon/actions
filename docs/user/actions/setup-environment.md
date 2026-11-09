@@ -5,7 +5,7 @@
 Sets up the Python environment the rest of a lecture build runs in. It has two modes, and chooses one by itself:
 
 - **Container mode**, when the file `/etc/quantecon-container` exists. The QuantEcon images, `ghcr.io/quantecon/quantecon` and `ghcr.io/quantecon/quantecon-build`, carry it, and so can a machine of your own (see [Running on your own host](#running-on-your-own-host)). The environment is already installed there, so the action adds only the packages you list in `environment-update`, or installs nothing.
-- **Standard mode**, everywhere else, such as a plain `ubuntu-latest` job. The action builds a Conda environment from your `environment.yml`, caches it between runs, and can install LaTeX with apt.
+- **Standard mode**, everywhere else, such as a plain `ubuntu-latest` job. The action builds a Conda environment from your `environment.yml`, caches it between runs, and can install LaTeX with apt, from a cache of the downloaded packages.
 
 The same step works in both modes, so a job can move between a container and a standard runner without changing it.
 
@@ -16,6 +16,7 @@ Use it in any job that builds lectures, after `actions/checkout` and before [`bu
 - **Prefer a container.** The images already hold the scientific stack, Jupyter Book and LaTeX, which standard mode has to install or restore from its cache. The [containers README](https://github.com/QuantEcon/actions/tree/main/containers) compares the two images.
 - **Keep the step in a container job even with nothing to add.** It then installs nothing, but it records the mode in the log, and it is what lets the job run on a standard runner too.
 - **Do not add it before [`build-jupyter-cache`](build-jupyter-cache.md).** That action runs `setup-environment` itself, and asks it for LaTeX when `pdflatex` is among its builders.
+- **LaTeX without this action's Conda environment.** [`setup-latex`](setup-latex.md) installs LaTeX the same way, through the same script and cache, as a step of its own, and takes the list inline or from a file.
 
 ## Requirements
 
@@ -36,9 +37,9 @@ Use it in any job that builds lectures, after `actions/checkout` and before [`bu
 | `environment` | no | `environment.yml` | Standard mode: path to the Conda environment file the environment is built from. The job fails if the file does not exist. Its hash is part of the Conda cache key, so editing the file makes the next run update the environment and save it under a new key. Ignored in container mode: use `environment-update` there. |
 | `environment-update` | no | `''` | Container mode: path to a Conda environment file listing only the packages to add to the image's environment. It is applied with `conda env update`, without `--prune`, to the environment whose `python` is on `PATH`; the file's `name:` is ignored. The job fails if the file does not exist. Empty, the default, uses the image's packages as they are. Ignored in standard mode. |
 | `environment-name` | no | `quantecon` | Standard mode: the name of the Conda environment to create and activate, at `$CONDA/envs/<name>`. It takes precedence over any `name:` in `environment`, and is part of the Conda cache key. In container mode it selects nothing: the update goes to the environment on `PATH`, with a warning if that environment has a different name. |
-| `cache-version` | no | `v1` | Standard mode: part of the Conda cache key and of its `restore-keys` fallback, so a cache is only ever restored within one version. Changing it (say `v1` to `v2`) makes the next run build the environment from scratch. No effect in container mode, which has no Conda cache. |
-| `install-latex` | no | `false` | Standard mode: `'true'` installs the apt packages listed in `latex-requirements-file`, which a `pdflatex` build needs; `'false'`, the default, installs none. Ignored in container mode, which expects LaTeX to be installed already, as it is in the images. |
-| `latex-requirements-file` | no | `latex-requirements.txt` | Standard mode, with `install-latex: 'true'`: path to the list of apt packages to install, separated by spaces or newlines, where `#` starts a comment anywhere on a line. The job fails if the file is missing or names no package. |
+| `cache-version` | no | `v1` | Standard mode: part of the Conda cache key and of the LaTeX package cache's key, and of their `restore-keys` fallbacks, so a cache is only ever restored within one version. Changing it (say `v1` to `v2`) makes the next run build the environment from scratch, and download the LaTeX packages afresh. No effect in container mode, which has neither cache. |
+| `install-latex` | no | `false` | Standard mode: `'true'` installs the apt packages listed in `latex-requirements-file`, which a `pdflatex` build needs, from a cache of their downloaded archives, as `setup-latex` does; `'false'`, the default, installs none. A run that downloads fails if `apt-get update` and the download take more than 30 minutes together. Ignored in container mode, which expects LaTeX to be installed already, as it is in the images. |
+| `latex-requirements-file` | no | `latex-requirements.txt` | Standard mode, with `install-latex: 'true'`: path to the list of apt packages to install, separated by spaces or newlines, where `#` starts a comment anywhere on a line. Each is a package name, optionally followed by `:<arch>`, and by `=<version>` or `/<release>`. The job fails if the file is missing, names no package, or holds anything else. |
 
 <!-- END GENERATED -->
 
@@ -52,6 +53,7 @@ Paths are relative to the workspace, which is the repository root after `actions
 |---|---|
 | `container-mode` | `'true'` when `/etc/quantecon-container` exists, as it does in the QuantEcon images and on hosts that carry the same marker file; `'false'` otherwise. Always set. |
 | `conda-cache-hit` | Standard mode: `'true'` when the Conda environment was restored from an exact cache-key match; `'false'` when only the `restore-keys` fallback matched, after which the environment is updated from `environment`; empty on a cache miss. Always empty in container mode, which has no Conda cache. Test it with `== 'true'`. |
+| `latex-cache-hit` | Standard mode, with `install-latex: 'true'`: `'true'` when the LaTeX packages' archives were restored from an exact cache-key match, and so installed with no `apt-get update` and no download; `'false'` when only the `restore-keys` fallback matched; empty on a cache miss. Always empty without `install-latex: 'true'`, and in container mode. Test it with `== 'true'`. |
 
 <!-- END GENERATED -->
 
@@ -155,15 +157,16 @@ The [workflow templates](https://github.com/QuantEcon/actions/tree/main/template
    The fallback restores the most recent cache whose key starts with it: the latest environment with the same name, `cache-version` and Python version, whatever environment file it was built from. It never crosses a `cache-version`, so changing that builds the environment from scratch.
 4. If nothing was restored, the environment is created with `python-version`.
 5. Unless the key matched exactly, `conda env update -n <environment-name> -f <environment> --prune` brings the environment in line with the file, removing packages it no longer lists.
-6. With `install-latex: 'true'`, the packages in `latex-requirements-file` are installed with `sudo apt-get install`.
-7. At the end of the job, if the job succeeded and the key did not match exactly, the environment is saved under the key. A failed job saves nothing.
+6. With `install-latex: 'true'`, the packages in `latex-requirements-file` are installed as [`setup-latex`](setup-latex.md#behaviour) installs them, through the same script. Their downloaded archives are restored from a cache keyed on `cache-version`, the list and the packages installed on the host. An exact hit installs them with no `apt-get update` and no download. A fallback restore or a miss downloads what the cache lacks, and stops with an error if `apt-get update` and the download take more than 30 minutes together. Either way dpkg runs every maintainer script. The archives are saved straight after the install, except after an exact hit or on a run for a tag, so a failed build still keeps them. `latex-cache-hit` says which it was.
+7. At the end of the job, if the job succeeded and the key did not match exactly, the environment is saved under the key. A failed job saves no environment.
 
 **Your own steps.** setup-miniconda activates the environment for login shells only. A `run:` step that needs it sets `shell: bash -l {0}`; under the default shell, `python` is the runner's own. `build-lectures` already does this. In container mode the environment is on `PATH` from the start.
 
 ### What fails the job
 
 - A missing file: the environment file in standard mode, a non-empty `environment-update` in container mode, or the LaTeX list in standard mode with `install-latex: 'true'`.
-- A LaTeX list that names no package.
+- A LaTeX list that names no package, or holds anything but apt package names.
+- A LaTeX package download, with `apt-get update`, that takes more than 30 minutes.
 - In container mode, a `python` on `PATH` that is not in a Conda environment.
 - A failing `conda env update` or `apt-get install`.
 
@@ -220,12 +223,16 @@ jobs:
 
 **A warning that `environment-name is '…', but the environment on PATH is …`.** Harmless. `environment-name` does nothing in container mode, so drop it from container jobs.
 
-**`install-latex is true but no LaTeX requirements file was found at …`, or `… contains no package names`.** Add the list, starting from the [example](https://github.com/QuantEcon/actions/blob/main/templates/latex-requirements.txt), or point `latex-requirements-file` at yours.
+**`latex-requirements-file is '…', but there is no such file …`, or `… names no package: it holds only comments or blank lines`.** Add the list, starting from the [example](https://github.com/QuantEcon/actions/blob/main/templates/latex-requirements.txt), or point `latex-requirements-file` at yours.
+
+**`…: '…' is not an apt package name …`.** Each entry in the LaTeX list is one package name, optionally with `:<arch>`, and `=<version>` or `/<release>`. Options such as `--no-install-recommends` cannot be passed.
+
+**`The package download did not finish within 30 minutes, so it was stopped …`.** The Ubuntu mirror the runner was given is slow. Re-run the job: once a run has saved the packages, later runs on the same runner image install them without downloading. To choose the limit, install LaTeX with [`setup-latex`](setup-latex.md#the-download-timeout) and its `download-timeout-minutes` instead of `install-latex`.
 
 **`ModuleNotFoundError` in one of your own steps on a standard runner.** The step runs under the default shell, which has not activated the environment. Add `shell: bash -l {0}`.
 
 **`conda-cache-hit` is never `'true'`.** The environment is saved only at the end of a job that succeeds, and the key changes with the environment file, `environment-name`, `python-version` and `cache-version`. The cache's post step, near the end of the job log, says whether it saved.
 
-**The restored environment is broken.** Change `cache-version`, say from `v1` to `v2`. No cache from another version is restored, so the next run builds the environment from scratch. Deleting the repository's `conda-` caches, on the Caches page of its Actions tab, does the same.
+**The restored environment, or the installed LaTeX, is broken.** Change `cache-version`, say from `v1` to `v2`. No cache from another version is restored, so the next run builds the environment from scratch and downloads the LaTeX packages afresh. Deleting the repository's `conda-` or `latex-apt-` caches, on the Caches page of its Actions tab, does the same for one of them.
 
 **`<input> must be a single line`.** Every input is one value, and a line break would end the line that prints it, and the runner reads a next line that starts with `::` as a workflow command. So the action fails in its first step, before it has done anything. A YAML block scalar (`|`), or an expression whose value spans lines, puts one there: write the value on one line. See [Security](../security.md#what-the-actions-themselves-do).
