@@ -382,8 +382,7 @@ jobs:
         run: |
           set -euo pipefail
           # If the runs cannot be listed, report the cancellation.
-          if ! newer=$(gh run list --repo "$REPO" --workflow build-containers.yml --branch "$BRANCH" --limit 20 --json number \
-              | jq --argjson n "$RUN_NUMBER" '[.[] | select(.number > $n)] | length'); then
+          if ! newer=$(scripts/newer-runs.sh build-containers.yml "$BRANCH" "$RUN_NUMBER"); then
             echo "::warning::cannot list this workflow's runs, so the cancellation is reported"
             exit 0
           fi

@@ -73,6 +73,11 @@ jobs:
       - name: Self-test the promotion script
         run: scripts/promote-image.sh --self-test
 
+      # The count behind build-containers.yml's alert on a cancelled run,
+      # against a stand-in for gh.
+      - name: Self-test the newer-run count
+        run: scripts/newer-runs.sh --self-test
+
       - name: Decide which images to build
         id: plan
         env:
