@@ -7,7 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`setup-latex`**: a new action that installs TeX Live, or any apt packages, on a standard
+  Ubuntu runner, from a cache of the downloaded `.deb` archives. A plain `apt-get install`
+  downloads TeX Live from the runner's Ubuntu mirror on every run, 1.1 GB for the usual lecture
+  list, and a slow mirror stalls that without ever failing: since September, 12 of 220 such steps
+  in the lecture repositories took over 5 minutes, and the slowest ran for nearly 6 hours. The
+  cache key hashes the packages installed on the host, so an exact hit installs the archives as
+  local files with no `apt-get update` and no download. A fallback restore, as after a new
+  runner image, downloads only what the cache lacks. It caches archives, not installed files, so
+  dpkg runs TeX Live's maintainer scripts as before. `download-timeout-minutes`, 30 by default,
+  stops a download that runs longer, and `'0'` sets no limit. The cache is saved after the
+  install, except on an exact hit or from a tag. The 15 lecture repositories that inline their
+  own `apt-get install texlive-…` step can switch with a one-step change, which the chapter
+  shows. The work is in `scripts/latex-packages.sh`, for `setup-environment`'s `install-latex` to
+  share. (#224)
+
 ### Changed
+- **`build-jupyter-cache`, `restore-jupyter-cache`**: the execution cache's key hashes the
+  environment files too, as
+  `jupyter-cache-<hash of environment>-<hash of environment-update>-<hash of the lectures>-<run id>`,
+  and a restore falls back to `jupyter-cache-<env>-<update>-`, then `jupyter-cache-<env>-`: the
+  build cache's fallbacks. It used to hash the lectures alone and fall back to any execution
+  cache. `.jupyter_cache` checks each notebook against its code, but not against the packages
+  that executed it, so a pull request that changed the environment file restored outputs made
+  with the old packages, re-executed nothing, and passed. Now it misses and executes every
+  lecture, as it does with the build cache. `environment` and `environment-update` apply to both
+  cache types. A workflow that already restores `cache-type: execution` misses once after `v0`
+  moves, until its next cache build, and one that also sets `fail-on-miss: 'true'` should run
+  its cache workflow once then; no QuantEcon workflow restores `execution`. The harness's new
+  `unit-exec-env-miss` restores the seed's lectures under another environment file, and must
+  miss. (#270)
+- **`templates/ci.yml`, `templates/publish.yml`**: both restore `cache-type: 'execution'`,
+  `_build/.jupyter_cache` alone, instead of the build cache. The build cache brings back what the
+  last cache build made, including what the source has deleted since. Since #160 the restore
+  removes its `html`, but a build that makes the notebooks or the PDF over it can still copy a
+  removed lecture's notebook, or a deleted PDF, into the site. The execution cache leaves nothing
+  of the kind, and is several times smaller, so a restore downloads less, and a pull request's
+  `save-cache` stores less. The rest of `_build` saves no work: a fresh checkout makes Sphinx
+  rewrite every page. A repository that copied an older template sets `cache-type: 'execution'`
+  on the restore step of both. `build-jupyter-cache` still saves the build cache, since
+  `restore-jupyter-cache`'s default restores it; whether it stops, or becomes opt-in, goes with
+  a later change of that default (review M3). (#270)
+- **`setup-environment`**: `install-latex` installs the LaTeX packages as `setup-latex` does,
+  through the same script: from a cache of their downloaded archives, keyed on `cache-version`,
+  the list and the packages installed on the host, with no `apt-get update` and no download on
+  an exact hit. It used to download them from the runner's Ubuntu mirror on every run, which a
+  slow mirror can stall for hours. A new output, `latex-cache-hit`, says which way they came. On
+  a run that downloads, `apt-get update` and the download together are now stopped after 30
+  minutes, with no input to change it: a download that runs past 30 minutes now fails, where it
+  used to finish slowly. No QuantEcon repository passes `install-latex`. `build-jupyter-cache`
+  passes it for a `pdflatex` build in standard mode, and its three QuantEcon callers all run in a
+  container. A repository that needs another limit can install LaTeX with `setup-latex` and its
+  `download-timeout-minutes` instead. `cache-version` now keys the LaTeX cache too, so a bump also
+  downloads the packages afresh. Each entry in the list must be an apt package name, so an option
+  such as `--no-install-recommends`, which apt used to take from the file, now fails the job. The
+  messages for a missing or empty list now name the file. (#224)
 - **Container images**: `:latest` moves only once the image it will point at has passed the
   smoke test. Until now the merge's own build pushed `:latest` directly, and `test-container.yml`
   tested it afterwards. That build is not the image its pull request tested: it rebuilds the
@@ -30,6 +85,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   after a merge, by the smoke test's run time. Every `main-*` tag is kept as a rollback target.
   The `sed` tag lists in `build-containers.yml` are rewritten, so `.github/actionlint.yaml` and
   its ignores for them go. (#142)
+
+### Fixed
+- **`preview-cloudflare`**: `deploy-url`, and with it the comment's preview URL and every lecture
+  link, is built on the address Cloudflare serves the project at, which it keeps apart from the
+  project's name and which can differ from `<project-name>.pages.dev`. The address comes from the
+  deployment's own URL in wrangler's record of the deploy, the `pages-deploy-detailed` line it
+  writes to `WRANGLER_OUTPUT_FILE_PATH`, so no other call is made, and the alias URL is still built,
+  stable across pushes, as #14 made it. `deployment-url` is read from the same record, in place of
+  the first matching URL in wrangler's log. When the record gives no URL of the form
+  `https://<hash>.<name>.pages.dev`, the step warns, `deploy-url` falls back to
+  `<project-name>.pages.dev` as before, and `deployment-url` is empty. When the address is not
+  `<project-name>.pages.dev`, a notice says so: a comment posted with `placeholder: 'true'` still
+  links there, having no deploy to ask, until the deploy's comment replaces it (#216).
 
 ## [0.16.0] - 2026-11-07
 

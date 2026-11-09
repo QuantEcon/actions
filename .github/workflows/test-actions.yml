@@ -15,8 +15,9 @@
 # Consequence: "Re-run failed jobs" can never go green. It increments
 # run_attempt — and therefore the salt, and therefore every cache key — but
 # does NOT re-run the already-green seed jobs, so unit-build-restore,
-# unit-build-restore-save, unit-exec-restore*, env-hit-build and the bjc-*
-# round-trips all end up looking for caches nobody saved under the new salt.
+# unit-build-restore-save, unit-exec-restore*, unit-exec-env-miss,
+# env-hit-build and the bjc-* round-trips all end up looking for caches nobody
+# saved under the new salt.
 # Always use "Re-run all jobs". Do not "fix" this by dropping run_attempt from
 # the salt: run_id alone would let attempt 2 reuse attempt 1's caches and
 # silently invalidate the miss assertions.
@@ -26,11 +27,14 @@
 #   1. actions/cache matches a key only when the cache "version" (a hash of
 #      the `path` input) also matches — so every restore here uses the same
 #      path the corresponding save used.
-#   2. The execution cache keeps a bare `jupyter-cache-` restore-key fallback
-#      (deliberately — .jupyter_cache is content-addressed and revalidates
-#      itself), so a *genuine miss* for the execution type is not constructible
-#      once any execution cache exists in scope. Miss assertions therefore use
-#      the build type, whose fallbacks all include the salted env hash.
+#   2. A *genuine miss* needs every restore-key fallback to include something
+#      salted. Both cache types' fallbacks all include the hash of the
+#      `environment` file, which never crosses an environment change (the
+#      execution cache's since #270; it used to fall back to any
+#      `jupyter-cache-`). So every restore here that uses the generated keys
+#      passes a salted `environment`, whichever type it restores: with none,
+#      the hash of a missing file is empty, and the fallback would match other
+#      runs' caches.
 #
 # Structural limitation (see #100 for the full argument): build-jupyter-cache
 # calls setup-environment and build-lectures at the pinned @v0 ref, and
@@ -495,6 +499,15 @@ jobs:
           build-dir: '.'
           lectures-dir: ${{ env.LINE_BREAK }}
 
+      # setup-latex came after #267. Past its first check it would make its
+      # $RUNNER_TEMP directory, which the assertion below looks for.
+      - name: 'setup-latex: requirements-file'
+        id: setup-latex
+        continue-on-error: true
+        uses: ./setup-latex
+        with:
+          requirements-file: ${{ env.LINE_BREAK }}
+
       - name: Mark the runner as a container-mode host
         run: |
           printf 'quantecon-container\nimage=harness-container-mode-host\n' | sudo tee /etc/quantecon-container
@@ -520,6 +533,7 @@ jobs:
             deploy-cloudflare|${{ steps.deploy-cloudflare.outcome }}|${{ steps.deploy-cloudflare.outputs.visibility }}
             preview-netlify|${{ steps.preview-netlify.outcome }}|${{ steps.preview-netlify.outputs.deploy-url }}
             preview-cloudflare|${{ steps.preview-cloudflare.outcome }}|${{ steps.preview-cloudflare.outputs.deploy-url }}
+            setup-latex|${{ steps.setup-latex.outcome }}|${{ steps.setup-latex.outputs.cache-hit }}
             build-jupyter-cache|${{ steps.build-jupyter-cache.outcome }}|${{ steps.build-jupyter-cache.outputs.jupyter-status }}${{ steps.build-jupyter-cache.outputs.pdflatex-status }}${{ steps.build-jupyter-cache.outputs.html-status }}
         run: |
           set -euo pipefail
@@ -537,7 +551,7 @@ jobs:
               echo "✓ $action: refused the line break in its first step"
             fi
           done <<< "$RESULTS"
-          [ "$n" -eq 8 ] || { echo "::error::expected 8 cases, read $n"; exit 1; }
+          [ "$n" -eq 9 ] || { echo "::error::expected 9 cases, read $n"; exit 1; }
           [ "$bad" -eq 0 ]
           echo "✅ every action refused a line break in an input that is one value, before anything printed it"
 
@@ -693,7 +707,7 @@ jobs:
           echo "✅ fail-on-miss guard fired on a genuine miss"
 
   unit-exec-seed:
-    name: 'restore-jupyter-cache: seed execution cache (save mode)'
+    name: 'restore-jupyter-cache: seed execution cache (save mode, genuine miss)'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: gate
@@ -704,19 +718,32 @@ jobs:
       - name: Create salted fixture
         run: |
           mkdir -p harness/lectures
+          printf 'harness-env-salt: %s-unit-exec\n' "$SALT" > harness/environment.yml
           printf '%% harness salt: %s-unit-exec\n' "$SALT" > harness/lectures/note.md
 
-      # No miss assertion here: the bare `jupyter-cache-` fallback (see header)
-      # can legitimately restore an older cache. The payload STAMP written
-      # below is what downstream jobs assert on, so a wrong restore cannot
-      # produce a false pass.
-      - name: Restore (save mode)
+      # Every fallback includes the salted environment's hash (see header), so
+      # nothing saved before this run can match.
+      - name: Restore (save mode, expecting a miss)
+        id: restore
         uses: ./restore-jupyter-cache
         with:
           cache-type: 'execution'
+          environment: 'harness/environment.yml'
           source-dir: 'harness/lectures'
           save-cache: 'true'
 
+      - name: Assert outputs report a miss
+        env:
+          CACHE_HIT: ${{ steps.restore.outputs.cache-hit }}
+          CACHE_KEY: ${{ steps.restore.outputs.cache-key }}
+        run: |
+          [ "$CACHE_HIT" = "false" ] || { echo "::error::cache-hit: expected [false], got [$CACHE_HIT] with key [$CACHE_KEY]: an execution cache from another environment was restored (#270)"; exit 1; }
+          [ -z "$CACHE_KEY" ] || { echo "::error::cache-key: expected empty, got [$CACHE_KEY]"; exit 1; }
+          echo "✅ miss reported correctly (cache-hit=false, cache-key empty)"
+
+      # Written after the action ran: the save happens in a post: hook at job
+      # end, so this payload is what gets cached under
+      # jupyter-cache-{env hash}--{md hash}-{run_id}.
       - name: Write payload for downstream restore jobs
         run: |
           mkdir -p _build/.jupyter_cache
@@ -735,6 +762,7 @@ jobs:
       - name: Recreate salted fixture, with an html already in place
         run: |
           mkdir -p harness/lectures _build/html
+          printf 'harness-env-salt: %s-unit-exec\n' "$SALT" > harness/environment.yml
           printf '%% harness salt: %s-unit-exec\n' "$SALT" > harness/lectures/note.md
           echo "harness: not the execution cache's to remove" > _build/html/keep.txt
 
@@ -743,6 +771,7 @@ jobs:
         uses: ./restore-jupyter-cache
         with:
           cache-type: 'execution'
+          environment: 'harness/environment.yml'
           source-dir: 'harness/lectures'
           fail-on-miss: 'true'
 
@@ -750,7 +779,7 @@ jobs:
         env:
           CACHE_HIT: ${{ steps.restore.outputs.cache-hit }}
           CACHE_KEY: ${{ steps.restore.outputs.cache-key }}
-          EXPECTED_KEY: jupyter-cache-${{ hashFiles('harness/lectures/**/*.md') }}-${{ github.run_id }}
+          EXPECTED_KEY: jupyter-cache-${{ hashFiles('harness/environment.yml') }}--${{ hashFiles('harness/lectures/**/*.md') }}-${{ github.run_id }}
         run: |
           [ "$CACHE_HIT" = "true" ] || { echo "::error::cache-hit: expected [true], got [$CACHE_HIT]"; exit 1; }
           [ "$CACHE_KEY" = "$EXPECTED_KEY" ] || { echo "::error::cache-key: expected [$EXPECTED_KEY], got [$CACHE_KEY]"; exit 1; }
@@ -769,6 +798,7 @@ jobs:
       - name: Recreate salted fixture
         run: |
           mkdir -p harness/lectures
+          printf 'harness-env-salt: %s-unit-exec\n' "$SALT" > harness/environment.yml
           printf '%% harness salt: %s-unit-exec\n' "$SALT" > harness/lectures/note.md
 
       - name: Restore (save mode)
@@ -776,6 +806,7 @@ jobs:
         uses: ./restore-jupyter-cache
         with:
           cache-type: 'execution'
+          environment: 'harness/environment.yml'
           source-dir: 'harness/lectures'
           save-cache: 'true'
 
@@ -783,12 +814,78 @@ jobs:
         env:
           CACHE_HIT: ${{ steps.restore.outputs.cache-hit }}
           CACHE_KEY: ${{ steps.restore.outputs.cache-key }}
-          EXPECTED_KEY: jupyter-cache-${{ hashFiles('harness/lectures/**/*.md') }}-${{ github.run_id }}
+          EXPECTED_KEY: jupyter-cache-${{ hashFiles('harness/environment.yml') }}--${{ hashFiles('harness/lectures/**/*.md') }}-${{ github.run_id }}
         run: |
           [ "$CACHE_HIT" = "true" ] || { echo "::error::cache-hit: expected [true], got [$CACHE_HIT]"; exit 1; }
           [ "$CACHE_KEY" = "$EXPECTED_KEY" ] || { echo "::error::cache-key: expected [$EXPECTED_KEY], got [$CACHE_KEY]"; exit 1; }
           [ "$(cat _build/.jupyter_cache/STAMP)" = "$SALT-unit-exec" ] || { echo "::error::payload STAMP mismatch: got [$(cat _build/.jupyter_cache/STAMP)]"; exit 1; }
           echo "✅ execution cache save-mode restore verified"
+
+  # #270: the execution cache's key hashes the environment, and never falls
+  # back across a change to it, so a pull request that changes the
+  # environment executes every lecture with the new packages. The lectures
+  # here are the seed's byte for byte, and only the environment differs: the
+  # key used to hash the lectures alone, and restored the seed's own cache.
+  # The second restore is the control, and what nearly every pull request
+  # does: it edits a lecture and leaves the environment alone, and must still
+  # fall back to the cache build's outputs.
+  unit-exec-env-miss:
+    name: 'restore-jupyter-cache: an execution restore misses after an environment change, and falls back after a lecture edit (#270)'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: unit-exec-seed
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: The seed's lectures, with another environment
+        run: |
+          mkdir -p harness/lectures
+          printf 'harness-env-salt: %s-unit-exec-changed\n' "$SALT" > harness/environment.yml
+          printf '%% harness salt: %s-unit-exec\n' "$SALT" > harness/lectures/note.md
+
+      - name: Restore (read-only, expecting a miss)
+        id: changed-env
+        uses: ./restore-jupyter-cache
+        with:
+          cache-type: 'execution'
+          environment: 'harness/environment.yml'
+          source-dir: 'harness/lectures'
+
+      - name: Assert the changed environment missed
+        env:
+          CACHE_HIT: ${{ steps.changed-env.outputs.cache-hit }}
+          CACHE_KEY: ${{ steps.changed-env.outputs.cache-key }}
+        run: |
+          [ "$CACHE_HIT" = "false" ] || { echo "::error::cache-hit: expected [false], got [$CACHE_HIT] with key [$CACHE_KEY]: outputs executed under another environment were restored (#270)"; exit 1; }
+          [ -z "$CACHE_KEY" ] || { echo "::error::cache-key: expected empty, got [$CACHE_KEY]"; exit 1; }
+          [ ! -e _build/.jupyter_cache ] || { echo "::error::_build/.jupyter_cache exists after a miss: something was restored"; exit 1; }
+          echo "✅ an environment change missed the execution cache, so every lecture would execute"
+
+      - name: The seed's environment, with a lecture edited
+        run: |
+          printf 'harness-env-salt: %s-unit-exec\n' "$SALT" > harness/environment.yml
+          printf '%% harness salt: %s-unit-exec, edited\n' "$SALT" > harness/lectures/note.md
+
+      - name: Restore (read-only, expecting the fallback)
+        id: edited-lecture
+        uses: ./restore-jupyter-cache
+        with:
+          cache-type: 'execution'
+          environment: 'harness/environment.yml'
+          source-dir: 'harness/lectures'
+          fail-on-miss: 'true'
+
+      - name: Assert the lecture edit fell back to the seed's cache
+        env:
+          CACHE_KEY: ${{ steps.edited-lecture.outputs.cache-key }}
+          ENV_PREFIX: jupyter-cache-${{ hashFiles('harness/environment.yml') }}--
+        run: |
+          case "$CACHE_KEY" in
+            "$ENV_PREFIX"*) ;;
+            *) echo "::error::cache-key: expected a key that starts [$ENV_PREFIX], got [$CACHE_KEY]"; exit 1 ;;
+          esac
+          [ "$(cat _build/.jupyter_cache/STAMP)" = "$SALT-unit-exec" ] || { echo "::error::payload STAMP mismatch: got [$(cat _build/.jupyter_cache/STAMP)]: the fallback did not restore the seed's cache"; exit 1; }
+          echo "✅ a lecture edit fell back to the seed's execution cache, within the same environment"
 
   # #228: the custom key and path, as a caller writes them. Both used to be
   # expanded into the run: text, where the shell read a '$' in the path as a
@@ -1750,6 +1847,480 @@ jobs:
           echo "✅ the delta landed in $PREFIX, the environment on PATH, and the image's packages survived"
 
   # ==========================================================================
+  # setup-latex — the TeX Live package cache (#224)
+  # ==========================================================================
+  #
+  # One small package with TeX's triggers, texlive-latex-base, so that
+  # check-tex.sh's pdflatex page compiles only if dpkg ran the maintainer
+  # scripts: on a hit as on a miss. LATEX_CV salts cache-version with the
+  # run, so the seed is a true miss and nothing outside the run can satisfy
+  # the hit. It is written without '-', which cache-version refuses.
+  #
+  # The hit is proved offline: a stand-in for apt's proxy refuses and records
+  # every request, and must record none. The key hashes the installed
+  # packages, so the hit job can only expect an exact hit on the seed's
+  # runner image. During a runner image rollout the two can differ, and the
+  # hit job then checks the fallback install instead, with a notice, rather
+  # than fail.
+
+  latex-seed:
+    name: 'setup-latex: a miss downloads, installs, and saves the cache'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    env:
+      LATEX_CV: harness.${{ github.run_id }}.${{ github.run_attempt }}
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Record the runner image, and check it has no TeX
+        id: image
+        run: |
+          echo "image=${ImageOS:-unknown}/${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+          if command -v pdflatex; then
+            echo "::error::pdflatex is on the runner image already, so this job cannot tell whether the action installed it"
+            exit 1
+          fi
+
+      - name: setup-latex, cold
+        id: latex
+        uses: ./setup-latex
+        with:
+          packages: texlive-latex-base
+          cache-version: ${{ env.LATEX_CV }}
+
+      - name: Assert a miss and a working pdflatex
+        env:
+          CACHE_HIT: ${{ steps.latex.outputs.cache-hit }}
+        run: |
+          set -euo pipefail
+          [ -z "$CACHE_HIT" ] || { echo "::error::cache-hit: expected [] on a salted cache-version, got [$CACHE_HIT]"; exit 1; }
+          bash .github/fixtures/setup-latex/check-tex.sh texlive-latex-base
+          n=$(find /var/cache/quantecon-actions/latex-apt -maxdepth 1 -name '*.deb' | wc -l)
+          [ "$n" -gt 0 ] || { echo "::error::no archive left in the cache directory to save"; exit 1; }
+          echo "✅ a miss: downloaded and installed, with $n archives kept for the cache"
+
+      - name: Compute this run's key prefix
+        id: prefix
+        run: |
+          # shellcheck source=/dev/null
+          . /etc/os-release
+          echo "prefix=latex-apt-$ID-$VERSION_ID-$(dpkg --print-architecture)-$LATEX_CV-" >> "$GITHUB_OUTPUT"
+
+      - name: Look the saved cache up
+        id: lookup
+        uses: actions/cache/restore@v6
+        with:
+          path: /var/cache/quantecon-actions/latex-apt/*.deb
+          key: ${{ steps.prefix.outputs.prefix }}harness-none
+          restore-keys: ${{ steps.prefix.outputs.prefix }}
+          lookup-only: true
+
+      - name: Assert the action saved it
+        env:
+          MATCHED: ${{ steps.lookup.outputs.cache-matched-key }}
+        run: |
+          [ -n "$MATCHED" ] || { echo "::error::no cache under this run's prefix: the action did not save after the miss"; exit 1; }
+          echo "✅ saved as $MATCHED"
+
+  latex-hit:
+    name: 'setup-latex: an exact hit installs from the cache and contacts no mirror'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: latex-seed
+    env:
+      LATEX_CV: harness.${{ github.run_id }}.${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: On the seed's image, put a refusing stand-in in front of every mirror
+        id: offline
+        env:
+          SEED_IMAGE: ${{ needs.latex-seed.outputs.image }}
+        run: bash .github/fixtures/setup-latex/refuse-mirrors.sh "$SEED_IMAGE"
+
+      - name: setup-latex, warm
+        id: latex
+        uses: ./setup-latex
+        with:
+          packages: texlive-latex-base
+          cache-version: ${{ env.LATEX_CV }}
+
+      - name: Assert an exact hit, no request to any mirror, and a working pdflatex
+        env:
+          SAME: ${{ steps.offline.outputs.same }}
+          CACHE_HIT: ${{ steps.latex.outputs.cache-hit }}
+        run: |
+          set -euo pipefail
+          if [ "$SAME" = true ]; then
+            [ "$CACHE_HIT" = true ] || { echo "::error::cache-hit: expected [true] on the seed's image with the seed's list, got [$CACHE_HIT]: the key is not the same on two runners of one image"; exit 1; }
+            log="$RUNNER_TEMP/apt-proxy.log"
+            if [ -s "$log" ]; then
+              cat "$log"
+              echo "::error::the action made $(wc -l < "$log") requests through apt on an exact hit (above): it ran apt-get update or downloaded"
+              exit 1
+            fi
+          else
+            [ "$CACHE_HIT" = false ] || { echo "::error::cache-hit: expected [false], a fallback restore of the seed's cache, got [$CACHE_HIT]"; exit 1; }
+          fi
+          bash .github/fixtures/setup-latex/check-tex.sh texlive-latex-base
+          if [ "$SAME" = true ]; then
+            echo "✅ an exact hit: installed from the cache with no request to any mirror, and the maintainer scripts ran"
+          else
+            echo "✅ a fallback restore on another runner image installed working TeX"
+          fi
+
+  latex-fallback:
+    name: 'setup-latex: a changed list restores through the fallback, downloads the rest, and prunes'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: latex-seed
+    env:
+      LATEX_CV: harness.${{ github.run_id }}.${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: setup-latex, with a package the seed did not have
+        id: latex
+        uses: ./setup-latex
+        with:
+          packages: |
+            texlive-latex-base
+            dvipng   # not in the seed's list
+          cache-version: ${{ env.LATEX_CV }}
+
+      - name: Assert a fallback restore, both packages working, and only needed archives kept
+        env:
+          CACHE_HIT: ${{ steps.latex.outputs.cache-hit }}
+        run: |
+          set -euo pipefail
+          [ "$CACHE_HIT" = false ] || { echo "::error::cache-hit: expected [false], the seed's cache through the fallback, got [$CACHE_HIT]"; exit 1; }
+          bash .github/fixtures/setup-latex/check-tex.sh texlive-latex-base dvipng
+          dvipng --version | sed -n 1p
+          dvipng_kept=0
+          # shellcheck disable=SC2016 # dpkg's own ${field} format strings, not the shell's
+          for f in /var/cache/quantecon-actions/latex-apt/*.deb; do
+            read -r p v a <<< "$(dpkg-deb --show --showformat='${Package} ${Version} ${Architecture}' "$f")"
+            q=$p
+            [ "$a" = all ] || q="$p:$a"
+            got=$(dpkg-query -W -f='${db:Status-Abbrev}|${Version}' "$q" 2> /dev/null || true)
+            [ "$got" = "ii |$v" ] || { echo "::error::$f was kept for the cache, but $q is [$got], not installed at $v"; exit 1; }
+            [ "$p" != dvipng ] || dvipng_kept=1
+          done
+          [ "$dvipng_kept" -eq 1 ] || { echo "::error::dvipng's archive is not among those kept for the cache"; exit 1; }
+          echo "✅ a fallback restore: dvipng downloaded, both work, and every archive kept is installed at its version"
+
+  latex-timeout:
+    name: 'setup-latex: download-timeout-minutes stops a mirror that never finishes'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    env:
+      # Its own cache-version, so the seed's cache, saved meanwhile, cannot
+      # turn this miss into a hit.
+      LATEX_CV: harness.${{ github.run_id }}.${{ github.run_attempt }}.timeout
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Put a stand-in that trickles one byte every 2 s in front of every mirror
+        id: start
+        run: |
+          set -euo pipefail
+          python3 .github/fixtures/setup-latex/apt-proxy.py trickle 3128 "$RUNNER_TEMP/apt-proxy.log" > "$RUNNER_TEMP/apt-proxy.out" 2>&1 &
+          up=false
+          for _ in $(seq 50); do
+            (exec 3<> /dev/tcp/127.0.0.1/3128) 2> /dev/null && { up=true; break; }
+            sleep 0.2
+          done
+          [ "$up" = true ] || { cat "$RUNNER_TEMP/apt-proxy.out"; echo "::error::apt-proxy.py was not listening on 127.0.0.1:3128 after 10 s (its output is above)"; exit 1; }
+          printf '%s\n' 'Acquire::http::Proxy "http://127.0.0.1:3128";' 'Acquire::https::Proxy "http://127.0.0.1:3128";' \
+            | sudo tee /etc/apt/apt.conf.d/zzz-harness-proxy
+          echo "t0=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: setup-latex, with a one-minute limit
+        id: latex
+        continue-on-error: true
+        uses: ./setup-latex
+        with:
+          packages: texlive-latex-base
+          cache-version: ${{ env.LATEX_CV }}
+          download-timeout-minutes: '1'
+
+      - name: Assert it failed at the limit, with apt stopped
+        env:
+          OUTCOME: ${{ steps.latex.outcome }}
+          T0: ${{ steps.start.outputs.t0 }}
+        run: |
+          set -euo pipefail
+          elapsed=$(($(date +%s) - T0))
+          [ "$OUTCOME" = failure ] || { echo "::error::expected the action to fail at its one-minute limit, got [$OUTCOME] after ${elapsed}s"; exit 1; }
+          [ -s "$RUNNER_TEMP/apt-proxy.log" ] || { echo "::error::apt made no request through the stand-in, so the failure was not the slow mirror's"; exit 1; }
+          [ "$elapsed" -ge 55 ] || { echo "::error::it failed after ${elapsed}s, before the one-minute limit, so something else failed it"; exit 1; }
+          [ "$elapsed" -le 150 ] || { echo "::error::it failed after ${elapsed}s, well past the one-minute limit"; exit 1; }
+          if pgrep -a apt-get; then
+            echo "::error::apt-get is still running after the timeout (above)"
+            exit 1
+          fi
+          echo "✅ the download was stopped at the limit after ${elapsed}s, and apt-get is not left running"
+
+  latex-inputs:
+    # Each case differs from a working call in one input, and must fail in
+    # the first step: the cache directory, which the next step creates, must
+    # not exist. Then the runner is marked a container-mode host, as in
+    # inputs-line-break, so that a working call returns in seconds having
+    # installed nothing, and the checks are shown to run there too.
+    name: 'setup-latex: a bad list or input fails before anything is installed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Write the list files
+        run: |
+          mkdir -p harness
+          printf 'texlive-latex-base\n' > harness/list.txt
+          printf '# only a comment\n\n   \n' > harness/comments-only.txt
+
+      - name: 'both packages and requirements-file'
+        id: both
+        continue-on-error: true
+        uses: ./setup-latex
+        with:
+          packages: texlive-latex-base
+          requirements-file: harness/list.txt
+
+      - name: 'neither packages nor requirements-file'
+        id: neither
+        continue-on-error: true
+        uses: ./setup-latex
+
+      - name: 'an option among the packages'
+        id: option
+        continue-on-error: true
+        uses: ./setup-latex
+        with:
+          packages: texlive-latex-base --allow-unauthenticated
+
+      - name: 'a requirements-file that does not exist'
+        id: missing
+        continue-on-error: true
+        uses: ./setup-latex
+        with:
+          requirements-file: harness/no-such-file.txt
+
+      - name: 'a requirements-file of comments only'
+        id: comments
+        continue-on-error: true
+        uses: ./setup-latex
+        with:
+          requirements-file: harness/comments-only.txt
+
+      - name: 'a download-timeout-minutes that is not a number'
+        id: timeout
+        continue-on-error: true
+        uses: ./setup-latex
+        with:
+          packages: texlive-latex-base
+          download-timeout-minutes: 'ten'
+
+      - name: "a cache-version with a '-'"
+        id: version
+        continue-on-error: true
+        uses: ./setup-latex
+        with:
+          packages: texlive-latex-base
+          cache-version: 'v1-2'
+
+      - name: Assert each failed before preparing anything
+        env:
+          RESULTS: |
+            both|${{ steps.both.outcome }}
+            neither|${{ steps.neither.outcome }}
+            option|${{ steps.option.outcome }}
+            missing|${{ steps.missing.outcome }}
+            comments|${{ steps.comments.outcome }}
+            timeout|${{ steps.timeout.outcome }}
+            version|${{ steps.version.outcome }}
+        run: |
+          set -euo pipefail
+          bad=0 n=0
+          while IFS='|' read -r case outcome; do
+            [ -n "$case" ] || continue
+            n=$((n + 1))
+            if [ "$outcome" != failure ]; then
+              echo "::error::$case: expected [failure], got [$outcome]"
+              bad=1
+            else
+              echo "✓ $case: failed"
+            fi
+          done <<< "$RESULTS"
+          [ "$n" -eq 7 ] || { echo "::error::expected 7 cases, read $n"; exit 1; }
+          [ ! -e /var/cache/quantecon-actions ] || { echo "::error::/var/cache/quantecon-actions exists: a case got past the first step"; exit 1; }
+          [ "$bad" -eq 0 ]
+
+      # A self-hosted runner whose user has no passwordless sudo: the script's
+      # prepare, run with a sudo on PATH that asks for a password, must fail
+      # and say why, before it makes anything.
+      - name: 'without passwordless sudo, prepare fails and says why'
+        run: |
+          set -uo pipefail
+          stub=$(mktemp -d)
+          printf '#!/bin/sh\necho "sudo: a password is required" >&2\nexit 1\n' > "$stub/sudo"
+          chmod +x "$stub/sudo"
+          printf 'texlive-latex-base\n' > "$RUNNER_TEMP/harness-list"
+          rc=0
+          out=$(PATH="$stub:$PATH" LIST_FILE="$RUNNER_TEMP/harness-list" CACHE_VERSION=v1 GITHUB_OUTPUT="$RUNNER_TEMP/harness-out" \
+            bash scripts/latex-packages.sh prepare 2>&1) || rc=$?
+          while IFS= read -r line; do echo "  | $line"; done <<< "$out"
+          [ "$rc" -ne 0 ] || { echo "::error::prepare succeeded with a sudo that asks for a password"; exit 1; }
+          grep -q 'passwordless sudo' <<< "$out" || { echo "::error::prepare failed without saying that sudo was why"; exit 1; }
+          [ ! -e /var/cache/quantecon-actions ] || { echo "::error::prepare made the cache directory anyway"; exit 1; }
+          echo "✅ without passwordless sudo, prepare failed before making anything, and said why"
+
+      - name: Mark the runner as a container-mode host
+        run: |
+          printf 'quantecon-container\nimage=harness-container-mode-host\n' | sudo tee /etc/quantecon-container
+
+      - name: 'in a container: a working call'
+        id: container-ok
+        uses: ./setup-latex
+        with:
+          requirements-file: harness/list.txt
+
+      - name: 'in a container: neither packages nor requirements-file'
+        id: container-neither
+        continue-on-error: true
+        uses: ./setup-latex
+
+      - name: Assert the container installs nothing, and still checks the inputs
+        env:
+          CACHE_HIT: ${{ steps.container-ok.outputs.cache-hit }}
+          NEITHER: ${{ steps.container-neither.outcome }}
+        run: |
+          set -euo pipefail
+          [ -z "$CACHE_HIT" ] || { echo "::error::cache-hit: expected [] in a container, got [$CACHE_HIT]"; exit 1; }
+          [ ! -e /var/cache/quantecon-actions ] || { echo "::error::/var/cache/quantecon-actions exists: the action prepared a cache in a container"; exit 1; }
+          ! command -v pdflatex || { echo "::error::pdflatex is installed: the action installed packages in a container"; exit 1; }
+          [ "$NEITHER" = failure ] || { echo "::error::a call with no list: expected [failure] in a container too, got [$NEITHER]"; exit 1; }
+          echo "✅ every bad input failed in the first step, and in a container the action checked its inputs and installed nothing"
+
+  # setup-environment's install-latex goes through the same script and cache
+  # (#224). The seed builds a Conda environment and installs LaTeX on a
+  # miss; the hit restores both, and must install LaTeX with no request to
+  # any mirror. The Conda restore and its update use no apt.
+  env-latex-seed:
+    name: 'setup-environment: install-latex on a miss downloads, installs, and saves the LaTeX cache'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    env:
+      LATEX_CV: harness.${{ github.run_id }}.${{ github.run_attempt }}.env
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Record the runner image, check it has no TeX, and write the list
+        id: image
+        run: |
+          echo "image=${ImageOS:-unknown}/${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+          if command -v pdflatex; then
+            echo "::error::pdflatex is on the runner image already, so this job cannot tell whether the action installed it"
+            exit 1
+          fi
+          printf 'texlive-latex-base   # one package, with TeX triggers\n' > harness-latex.txt
+
+      - name: setup-environment with install-latex, cold
+        id: setup
+        uses: ./setup-environment
+        with:
+          environment: .github/fixtures/mini-lectures/environment.yml
+          cache-version: ${{ env.LATEX_CV }}
+          install-latex: 'true'
+          latex-requirements-file: harness-latex.txt
+
+      - name: Assert a LaTeX cache miss and a working pdflatex
+        env:
+          LATEX_CACHE_HIT: ${{ steps.setup.outputs.latex-cache-hit }}
+        run: |
+          set -euo pipefail
+          [ -z "$LATEX_CACHE_HIT" ] || { echo "::error::latex-cache-hit: expected [] on a salted cache-version, got [$LATEX_CACHE_HIT]"; exit 1; }
+          bash .github/fixtures/setup-latex/check-tex.sh texlive-latex-base
+          echo "✅ install-latex on a miss: downloaded, installed, and saved for the next run"
+
+  env-latex-hit:
+    name: 'setup-environment: install-latex on an exact hit installs from the cache and contacts no mirror'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: env-latex-seed
+    env:
+      LATEX_CV: harness.${{ github.run_id }}.${{ github.run_attempt }}.env
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: On the seed's image, put a refusing stand-in in front of every mirror
+        id: offline
+        env:
+          SEED_IMAGE: ${{ needs.env-latex-seed.outputs.image }}
+        run: |
+          printf 'texlive-latex-base   # one package, with TeX triggers\n' > harness-latex.txt
+          bash .github/fixtures/setup-latex/refuse-mirrors.sh "$SEED_IMAGE"
+
+      - name: setup-environment with install-latex, warm
+        id: setup
+        uses: ./setup-environment
+        with:
+          environment: .github/fixtures/mini-lectures/environment.yml
+          cache-version: ${{ env.LATEX_CV }}
+          install-latex: 'true'
+          latex-requirements-file: harness-latex.txt
+
+      - name: Assert an exact hit, no request to any mirror, and a working pdflatex
+        env:
+          SAME: ${{ steps.offline.outputs.same }}
+          LATEX_CACHE_HIT: ${{ steps.setup.outputs.latex-cache-hit }}
+        run: |
+          set -euo pipefail
+          if [ "$SAME" = true ]; then
+            [ "$LATEX_CACHE_HIT" = true ] || { echo "::error::latex-cache-hit: expected [true] on the seed's image with the seed's list, got [$LATEX_CACHE_HIT]"; exit 1; }
+            log="$RUNNER_TEMP/apt-proxy.log"
+            if [ -s "$log" ]; then
+              cat "$log"
+              echo "::error::install-latex made $(wc -l < "$log") requests through apt on an exact hit (above): it ran apt-get update or downloaded"
+              exit 1
+            fi
+          else
+            [ "$LATEX_CACHE_HIT" = false ] || { echo "::error::latex-cache-hit: expected [false], a fallback restore of the seed's cache, got [$LATEX_CACHE_HIT]"; exit 1; }
+          fi
+          bash .github/fixtures/setup-latex/check-tex.sh texlive-latex-base
+          if [ "$SAME" = true ]; then
+            echo "✅ install-latex on an exact hit: installed from the cache with no request to any mirror"
+          else
+            echo "✅ install-latex on another runner image: a fallback restore installed working TeX"
+          fi
+
+  # ==========================================================================
   # templates/ci.yml pdf-check (#230) — the hand-off, in the real lean image
   # ==========================================================================
   #
@@ -2632,18 +3203,22 @@ jobs:
           printf '\n# harness-salt: %s-book\n' "$SALT" >> harness/environment.yml
           printf '%% harness salt: %s-book\n' "$SALT" > harness/lectures/salt.md
 
+      # The key build-jupyter-cache saved under, and the one this restore
+      # looks up, both hash the environment (#270): the same file is given to
+      # both, as cache.yml and ci.yml give it.
       - name: Restore execution cache
         id: restore
         uses: ./restore-jupyter-cache
         with:
           cache-type: 'execution'
+          environment: 'harness/environment.yml'
           source-dir: 'harness/lectures'
           fail-on-miss: 'true'
 
       - name: Assert only the execution cache round-tripped
         env:
           CACHE_KEY: ${{ steps.restore.outputs.cache-key }}
-          EXPECTED_KEY: jupyter-cache-${{ hashFiles('harness/lectures/**/*.md') }}-${{ github.run_id }}
+          EXPECTED_KEY: jupyter-cache-${{ hashFiles('harness/environment.yml') }}--${{ hashFiles('harness/lectures/**/*.md') }}-${{ github.run_id }}
         run: |
           [ "$CACHE_KEY" = "$EXPECTED_KEY" ] || { echo "::error::cache-key: expected [$EXPECTED_KEY], got [$CACHE_KEY]"; exit 1; }
           [ -f _build/.jupyter_cache/global.db ] || { echo "::error::restored execution cache is missing global.db"; exit 1; }
@@ -4005,6 +4580,182 @@ jobs:
       - name: Run them against a stand-in GitHub API
         run: node .github/fixtures/preview-comment/test.cjs "$RUNNER_TEMP/comment-steps.json"
 
+  preview-cloudflare-url:
+    # #216: preview-cloudflare builds deploy-url on the pages.dev address the
+    # project is served at, which Cloudflare keeps apart from the project's
+    # name, and takes that address from the deployment's URL in wrangler's
+    # record of the deploy. A real deploy needs a Cloudflare token, so this
+    # job reads the deploy step from action.yml and runs its script, as
+    # preview-comment runs the comment steps, with a stub in place of
+    # wrangler. The stub prints what wrangler prints and, as wrangler does,
+    # appends the case's record to WRANGLER_OUTPUT_FILE_PATH when the step
+    # sets it. Each case is one of the step's promises:
+    #   - deploy-url on the record's address, whether or not that is
+    #     <project-name>.pages.dev, with a notice when it is not, and
+    #     deployment-url the record's own URL;
+    #   - the same when wrangler could not confirm that the deploy finished,
+    #     and so named no alias;
+    #   - with no such record, or a URL not of the form
+    #     https://<hash>.<name>.pages.dev, a warning, deploy-url on
+    #     <project-name>.pages.dev, deployment-url empty and the step
+    #     passing, with nothing of the URL in GITHUB_OUTPUT;
+    #   - a failed deploy failing the step, with no outputs.
+    # The release canary runs the real wrangler, against qe-preview-canary.
+    name: 'preview-cloudflare: deploy-url is built on the address the deployment is served at'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # The Node the manual tells hosted-runner callers to set up, which the
+      # step reads the record with, as it runs wrangler.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      # PyYAML, at the pin in scripts/requirements.txt, as the gate installs it.
+      - name: Read the deploy step
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --disable-pip-version-check --quiet -r scripts/requirements.txt
+          "$RUNNER_TEMP/venv/bin/python" - preview-cloudflare/action.yml "$RUNNER_TEMP/deploy" <<'PY'
+          import os, sys, yaml
+          with open(sys.argv[1]) as f:
+              step = {s['id']: s for s in yaml.safe_load(f)['runs']['steps'] if 'id' in s}['deploy']
+          assert step['shell'] == 'bash', step['shell']
+          os.makedirs(sys.argv[2])
+          with open(os.path.join(sys.argv[2], 'run.sh'), 'w') as f:
+              f.write(step['run'])
+          # The names the step reads from env, each of which the cases set.
+          with open(os.path.join(sys.argv[2], 'env'), 'w') as f:
+              f.write(' '.join(sorted(step['env'])) + '\n')
+          PY
+
+      - name: Run it against a stub wrangler
+        run: |
+          set -euo pipefail
+          d="$RUNNER_TEMP/deploy"
+          want="BRANCH_ALIAS BUILD_DIR CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN COMMIT_SHA EVENT_NAME PROJECT_NAME PR_NUMBER REF_NAME WRANGLER"
+          got=$(cat "$d/env")
+          [ "$got" = "$want" ] || { echo "::error::the deploy step reads [$got] from env, and this job sets [$want]"; exit 1; }
+
+          # wrangler pages deploy, as the step runs it: its output, then the
+          # record it appends where WRANGLER_OUTPUT_FILE_PATH says, after the
+          # session line it writes first.
+          cat > "$d/wrangler" <<'STUB'
+          #!/usr/bin/env bash
+          [ "$1 $2" = "pages deploy" ] || { echo "stub: expected pages deploy, got [$*]" >&2; exit 64; }
+          out="${WRANGLER_OUTPUT_FILE_PATH:-}"
+          echo " ⛅️ wrangler (harness stub)"
+          [ -z "$out" ] || echo '{"type":"wrangler-session","version":1,"wrangler_version":"stub","command_line_args":["pages","deploy"],"log_file_path":"","timestamp":"2026-11-07T00:00:00.000Z"}' >> "$out"
+          if [ "$STUB_EXIT" -ne 0 ]; then
+            echo "✘ [ERROR] A request to the Cloudflare API failed (harness stub)."
+            exit "$STUB_EXIT"
+          fi
+          echo "🌎 Deploying..."
+          if [ -n "$STUB_ALIAS" ]; then
+            echo "✨ Deployment complete! Take a peek over at $STUB_URL"
+            echo "✨ Deployment alias URL: $STUB_ALIAS"
+          else
+            echo "✨ Deployment complete! However, we couldn't ascertain the final status of your deployment."
+            echo
+            echo "⚡️ Visit your deployment at $STUB_URL"
+          fi
+          [ -z "$out" ] || [ -z "$STUB_RECORD" ] || printf '%s\n' "$STUB_RECORD" >> "$out"
+          STUB
+          chmod +x "$d/wrangler"
+
+          SHA=0123456789abcdef0123456789abcdef01234567
+          # record KIND URL ALIAS: the lines wrangler writes for a deploy of
+          # harness. detailed is what the pinned wrangler writes, both lines;
+          # basic is the older line alone; v2 is a version the step does not
+          # know; none is a wrangler that writes nothing.
+          record() {
+            local alias="" version=1 common='"pages_project":"harness","deployment_id":"0f0f0f0f-0000-4000-8000-000000000000"'
+            [ -z "$3" ] || alias=",\"alias\":\"$3\""
+            [ "$1" != v2 ] || version=2
+            case "$1" in
+              detailed | v2)
+                printf '{"type":"pages-deploy","version":1,%s,"url":"%s","timestamp":"2026-11-07T00:00:01.000Z"}\n' "$common" "$2"
+                printf '{"type":"pages-deploy-detailed","version":%s,%s,"url":"%s"%s,"environment":"preview","production_branch":"main","deployment_trigger":{"metadata":{"commit_hash":"%s"}},"timestamp":"2026-11-07T00:00:01.000Z"}' \
+                  "$version" "$common" "$2" "$alias" "$SHA" ;;
+              basic) printf '{"type":"pages-deploy","version":1,%s,"url":"%s","timestamp":"2026-11-07T00:00:01.000Z"}' "$common" "$2" ;;
+              none) ;;
+            esac
+          }
+
+          bad=0 n=0
+          # name|event|branch|record|url|alias|wrangler's exit|the step's exit|deploy-url|deployment-url|annotation
+          while IFS='|' read -r name event branch kind url alias code want_code want_deploy want_deployment want_note; do
+            case "$name" in '' | '#'*) continue ;; esac
+            n=$((n + 1))
+            c="$d/cases/$name"
+            mkdir -p "$c"
+            : > "$c/output"
+            set +e
+            env GITHUB_OUTPUT="$c/output" GITHUB_ACTION_PATH="$PWD/preview-cloudflare" \
+              CLOUDFLARE_API_TOKEN=harness-not-a-token CLOUDFLARE_ACCOUNT_ID=00000000000000000000000000000000 \
+              BRANCH_ALIAS="$branch" EVENT_NAME="$event" PR_NUMBER=5 REF_NAME=main COMMIT_SHA="$SHA" \
+              PROJECT_NAME=harness BUILD_DIR=harness-site WRANGLER="$d/wrangler" \
+              STUB_EXIT="$code" STUB_URL="$url" STUB_ALIAS="$alias" STUB_RECORD="$(record "$kind" "$url" "$alias")" \
+              bash --noprofile --norc -eo pipefail "$d/run.sh" > "$c/stdout" 2>&1
+            got_code=$?
+            set -e
+
+            want_output=""
+            [ "$want_code" -ne 0 ] || want_output=$(printf 'deploy-url=%s\ndeployment-url=%s' "$want_deploy" "$want_deployment")
+            got_output=$(cat "$c/output")
+            warnings=$(grep -c "^::warning::wrangler's record of the deploy gives no deployment URL" "$c/stdout" || true)
+            notices=$(grep -c '^::notice::Cloudflare serves the project harness at harness-x7k.pages.dev, not harness.pages.dev' "$c/stdout" || true)
+            case "$want_note" in
+              none) want_w=0 want_n=0 ;;
+              notice) want_w=0 want_n=1 ;;
+              warning) want_w=1 want_n=0 ;;
+            esac
+            problems=()
+            [ "$got_code" = "$want_code" ] || problems+=("the step exited $got_code, expected $want_code")
+            # On one line each, for the annotation. Plain assignments, as in
+            # scripts/workflow-command.sh.
+            shown_got=${got_output//$'\n'/, }
+            shown_want=${want_output//$'\n'/, }
+            [ "$got_output" = "$want_output" ] || problems+=("GITHUB_OUTPUT holds [$shown_got], expected [$shown_want]")
+            [ "$warnings" = "$want_w" ] || problems+=("$warnings fallback warnings, expected $want_w")
+            [ "$notices" = "$want_n" ] || problems+=("$notices address notices, expected $want_n")
+            ! grep -q '^::warning::harness-216' "$c/stdout" || problems+=("a line break in the record started a workflow command")
+            [ "$want_code" -eq 0 ] || grep -q '^::error::wrangler pages deploy failed (exit 1)' "$c/stdout" || problems+=("no error names the failed deploy")
+            if [ "${#problems[@]}" -gt 0 ]; then
+              echo "::group::$name: the step's output"
+              sed 's/^/  | /' "$c/stdout"
+              echo "::endgroup::"
+              for p in "${problems[@]}"; do echo "::error::$name: $p"; done
+              bad=1
+            else
+              echo "✓ $name: exit $got_code, deploy-url [$want_deploy], deployment-url [$want_deployment], annotation: $want_note"
+            fi
+          done <<'CASES'
+          same-name|pull_request|pr-5|detailed|https://abcd1234.harness.pages.dev|https://pr-5.harness.pages.dev|0|0|https://pr-5.harness.pages.dev|https://abcd1234.harness.pages.dev|none
+          other-address|pull_request|pr-5|detailed|https://abcd1234.harness-x7k.pages.dev|https://pr-5.harness-x7k.pages.dev|0|0|https://pr-5.harness-x7k.pages.dev|https://abcd1234.harness-x7k.pages.dev|notice
+          other-address-dispatch|workflow_dispatch|dispatch-harness|detailed|https://abcd1234.harness-x7k.pages.dev|https://dispatch-harness.harness-x7k.pages.dev|0|0|https://dispatch-harness.harness-x7k.pages.dev|https://abcd1234.harness-x7k.pages.dev|notice
+          not-confirmed|pull_request|pr-5|detailed|https://abcd1234.harness-x7k.pages.dev||0|0|https://pr-5.harness-x7k.pages.dev|https://abcd1234.harness-x7k.pages.dev|notice
+          no-record|pull_request|pr-5|none|https://abcd1234.harness-x7k.pages.dev|https://pr-5.harness-x7k.pages.dev|0|0|https://pr-5.harness.pages.dev||warning
+          older-line-only|pull_request|pr-5|basic|https://abcd1234.harness-x7k.pages.dev|https://pr-5.harness-x7k.pages.dev|0|0|https://pr-5.harness.pages.dev||warning
+          unknown-version|pull_request|pr-5|v2|https://abcd1234.harness-x7k.pages.dev|https://pr-5.harness-x7k.pages.dev|0|0|https://pr-5.harness.pages.dev||warning
+          no-hash|pull_request|pr-5|detailed|https://harness-x7k.pages.dev|https://pr-5.harness-x7k.pages.dev|0|0|https://pr-5.harness.pages.dev||warning
+          with-path|pull_request|pr-5|detailed|https://abcd1234.harness-x7k.pages.dev/index.html|https://pr-5.harness-x7k.pages.dev|0|0|https://pr-5.harness.pages.dev||warning
+          not-pages-dev|pull_request|pr-5|detailed|https://abcd1234.harness-x7k.example.com|https://pr-5.harness-x7k.example.com|0|0|https://pr-5.harness.pages.dev||warning
+          line-break|pull_request|pr-5|detailed|https://abcd1234.harness-x7k.pages.dev\n::warning::harness-216 a line break reached the log|https://pr-5.harness-x7k.pages.dev|0|0|https://pr-5.harness.pages.dev||warning
+          deploy-fails|pull_request|pr-5|none|||1|1|||none
+          CASES
+
+          [ "$n" -eq 12 ] || { echo "::error::expected 12 cases, ran $n"; exit 1; }
+          [ "$bad" -eq 0 ]
+          echo "✅ preview-cloudflare builds deploy-url on the address in wrangler's record, and falls back to <project-name>.pages.dev with a warning ($n cases)"
+
   preview-wiring:
     # What preview-decide above cannot see: that each action follows the
     # decision. An invalid dispatch-alias or placeholder input must stop it
@@ -4262,6 +5013,7 @@ jobs:
       - unit-exec-seed
       - unit-exec-restore
       - unit-exec-restore-save
+      - unit-exec-env-miss
       - unit-custom-seed
       - unit-custom-restore
       - unit-line-break
@@ -4277,6 +5029,13 @@ jobs:
       - build-display-error-guard
       - build-html-copy
       - env-container-update
+      - latex-seed
+      - latex-hit
+      - latex-fallback
+      - latex-timeout
+      - latex-inputs
+      - env-latex-seed
+      - env-latex-hit
       - pdf-check-handoff
       - pdf-check-build
       - pdf-check-switch-off
@@ -4302,6 +5061,7 @@ jobs:
       - preview-change-detection
       - preview-decide
       - preview-comment
+      - preview-cloudflare-url
       - preview-wiring
     steps:
       # This is the job intended to be the single required status check, so it

@@ -57,6 +57,7 @@ TEMPLATES = ROOT / "templates"
 # A new action goes here too; the script refuses to guess where.
 ORDER = [
     "setup-environment",
+    "setup-latex",
     "build-lectures",
     "build-jupyter-cache",
     "restore-jupyter-cache",

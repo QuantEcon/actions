@@ -1,0 +1,139 @@
+name: 'Setup LaTeX'
+description: >-
+  Installs TeX Live, or any apt packages you list, on a standard Ubuntu runner, and caches the
+  downloaded packages, so that a later run installs them without waiting on an Ubuntu mirror,
+  which can be slow enough to stall a build for hours.
+author: 'QuantEcon'
+
+# Each description below is copied verbatim into the user manual
+# (docs/user/actions/setup-latex.md) by scripts/generate-docs.py, so it is
+# written for a reader. The work is done by scripts/latex-packages.sh, whose
+# header explains the cache.
+inputs:
+  packages:
+    description: >-
+      The apt packages to install, separated by spaces or newlines, where `#` starts a comment
+      anywhere on a line. Each is a package name, optionally followed by `:<arch>`, and by
+      `=<version>` or `/<release>`. Set this or `requirements-file`, not both.
+    required: false
+    default: ''
+  requirements-file:
+    description: >-
+      Path to a file listing the apt packages to install, in the format `packages` takes, such as
+      the `latex-requirements.txt` that `setup-environment` reads. Set this or `packages`, not
+      both. The job fails if the file is missing or names no package.
+    required: false
+    default: ''
+  cache-version:
+    description: >-
+      Part of the cache key and of its `restore-keys` fallback, so a cache is only ever restored
+      within one version. Changing it (say `v1` to `v2`) makes the next run download every
+      package afresh. Letters, digits, `.` and `_` only, so that no version's key starts with
+      another's.
+    required: false
+    default: 'v1'
+  download-timeout-minutes:
+    description: >-
+      On a run that downloads packages, the most minutes `apt-get update` and the download may
+      take together before the job fails. `'0'` sets no limit. The install that follows is never
+      limited, since stopping dpkg part-way would leave the runner's packages broken. Ignored on
+      an exact cache hit, which downloads nothing.
+    required: false
+    default: '30'
+
+outputs:
+  cache-hit:
+    description: >-
+      `'true'` when the downloaded packages were restored from an exact cache-key match, and so
+      installed with no `apt-get update` and no download; `'false'` when only the `restore-keys`
+      fallback matched, after which the packages the cache lacked were downloaded; empty on a
+      cache miss, and in a QuantEcon container, where the action installs nothing. Test it with
+      `== 'true'`.
+    value: ${{ steps.install.outputs.cache-hit }}
+
+runs:
+  using: "composite"
+  steps:
+    # First, before any step prints an input: each one-value input is
+    # checked for a line break (#267), then the list is parsed and checked,
+    # so a bad list fails here, before anything is installed.
+    - name: Check inputs
+      id: check
+      shell: bash
+      env:
+        PACKAGES: ${{ inputs.packages }}
+        REQUIREMENTS_FILE: ${{ inputs.requirements-file }}
+        CACHE_VERSION: ${{ inputs.cache-version }}
+        TIMEOUT_MINUTES: ${{ inputs.download-timeout-minutes }}
+      run: |
+        # shellcheck source=scripts/workflow-command.sh
+        . "$GITHUB_ACTION_PATH/../scripts/workflow-command.sh"
+        # packages is a list, which may span lines; every token in it is
+        # checked against an apt package name before it is printed.
+        single_line "requirements-file=$REQUIREMENTS_FILE" "cache-version=$CACHE_VERSION" \
+          "download-timeout-minutes=$TIMEOUT_MINUTES"
+        bad=0
+        if ! [[ $CACHE_VERSION =~ ^[A-Za-z0-9._]+$ ]]; then
+          annotate error "cache-version must be letters, digits, '.' and '_' only, got '$CACHE_VERSION'"
+          bad=1
+        fi
+        if ! [[ $TIMEOUT_MINUTES =~ ^[0-9]+$ ]]; then
+          annotate error "download-timeout-minutes must be a whole number of minutes, or '0' for no limit, got '$TIMEOUT_MINUTES'"
+          bad=1
+        fi
+        [ "$bad" -eq 0 ]
+        bash "$GITHUB_ACTION_PATH/../scripts/latex-packages.sh" list
+
+    - name: Detect container environment
+      id: detect
+      shell: bash
+      run: |
+        if [ -f /etc/quantecon-container ]; then
+          echo "🐳 In a QuantEcon container, which has TeX Live already: nothing to install"
+          echo "container-mode=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "container-mode=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Prepare the package cache
+      id: prepare
+      if: steps.detect.outputs.container-mode == 'false'
+      shell: bash
+      env:
+        LIST_FILE: ${{ steps.check.outputs.list-file }}
+        CACHE_VERSION: ${{ inputs.cache-version }}
+      run: bash "$GITHUB_ACTION_PATH/../scripts/latex-packages.sh" prepare
+
+    - name: Restore the downloaded packages
+      id: restore
+      if: steps.detect.outputs.container-mode == 'false'
+      uses: actions/cache/restore@v6
+      with:
+        path: ${{ steps.prepare.outputs.path }}
+        key: ${{ steps.prepare.outputs.key }}
+        restore-keys: ${{ steps.prepare.outputs.restore-keys }}
+
+    - name: Install the packages
+      id: install
+      if: steps.detect.outputs.container-mode == 'false'
+      shell: bash
+      env:
+        LIST_FILE: ${{ steps.check.outputs.list-file }}
+        PRIMARY_KEY: ${{ steps.prepare.outputs.key }}
+        MATCHED_KEY: ${{ steps.restore.outputs.cache-matched-key }}
+        TIMEOUT_MINUTES: ${{ inputs.download-timeout-minutes }}
+        TIMEOUT_INPUT: download-timeout-minutes
+      run: bash "$GITHUB_ACTION_PATH/../scripts/latex-packages.sh" install
+
+    # Saved now, not at the end of the job, so that a later step's failure,
+    # a failed build say, still keeps the download for the next run.
+    - name: Save the downloaded packages
+      if: steps.install.outputs.save == 'true'
+      uses: actions/cache/save@v6
+      with:
+        path: ${{ steps.prepare.outputs.path }}
+        key: ${{ steps.prepare.outputs.key }}
+
+branding:
+  icon: 'file-text'
+  color: 'blue'
