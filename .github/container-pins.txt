@@ -6,3 +6,8 @@
 # QuantEcon/test-lecture-theme-sphinx (ci.yml, cache.yml, publish.yml) and
 # QuantEcon/test-lecture-theme-mystmd (ci.yml)
 quantecon-build@sha256:937af97c5b9185877cc53cded64d002df6d6ce5e561467931add2a029baada93
+
+# QuantEcon/test-actions-lecture-intro (gate.yml, the release gate: #135, #136).
+# Bumped by hand, one change at a time, as its gate/README.md says: the new
+# digest is added here first, and the old one removed once the gate has moved.
+quantecon-build@sha256:d7676921274c293603a34d1592a18352737794200e7563071417ef08cb93976d
