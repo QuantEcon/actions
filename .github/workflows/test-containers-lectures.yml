@@ -47,9 +47,11 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     # Per repo: an entry may set its own ceiling, otherwise 120. lecture-python.myst
-    # needs more: on CPU its HTML build alone takes 72-118 min depending on the
-    # runner, so at 120 a leg's result depended on which host it landed on (#141,
-    # #159). Its runtime is discussed in #196; lower this once that lands.
+    # needs more: on CPU its HTML build alone takes 72-163 min depending on the
+    # runner, and its slowest leg took 174 of the 180 it had (#141, #159, #196).
+    # Lower it once its lectures are faster on CPU: see
+    # QuantEcon/lecture-python.myst#1118. The durations job warns when a leg
+    # passes 80% of its ceiling, and reads the ceilings from this matrix.
     timeout-minutes: ${{ matrix.repo.timeout-minutes || 120 }}
 
     permissions:
@@ -79,7 +81,7 @@ jobs:
             owner: QuantEcon
           - repo: lecture-python.myst
             owner: QuantEcon
-            timeout-minutes: 180
+            timeout-minutes: 240
           - repo: lecture-python-advanced.myst
             owner: QuantEcon
           # TODO: Re-enable after https://github.com/QuantEcon/lecture-jax/issues/284 is resolved
@@ -234,6 +236,38 @@ jobs:
           name: build-${{ matrix.container }}-${{ matrix.repo.repo }}
           path: lecture-repo/_build
           retention-days: 3
+
+  # Slow drift shows only as time (#141): a leg that grows towards its ceiling
+  # passes until the day it is cancelled. On every run, dispatches too, this
+  # writes each leg's minutes, its share of its ceiling and its change on its
+  # recent green runs to the run's summary, and warns on a leg over 80% of
+  # its ceiling, or 50% and 15 minutes over its median. A warning fails
+  # nothing and files nothing.
+  durations:
+    name: Leg durations
+    runs-on: ubuntu-latest
+    needs: [test]
+    if: ${{ always() && needs.test.result != 'skipped' }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read   # the run's jobs, and earlier runs'
+    steps:
+      - name: Checkout actions repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Record each leg's duration
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        # The history is main's runs, the script's default, whichever branch this run is on.
+        run: |
+          set -euo pipefail
+          scripts/leg-durations.sh | tee -a "$GITHUB_STEP_SUMMARY"
 
   notify-failure:
     name: Report failure

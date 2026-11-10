@@ -78,6 +78,10 @@ jobs:
       - name: Self-test the newer-run count
         run: scripts/newer-runs.sh --self-test
 
+      # The lecture matrix's duration report, against a stand-in for gh.
+      - name: Self-test the leg durations
+        run: scripts/leg-durations.sh --self-test
+
       - name: Decide which images to build
         id: plan
         env:
