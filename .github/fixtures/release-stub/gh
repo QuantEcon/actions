@@ -40,7 +40,8 @@ case "$sub" in
       | jq -R '{name: .}' | jq -s '{assets: .}'
     ;;
   download)
-    dir= names=()
+    dir=''
+    names=()
     while [ "$#" -gt 0 ]; do
       case "$1" in
         --repo)

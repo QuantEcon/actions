@@ -106,8 +106,12 @@ runs:
               FOUND+=("$name")
             fi
           done < "$DIR/names"
-          if [ "${#FOUND[@]}" -ne 1 ]; then
-            annotate error "the release for tag [$TAG] has ${#FOUND[@]} assets whose names end in $SUFFIX, where one is needed: give asset-name, as publish-gh-pages was given it. It holds: ${HELD:-nothing}"
+          if [ "${#FOUND[@]}" -eq 0 ]; then
+            annotate error "the release for tag [$TAG] holds no site: no asset's name ends in $SUFFIX. It holds: ${HELD:-nothing}"
+            exit 1
+          fi
+          if [ "${#FOUND[@]}" -gt 1 ]; then
+            annotate error "the release for tag [$TAG] holds ${#FOUND[@]} archives whose names end in $SUFFIX: give asset-name, as publish-gh-pages was given it, to choose one. It holds: $HELD"
             exit 1
           fi
           ARCHIVE=${FOUND[0]}
@@ -199,7 +203,7 @@ runs:
             fi
           done < "$DIR/other"
           rm -rf "$SITE"
-          annotate error "$ARCHIVE holds $N entries that are neither files nor directories, such as symlinks, listed above. publish-gh-pages makes no such archive, so it was not restored"
+          annotate error "$ARCHIVE holds something other than files and directories, such as a symlink ($N in all, listed above). publish-gh-pages makes no such archive, so it was not restored"
           exit 1
         fi
         echo "📊 Files restored: $(find "$SITE" -type f | wc -l)"

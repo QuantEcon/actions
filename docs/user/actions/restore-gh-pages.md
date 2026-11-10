@@ -128,9 +128,9 @@ The next publish, from a push to `main`, a dispatch or a tag, replaces the resto
 
 **`could not read the release for tag […] in …`.** `gh`'s own message is just above it. `release not found` means the tag has no release: check the tag on the **Releases** page, case included. `Resource not accessible by integration`, or HTTP 403 or 404, means the job lacks `contents: read`: a `permissions:` block drops every scope it does not list.
 
-**`the release for tag […] has 0 assets whose names end in -<tag>.tar.gz`.** The release holds no site. The run that published it was not triggered by a tag, did not make release assets, or failed before it attached them. Restore an earlier release.
+**`the release for tag […] holds no site: no asset's name ends in -<tag>.tar.gz`.** The run that published it did not make release assets, or failed before it attached them. The error lists what the release holds. Restore an earlier release.
 
-**`the release for tag […] has 2 assets whose names end in -<tag>.tar.gz`**, or more. The release holds two archives for the tag. Give `asset-name` to choose one.
+**`the release for tag […] holds 2 archives whose names end in -<tag>.tar.gz`**, or more. Give `asset-name`, as `publish-gh-pages` was given it, to choose one.
 
 **`the release for tag […] has no asset named …`.** With `asset-name` given, the archive is `<asset-name>-<tag>.tar.gz`, and the release holds no file of that name. The error lists what it holds. Correct `asset-name`, or leave it out.
 
@@ -144,7 +144,7 @@ The next publish, from a push to `main`, a dispatch or a tag, replaces the resto
 
 **`… matched its checksum but could not be extracted`.** `tar`'s message is above it. The archive is damaged in a way its checksum records, so it was made that way: restore another release.
 
-**`… holds N entries that are neither files nor directories, such as symlinks, listed above`.** The action does not restore such an archive, since the Pages upload would follow the links. `publish-gh-pages` makes none from a built site: restore a release that it made.
+**`… holds something other than files and directories, such as a symlink`.** The log lists the first 20. The action does not restore such an archive, since the Pages upload would follow the links. `publish-gh-pages` makes none from a built site: restore a release that it made.
 
 **A warning that the manifest `is not valid JSON`, or `gives no full commit SHA`.** The site was restored, and `commit` is empty. The manifest is only a record of the site, and the restore does not rely on it.
 
