@@ -65,7 +65,7 @@ The lean image pins every package in its `environment.yml` that the `anaconda` m
 |---|---|---|
 | Release gating | #138 (tracking), #135, #136 | P0, items 0a–0d |
 | Testing | #100 | Stage 1, the harness, and the canary are live; the gate is split out to #138 |
-| Container validation | #188 (tracking), #141, #196 | #141 and #196 are `lecture-python.myst`'s build time against the lecture matrix's ceiling |
+| Container validation | #188 (tracking) | Every sub-issue is closed |
 | Preview speed | #92 (tracking), #145, #147–#152, #154–#158 | HTML-only previews are decided (#146): #148 is unblocked, and the PDF check that goes with it is in `templates/ci.yml` |
 | Environment and reproducibility | #30, #129, #18, #2 | #30 is backlog item 12; #129 is parked as a discussion; #18, container-mode caching, is parked until a repository passes `environment-update`; #2 is exploratory |
 | Build strictness | #97, #98 | #97 needs an org-wide decision on HTML strictness; #98 needs a falsifiable repro |

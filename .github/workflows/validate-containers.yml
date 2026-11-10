@@ -78,6 +78,13 @@ jobs:
       - name: Self-test the newer-run count
         run: scripts/newer-runs.sh --self-test
 
+      # The lecture matrix's duration report, against a stand-in for gh. Its
+      # ceilings case needs yq, which the Ubuntu runner images include; in CI
+      # it fails when yq is missing rather than skip, so a runner image that
+      # drops yq fails here, on a pull request, before the matrix needs it.
+      - name: Self-test the leg durations
+        run: scripts/leg-durations.sh --self-test
+
       - name: Decide which images to build
         id: plan
         env:
