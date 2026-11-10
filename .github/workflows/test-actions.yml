@@ -3834,7 +3834,7 @@ jobs:
           echo '<h1>ok</h1>' > "$RUNNER_TEMP/site/index.html"
           echo '{}' > "$RUNNER_TEMP/site/data/latest.json"
 
-          node deploy-cloudflare/write-config.js "$dir/harness.wrangler.jsonc" harness-worker "$RUNNER_TEMP/site"
+          node scripts/write-wrangler-config.js "$dir/harness.wrangler.jsonc" harness-worker "$RUNNER_TEMP/site"
           cat "$dir/harness.wrangler.jsonc"
 
           wrangler="$dir/node_modules/.bin/wrangler"
