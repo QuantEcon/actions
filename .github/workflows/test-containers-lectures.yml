@@ -258,6 +258,11 @@ jobs:
         with:
           persist-credentials: false
 
+      # leg-durations.sh reads the ceilings from this file's matrix with yq,
+      # which GitHub's Ubuntu runner images include, 24.04 and 26.04 alike, so
+      # nothing installs it here. Without it the step fails with an ::error::
+      # that says so, the self-test in validate-containers.yml fails on every
+      # harness run, and the legs' own results are untouched.
       - name: Record each leg's duration
         env:
           GH_TOKEN: ${{ github.token }}

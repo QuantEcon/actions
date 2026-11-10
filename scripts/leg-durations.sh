@@ -61,7 +61,8 @@ ceilings() {
     return
   fi
   [ -f "$WORKFLOW_FILE" ] || { echo "::error::$WORKFLOW_FILE: no such file" >&2; return 1; }
-  command -v yq > /dev/null || { echo "::error::yq is not installed, so the ceilings cannot be read from $WORKFLOW_FILE" >&2; return 1; }
+  command -v yq > /dev/null \
+    || { echo "::error::yq is not installed, so the ceilings cannot be read from $WORKFLOW_FILE. GitHub's Ubuntu runner images include it; install it, or set CEILINGS" >&2; return 1; }
   # The job's timeout-minutes is `${{ matrix.repo.timeout-minutes || <default> }}`.
   yq -o=json '.jobs.test' "$WORKFLOW_FILE" | jq -ce '
     (.["timeout-minutes"] | tostring | capture("\\|\\| *(?<n>[0-9]+)").n | tonumber) as $default
