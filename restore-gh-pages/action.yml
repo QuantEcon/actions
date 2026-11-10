@@ -1,0 +1,239 @@
+name: 'Restore GitHub Pages from a release'
+description: >-
+  Restores a site that publish-gh-pages attached to one of the repository's GitHub releases. It
+  downloads the release's archive and checksum, checks the archive's SHA-256 before anything is
+  extracted, and extracts the site for publish-gh-pages to deploy again.
+author: 'QuantEcon'
+
+# Each description below is copied verbatim into the user manual
+# (docs/user/actions/restore-gh-pages.md) by scripts/generate-docs.py, so it is
+# written for a reader.
+inputs:
+  tag:
+    description: >-
+      The tag of the release to restore, such as `publish-2026-11-10`. Only letters, digits, `.`,
+      `_` and `-`, starting with a letter or a digit: an empty tag, or any other character, fails
+      the job before anything is downloaded.
+    required: true
+  asset-name:
+    description: >-
+      The start of the release's asset names, as `publish-gh-pages` was given it in `asset-name`:
+      the archive is `<asset-name>-<tag>.tar.gz` and its checksum `<asset-name>-checksum.txt`.
+      Empty, the default, takes the release's one asset whose name ends in `-<tag>.tar.gz`, and
+      fails if it has none or several. Only letters, digits, `.`, `_` and `-`: any other character
+      fails the job before anything is downloaded.
+    required: false
+    default: ''
+
+outputs:
+  build-dir:
+    description: >-
+      The directory that holds the restored site, under the runner's temporary directory, to pass
+      to `publish-gh-pages` as `build-dir`. Set only once the archive has matched its checksum and
+      been extracted, and holds nothing but files and directories. Empty otherwise.
+    value: ${{ steps.extract.outputs.build-dir }}
+  commit:
+    description: >-
+      The full SHA of the commit the restored site was built from, as the release's manifest
+      records it. Empty when the release has no manifest, or its manifest gives no such SHA.
+    value: ${{ steps.report.outputs.commit }}
+
+runs:
+  using: "composite"
+  steps:
+    # Before anything is downloaded. Each input is one value, and a line break
+    # in one would end the line that prints it, and could start a workflow
+    # command (#267). The tag and the asset name become file names and gh
+    # arguments, so they are held to the characters publish-gh-pages' names
+    # use, and the tag may not start with a '-', where gh would read it as an
+    # option.
+    - name: Check inputs
+      shell: bash
+      env:
+        TAG: ${{ inputs.tag }}
+        ASSET_NAME: ${{ inputs.asset-name }}
+      run: |
+        # shellcheck source=scripts/workflow-command.sh
+        . "$GITHUB_ACTION_PATH/../scripts/workflow-command.sh"
+        single_line "tag=$TAG" "asset-name=$ASSET_NAME" || exit 1
+        if [ -z "$TAG" ]; then
+          echo "::error::tag is required: the tag of the release to restore"
+          exit 1
+        fi
+        if ! [[ "$TAG" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+          annotate error "tag [$TAG] must be letters, digits, '.', '_' and '-' only, starting with a letter or a digit"
+          exit 1
+        fi
+        if [ -n "$ASSET_NAME" ] && ! [[ "$ASSET_NAME" =~ ^[A-Za-z0-9._-]+$ ]]; then
+          annotate error "asset-name [$ASSET_NAME] must be letters, digits, '.', '_' and '-' only"
+          exit 1
+        fi
+
+    # Each call works in a directory of its own, so a second restore in the
+    # same job leaves the first one's site alone.
+    - name: Download the release's archive and checksum
+      id: download
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        TAG: ${{ inputs.tag }}
+        ASSET_NAME: ${{ inputs.asset-name }}
+      run: |
+        set -euo pipefail
+        # shellcheck source=scripts/workflow-command.sh
+        . "$GITHUB_ACTION_PATH/../scripts/workflow-command.sh"
+
+        DIR=$(mktemp -d "$RUNNER_TEMP/restore-gh-pages.XXXXXX")
+        mkdir "$DIR/assets"
+        if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets > "$DIR/release.json"; then
+          annotate error "could not read the release for tag [$TAG] in $GITHUB_REPOSITORY (gh's message is above). Check that the tag has a release, and that the job has contents: read"
+          exit 1
+        fi
+        jq -r '.assets[].name' "$DIR/release.json" > "$DIR/names"
+        HELD=$(paste -sd' ' "$DIR/names")
+
+        SUFFIX="-$TAG.tar.gz"
+        if [ -n "$ASSET_NAME" ]; then
+          ARCHIVE="$ASSET_NAME$SUFFIX"
+          if ! grep -qxF -- "$ARCHIVE" "$DIR/names"; then
+            annotate error "the release for tag [$TAG] has no asset named $ARCHIVE. It holds: ${HELD:-nothing}"
+            exit 1
+          fi
+        else
+          FOUND=()
+          while IFS= read -r name; do
+            if [[ "$name" == *"$SUFFIX" ]] && [ "$name" != "$SUFFIX" ]; then
+              FOUND+=("$name")
+            fi
+          done < "$DIR/names"
+          if [ "${#FOUND[@]}" -ne 1 ]; then
+            annotate error "the release for tag [$TAG] has ${#FOUND[@]} assets whose names end in $SUFFIX, where one is needed: give asset-name, as publish-gh-pages was given it. It holds: ${HELD:-nothing}"
+            exit 1
+          fi
+          ARCHIVE=${FOUND[0]}
+          ASSET_NAME=${ARCHIVE%"$SUFFIX"}
+          # The checksum's and manifest's names start with it, and are passed
+          # to gh as patterns, which must match only themselves.
+          if ! [[ "$ASSET_NAME" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            annotate error "the archive $ARCHIVE starts with [$ASSET_NAME], which is not letters, digits, '.', '_' and '-' only. publish-gh-pages makes no such name"
+            exit 1
+          fi
+        fi
+        CHECKSUM="$ASSET_NAME-checksum.txt"
+        MANIFEST="$ASSET_NAME-manifest.json"
+        if ! grep -qxF -- "$CHECKSUM" "$DIR/names"; then
+          annotate error "the release for tag [$TAG] has the archive $ARCHIVE but no checksum, $CHECKSUM, so the archive cannot be checked. It holds: $HELD"
+          exit 1
+        fi
+        PATTERNS=("--pattern=$ARCHIVE" "--pattern=$CHECKSUM")
+        if grep -qxF -- "$MANIFEST" "$DIR/names"; then
+          PATTERNS+=("--pattern=$MANIFEST")
+        else
+          MANIFEST=
+        fi
+
+        echo "Downloading $ARCHIVE from the release for $TAG"
+        gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir "$DIR/assets" "${PATTERNS[@]}"
+        {
+          echo "dir=$DIR"
+          echo "archive=$ARCHIVE"
+          echo "checksum=$CHECKSUM"
+          echo "manifest=$MANIFEST"
+        } >> "$GITHUB_OUTPUT"
+
+    # Before anything is extracted. The checksum must be the one line
+    # publish-gh-pages writes, naming this archive alone, so that
+    # sha256sum --check checks this file and nothing else.
+    - name: Check the archive against its checksum
+      shell: bash
+      env:
+        DIR: ${{ steps.download.outputs.dir }}
+        ARCHIVE: ${{ steps.download.outputs.archive }}
+        CHECKSUM: ${{ steps.download.outputs.checksum }}
+      run: |
+        set -euo pipefail
+        # shellcheck source=scripts/workflow-command.sh
+        . "$GITHUB_ACTION_PATH/../scripts/workflow-command.sh"
+        cd "$DIR/assets"
+        mapfile -t LINES < "$CHECKSUM"
+        if [ "${#LINES[@]}" -ne 1 ] || ! [[ "${LINES[0]}" =~ ^[0-9a-f]{64}\ \ (.+)$ ]] \
+            || [ "${BASH_REMATCH[1]}" != "$ARCHIVE" ]; then
+          annotate error "$CHECKSUM is not one line of a SHA-256, two spaces and $ARCHIVE, as publish-gh-pages writes it, so the archive was not extracted"
+          exit 1
+        fi
+        if ! sha256sum --check --strict "$CHECKSUM"; then
+          annotate error "$ARCHIVE does not match its SHA-256 in $CHECKSUM, so it was not extracted. The download may be incomplete: run the job again. If it fails again, restore another release"
+          exit 1
+        fi
+
+    # GNU tar already keeps an absolute path inside the site, and fails on a
+    # path that holds '..'. The check after it refuses symlinks and the like,
+    # which upload-pages-artifact would follow, and publish what they point at
+    # on the runner. The names it lists are printed escaped, two spaces in, so
+    # that none can start a workflow command.
+    - name: Extract the site
+      id: extract
+      shell: bash
+      env:
+        DIR: ${{ steps.download.outputs.dir }}
+        ARCHIVE: ${{ steps.download.outputs.archive }}
+      run: |
+        set -euo pipefail
+        # shellcheck source=scripts/workflow-command.sh
+        . "$GITHUB_ACTION_PATH/../scripts/workflow-command.sh"
+        SITE="$DIR/site"
+        mkdir "$SITE"
+        if ! tar -xzf "$DIR/assets/$ARCHIVE" -C "$SITE" --no-same-owner; then
+          rm -rf "$SITE"
+          annotate error "$ARCHIVE matched its checksum but could not be extracted (tar's message is above)"
+          exit 1
+        fi
+        find "$SITE" ! -type f ! -type d -print0 > "$DIR/other"
+        if [ -s "$DIR/other" ]; then
+          echo "Neither files nor directories:"
+          N=0
+          while IFS= read -r -d '' path; do
+            N=$((N + 1))
+            if [ "$N" -le 20 ]; then
+              printf '  %q\n' "${path#"$SITE"/}"
+            fi
+          done < "$DIR/other"
+          rm -rf "$SITE"
+          annotate error "$ARCHIVE holds $N entries that are neither files nor directories, such as symlinks, listed above. publish-gh-pages makes no such archive, so it was not restored"
+          exit 1
+        fi
+        echo "📊 Files restored: $(find "$SITE" -type f | wc -l)"
+        echo "💾 Total size: $(du -sh "$SITE" | cut -f1)"
+        echo "build-dir=$SITE" >> "$GITHUB_OUTPUT"
+
+    # The manifest is the release's own account of the site. It is optional,
+    # and a bad one only warns: the checksum is what the restore relies on.
+    # It is printed through jq, never as it is, so that no line of it can
+    # start a workflow command.
+    - name: Report
+      id: report
+      shell: bash
+      env:
+        TAG: ${{ inputs.tag }}
+        DIR: ${{ steps.download.outputs.dir }}
+        ARCHIVE: ${{ steps.download.outputs.archive }}
+        MANIFEST: ${{ steps.download.outputs.manifest }}
+        SITE: ${{ steps.extract.outputs.build-dir }}
+      run: |
+        set -euo pipefail
+        # shellcheck source=scripts/workflow-command.sh
+        . "$GITHUB_ACTION_PATH/../scripts/workflow-command.sh"
+        COMMIT=
+        if [ -z "$MANIFEST" ]; then
+          echo "The release has no manifest."
+        elif ! jq . "$DIR/assets/$MANIFEST"; then
+          annotate warning "$MANIFEST is not valid JSON, so the restored site's commit is not known"
+        else
+          COMMIT=$(jq -r 'if (.commit | type) == "string" then .commit else "" end' "$DIR/assets/$MANIFEST")
+          if ! [[ "$COMMIT" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]]; then
+            annotate warning "$MANIFEST gives no full commit SHA, so the restored site's commit is not known"
+            COMMIT=
+          fi
+        fi
+        echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
+        annotate notice "Restored $ARCHIVE${COMMIT:+, built from $COMMIT,} into $SITE. The next publish replaces it."

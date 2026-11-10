@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`restore-gh-pages`** and **`templates/restore.yml`**: puts a GitHub Pages site back as one of
+  the repository's releases holds it, without a build, from the archive, checksum and manifest
+  that `publish-gh-pages` attaches on a tag. The action downloads the release's archive and
+  checksum with `gh`, checks the archive's SHA-256 before anything is extracted, refuses an
+  archive that holds anything but files and directories, and gives the extracted site as
+  `build-dir`, with the commit it was built from as `commit`. It reads only the repository's own
+  releases, needs only `contents: read`, and finds the archive by its tag unless `asset-name` is
+  given. The template, run by hand on the default branch with the release's tag, hands the site
+  to `publish-gh-pages` to deploy, in `publish.yml`'s `pages` concurrency group. The next publish
+  replaces the restored site. (#27)
+
 ## [0.18.0] - 2026-11-10
 
 ### Added

@@ -65,6 +65,7 @@ ORDER = [
     "preview-cloudflare",
     "preview-workers",
     "publish-gh-pages",
+    "restore-gh-pages",
     "deploy-cloudflare",
 ]
 

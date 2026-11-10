@@ -4,7 +4,7 @@ Current priorities for `QuantEcon/actions`, the repositories that use the action
 
 ## Current state
 
-- **Actions (10):** `setup-environment`, `setup-latex`, `build-lectures`, `build-jupyter-cache`, `restore-jupyter-cache`, `preview-netlify`, `preview-cloudflare`, `preview-workers`, `publish-gh-pages`, `deploy-cloudflare`. Latest release **`v0.18.0`** (2026-11-10). `@v0` points to **`v0.17.0`**, and moves to `v0.18.0` once it has passed the release gate.
+- **Actions (11):** `setup-environment`, `setup-latex`, `build-lectures`, `build-jupyter-cache`, `restore-jupyter-cache`, `preview-netlify`, `preview-cloudflare`, `preview-workers`, `publish-gh-pages`, `restore-gh-pages`, `deploy-cloudflare`. Latest release **`v0.18.0`** (2026-11-10). `@v0` points to **`v0.17.0`**, and moves to `v0.18.0` once it has passed the release gate.
 - **Containers (2):** `quantecon` (full) and `quantecon-build` (lean), on the Anaconda 2026.07 baseline, with the Ubuntu base pinned by digest. See the Dependency policy below, and [CONTAINERS.md](CONTAINERS.md).
 - **Testing:** the action harness on every pull request, the container checks, and the canary repository; see [TESTING.md](TESTING.md). A release that changes what an action does passes the release gate, `gate.yml` in the canary, before `v0` moves, and anything the gate does not reach is staged there by hand ([CONTRIBUTING.md](../../CONTRIBUTING.md#staged-releases)).
 
@@ -66,7 +66,7 @@ The lean image pins every package in its `environment.yml` that the `anaconda` m
 | Preview speed | #92 (tracking), #147–#152, #154–#158 | HTML-only previews are decided (#146): #148 is unblocked, and the PDF check that goes with it is in `templates/ci.yml` |
 | Environment and reproducibility | #30, #129, #18, #2 | #30 is backlog item 12; #129 is parked as a discussion; #18, container-mode caching, is parked until a repository passes `environment-update`; #2 is exploratory |
 | Build strictness | #97, #98 | #97 needs an org-wide decision on HTML strictness; #98 needs a falsifiable repro |
-| New actions and decisions | #27, #96, #183, #184, #185, #186, #194, #195 | #27 is decided: a `restore-gh-pages` action and template, built here. #96 waits on #195, whether the `.notebooks` repos go first. #183 tracks alternatives to the RunsOn GPU image. #184 and #185 propose shared actions for link checking and Colab checks, which #194 asks whether to build; #186 proposes build-time monitoring across the lecture repositories |
+| New actions and decisions | #96, #183, #184, #185, #186, #194, #195 | #96 waits on #195, whether the `.notebooks` repos go first. #183 tracks alternatives to the RunsOn GPU image. #184 and #185 propose shared actions for link checking and Colab checks, which #194 asks whether to build; #186 proposes build-time monitoring across the lecture repositories |
 | Docs | #29, #178, #179 | #29 is backlog item 11; #179 publishes the manual |
 | Work plan | #246 | The decisions of 2026-11-04 and the waves that carry them out |
 
