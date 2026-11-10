@@ -238,6 +238,8 @@ To check an archive, run `sha256sum` in the directory that holds both files:
 sha256sum --check lecture-python-html-checksum.txt
 ```
 
+[`restore-gh-pages`](restore-gh-pages.md) reads these files to put the site back as a release holds it, without a build.
+
 This is the contract, and this repository's tests check each part of it on every change to the action. A release of this project that changes a file name, the archive's layout, the checksum's format, or a manifest field's name or meaning says so in its CHANGELOG entry. Read the manifest as JSON, and ignore any field you do not know, so that a field added later does no harm. The checksum's and the manifest's names do not carry the tag, so keep each release's files in a directory of their own. Tags must not contain `/`, as [Behaviour](#behaviour) explains.
 
 ## Custom domain

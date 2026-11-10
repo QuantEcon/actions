@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+#
+# A stand-in for the two gh commands restore-gh-pages runs, for the harness's
+# restore-* jobs: `gh release view <tag> --repo <repo> --json assets` and
+# `gh release download <tag> --repo <repo> --dir <dir> --pattern=<name>...`.
+# A job puts this directory first on PATH. Each release is a directory,
+# $GH_STUB_RELEASES/<tag>/, whose files are its assets; a tag with no
+# directory has no release, and gh's message for that is printed.
+#
+# Each call is appended to $GH_STUB_LOG. A call this stand-in does not
+# expect, or one without GH_TOKEN, which the action must pass, also touches
+# $GH_STUB_LOG.misuse, so that a job cannot pass on a refusal that came from
+# the stand-in rather than from the action.
+
+set -euo pipefail
+
+: "${GH_STUB_RELEASES:?GH_STUB_RELEASES is required}"
+: "${GH_STUB_LOG:?GH_STUB_LOG is required}"
+printf '%s\n' "$*" >> "$GH_STUB_LOG"
+
+misuse() {
+  echo "stub gh: $*" >&2
+  touch "$GH_STUB_LOG.misuse"
+  exit 2
+}
+
+[ -n "${GH_TOKEN:-}" ] || misuse "GH_TOKEN is not set"
+if [ "$#" -lt 3 ] || [ "$1" != release ]; then
+  misuse "unexpected command [$*]"
+fi
+sub=$2 tag=$3
+shift 3
+release="$GH_STUB_RELEASES/$tag"
+
+case "$sub" in
+  view)
+    [ "$*" = "--repo $GITHUB_REPOSITORY --json assets" ] || misuse "unexpected arguments to release view [$*]"
+    [ -d "$release" ] || { echo "release not found" >&2; exit 1; }
+    find "$release" -mindepth 1 -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort \
+      | jq -R '{name: .}' | jq -s '{assets: .}'
+    ;;
+  download)
+    dir=''
+    names=()
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --repo)
+          [ "${2:-}" = "$GITHUB_REPOSITORY" ] || misuse "release download of another repository [${2:-}]"
+          shift 2
+          ;;
+        --dir) dir=${2:-}; shift 2 ;;
+        --pattern=*) names+=("${1#--pattern=}"); shift ;;
+        *) misuse "unexpected argument to release download [$1]" ;;
+      esac
+    done
+    if [ ! -d "$dir" ] || [ "${#names[@]}" -eq 0 ]; then
+      misuse "release download with no --dir or no --pattern"
+    fi
+    [ -d "$release" ] || { echo "release not found" >&2; exit 1; }
+    # The action passes exact names, which hold no glob character.
+    for name in "${names[@]}"; do
+      [ -f "$release/$name" ] || { echo "no assets match the file pattern" >&2; exit 1; }
+      cp "$release/$name" "$dir/"
+    done
+    ;;
+  *)
+    misuse "unexpected command [release $sub]"
+    ;;
+esac
