@@ -125,19 +125,22 @@ updates:
       - dependency-name: "quantecon/actions*"
 
   # ── npm (the CLIs the deploy actions install) ─────────────────────────────
-  # deploy-cloudflare, preview-cloudflare and preview-netlify install wrangler
-  # or netlify-cli with `npm ci` from the package.json + package-lock.json
-  # beside each action.yml, pinned to an exact version because the CLI is
-  # handed the deploy token (#105, #163). The groups bump all three in one PR
-  # (a second one for majors). Such a PR cannot run a deploy, so the CI signal
-  # is the harness: dc-wrangler-config dry-runs deploy-cloudflare's generated
-  # config through the bumped wrangler, and preview-cli-install runs `npm ci`
-  # from each preview lockfile and checks `--version`.
+  # deploy-cloudflare, preview-cloudflare, preview-netlify and preview-workers
+  # install wrangler or netlify-cli with `npm ci` from the package.json +
+  # package-lock.json beside each action.yml, pinned to an exact version
+  # because the CLI is handed the deploy token (#105, #163). The groups bump
+  # all four in one PR (a second one for majors). Such a PR cannot run a
+  # deploy, so the CI signal is the harness: dc-wrangler-config and
+  # preview-workers-config dry-run the generated config through each bumped
+  # wrangler, the second also checking its record of the upload, and
+  # preview-cli-install runs `npm ci` from each preview lockfile and checks
+  # `--version`.
   - package-ecosystem: "npm"
     directories:
       - "/deploy-cloudflare"
       - "/preview-cloudflare"
       - "/preview-netlify"
+      - "/preview-workers"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10

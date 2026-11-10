@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
 # Detect the lecture .md files a pull request added or modified.
-# Shared by the preview-netlify and preview-cloudflare actions so the change
-# detection (and its filtering rules) live in one place.
+# Shared by the preview-netlify, preview-cloudflare and preview-workers actions
+# so the change detection (and its filtering rules) live in one place.
 #
 # Inputs (environment variables):
 #   LECTURES_DIR  - directory holding lecture .md files (e.g. "lectures")

@@ -9,7 +9,7 @@ A QuantEcon lecture repository runs the actions from three workflows, which star
 - **A Jupyter Book 1 book**, by default in `lectures/`, with its `_config.yml` and `_toc.yml`.
 - **`execute_notebooks: cache`** under `execute:` in `_config.yml`. The caches depend on it: with Jupyter Book's default, `auto`, there is no execution cache to save or restore.
 - **An environment file.** In a QuantEcon container, only the packages the image lacks, passed as `environment-update`; on a standard runner, the whole Conda environment, as `environment`. See [Containers](containers.md).
-- **For previews,** a Netlify site or a Cloudflare Pages project, set up as the [`preview-netlify`](actions/preview-netlify.md#setting-up-netlify) or [`preview-cloudflare`](actions/preview-cloudflare.md#setting-up-cloudflare-pages) chapter says.
+- **For previews,** a Netlify site, a Cloudflare Pages project or a Cloudflare Worker, set up as the [`preview-netlify`](actions/preview-netlify.md#setting-up-netlify), [`preview-cloudflare`](actions/preview-cloudflare.md#setting-up-cloudflare-pages) or [`preview-workers`](actions/preview-workers.md#setting-up-a-cloudflare-worker) chapter says.
 - **For publishing,** GitHub Pages, with its source set to **GitHub Actions**. A site on a Cloudflare Worker uses [`deploy-cloudflare`](actions/deploy-cloudflare.md) instead, which no template covers yet.
 
 ## Choosing the actions
@@ -18,7 +18,7 @@ A QuantEcon lecture repository runs the actions from three workflows, which star
 |---|---|
 | The cache every other build starts from | [`build-jupyter-cache`](actions/build-jupyter-cache.md), in `cache.yml` |
 | A build on a pull request or for publishing | [`setup-environment`](actions/setup-environment.md), [`restore-jupyter-cache`](actions/restore-jupyter-cache.md) and [`build-lectures`](actions/build-lectures.md), in that order |
-| A preview of each pull request | [`preview-netlify`](actions/preview-netlify.md) or [`preview-cloudflare`](actions/preview-cloudflare.md); [Netlify or Cloudflare?](actions/preview-netlify.md#netlify-or-cloudflare) compares them |
+| A preview of each pull request | [`preview-netlify`](actions/preview-netlify.md), [`preview-cloudflare`](actions/preview-cloudflare.md) or [`preview-workers`](actions/preview-workers.md); [Netlify or Cloudflare?](actions/preview-netlify.md#netlify-or-cloudflare) compares the first two |
 | The public site on GitHub Pages | [`publish-gh-pages`](actions/publish-gh-pages.md) |
 | A site on a Cloudflare Worker, private or public | [`deploy-cloudflare`](actions/deploy-cloudflare.md) |
 

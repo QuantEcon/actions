@@ -1,5 +1,5 @@
-// The pull request comment that preview-netlify and preview-cloudflare post,
-// in one place for both (#153) and for any later preview action (#145): the
+// The pull request comment that preview-netlify, preview-cloudflare and
+// preview-workers post, in one place for all three (#153, #145): the
 // pending one a placeholder posts as soon as a pull request is pushed, and
 // the ready one the deploy puts in its place. Each action finds this file
 // from $GITHUB_ACTION_PATH in a bash step and loads it from its
@@ -14,10 +14,11 @@
 
 // One entry per provider, named by the step's PROVIDER. The headings are the
 // comment's first visible line, after a deploy and before one, and the key
-// names its hidden marker. previewUrl is where the deploy will put the alias
-// (pr-<number>) of the site (Netlify's site name, Cloudflare's project name),
-// which the placeholder links to before there is a deploy to ask; for
-// Cloudflare it is the URL the action's deploy step builds too.
+// names its hidden marker, so no provider's heading may begin with another's.
+// previewUrl is where the deploy will put the alias (pr-<number>) of the site
+// (Netlify's site name, Cloudflare's project name, or <worker>.<subdomain> for
+// a Worker), which the placeholder links to before there is a deploy to ask;
+// for both Cloudflare actions it is the URL the deploy step builds too.
 const PROVIDERS = {
   netlify: {
     heading: '## 📖 Netlify Preview Ready!',
@@ -28,6 +29,11 @@ const PROVIDERS = {
     heading: '## ☁️ Cloudflare Preview Ready!',
     pendingHeading: '## ⏳ Cloudflare Preview Building…',
     previewUrl: (alias, site) => `https://${alias}.${site}.pages.dev`,
+  },
+  workers: {
+    heading: '## ☁️ Cloudflare Workers Preview Ready!',
+    pendingHeading: '## ⏳ Cloudflare Workers Preview Building…',
+    previewUrl: (alias, site) => `https://${alias}-${site}.workers.dev`,
   },
 };
 

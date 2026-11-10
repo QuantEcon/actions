@@ -1,0 +1,442 @@
+name: 'Preview Workers'
+description: >-
+  Uploads a pull request's built site to an existing Cloudflare Worker as a preview, at a URL that
+  stays the same for every push, without changing what the Worker serves in production, and
+  comments on the pull request with it and with links to the lectures it changes.
+author: 'QuantEcon'
+
+# Each description below is copied verbatim into the user manual
+# (docs/user/actions/preview-workers.md) by scripts/generate-docs.py, so it
+# is written for a reader. The repository is public: no account details here.
+inputs:
+  cloudflare-api-token:
+    description: >-
+      An account-owned Cloudflare API token that can edit this one Worker, from a repository
+      secret such as `secrets.CLOUDFLARE_WORKERS_TOKEN`. Required for a deploy: a run that would
+      deploy without it fails before anything is installed. Leave it out with `placeholder:
+      'true'`.
+    required: false
+  cloudflare-account-id:
+    description: >-
+      The ID of the Cloudflare account that owns the Worker, from a repository secret such as
+      `secrets.CLOUDFLARE_ACCOUNT_ID`. Required for a deploy, as `cloudflare-api-token` is. Leave
+      it out with `placeholder: 'true'`.
+    required: false
+  worker-name:
+    description: >-
+      The Worker to upload each preview to, which must already exist with its preview URLs on:
+      lowercase letters, digits and dashes, not starting or ending with a dash. A preview's
+      hostname starts `<alias>-<worker-name>`, which must fit in 63 characters, so a name of up to
+      54 characters leaves room for every pull request up to number 99999. `placeholder: 'true'`
+      needs it too.
+    required: true
+  account-subdomain:
+    description: >-
+      The account's `workers.dev` subdomain: `my-subdomain` for `*.my-subdomain.workers.dev`, which
+      `my-subdomain.workers.dev` also gives. The preview URLs are built from it, and checked
+      against the URL Cloudflare reports for each upload. `placeholder: 'true'` needs it too.
+    required: true
+  build-dir:
+    description: >-
+      The directory that holds the built site, such as `_build/html`, which `build-lectures` gives
+      in its `build-path` output. Required for a deploy, as `cloudflare-api-token` is.
+    required: false
+  lectures-dir:
+    description: >-
+      The directory of lecture `.md` files that change detection looks in, as a path from the
+      repository root such as `lectures`, with no `./` or trailing slash: each lecture the pull
+      request added or modified gets a link in the comment, and is listed in `changed-files`. Empty
+      turns change detection off, and the comment gives only the preview URL.
+    required: false
+    default: 'lectures'
+  dispatch-alias:
+    description: >-
+      Deploys on `workflow_dispatch` and `schedule` events too, to this alias, such as
+      `dispatch-canary`, at `https://<alias>-<worker-name>.<account-subdomain>.workers.dev`. It
+      must start with `dispatch-`, which keeps it clear of every pull request's `pr-<number>`, and
+      be lowercase letters and digits in words joined by single dashes, at most 28 characters in
+      all, and `<alias>-<worker-name>` must fit in 63 characters. Any other value fails the job, on
+      every event. Such a run has no comment and no changed lectures, and a pull request ignores
+      the input. Empty, the default, deploys on `pull_request` only.
+    required: false
+    default: ''
+  placeholder:
+    description: >-
+      `'true'` posts the pull request's preview comment at once, before there is a build to
+      deploy, and deploys nothing. The comment has the preview's URL and links to the lectures the
+      pull request changes, all built from its number, `worker-name` and `account-subdomain`, and
+      says that they show the last deployed push until this one's deploy finishes; the deploy's
+      comment then replaces it. It needs no checkout and no secret, so it runs in a job of its
+      own, with no `needs:`. It posts only where a deploy would run, so not for a pull request from
+      a fork or by Dependabot, nor on any other event. Any value but `'true'` or `'false'` fails
+      the job.
+    required: false
+    default: 'false'
+
+outputs:
+  deployed:
+    description: >-
+      `'true'` when this run deployed a preview, so that `deploy-url` is set, and `'false'` when it
+      did not: then a notice or a warning in the log says why, or `placeholder` is `'true'`. A
+      scheduled or dispatched check should assert `deployed == 'true'`, or it passes without
+      testing the deploy.
+    value: ${{ steps.deploy.outputs.deploy-url != '' && 'true' || 'false' }}
+  deploy-url:
+    description: >-
+      The pull request's preview URL,
+      `https://pr-<number>-<worker-name>.<account-subdomain>.workers.dev`, which always shows its
+      newest push, so use it for anything a person will follow; on a `workflow_dispatch` or
+      `schedule` run, `https://<dispatch-alias>-<worker-name>.<account-subdomain>.workers.dev`. It
+      is built from the inputs, and set only when wrangler's record of the upload names the same
+      URL: one that names another, or none, fails the job. When wrangler writes no record, it is
+      set unchecked, with a warning. Empty when nothing was deployed.
+    value: ${{ steps.deploy.outputs.deploy-url }}
+  deployment-url:
+    description: >-
+      The URL of this one version,
+      `https://<first 8 characters of the version ID>-<worker-name>.<account-subdomain>.workers.dev`,
+      which goes on showing this push after later ones, for as long as Cloudflare keeps the
+      version. It is read from wrangler's record of the upload. Empty when the record does not
+      name it in that form, and when nothing was deployed.
+    value: ${{ steps.deploy.outputs.deployment-url }}
+  changed-files:
+    description: >-
+      The lecture files under `lectures-dir` that the pull request added or modified, one path per
+      line, compared from the commit where it branched off. When a shallow checkout's history does
+      not reach that commit within 1,024 commits, the comparison starts from the base branch's tip
+      instead, with a warning, so a lecture changed only on the base branch is listed too. When git
+      fails, the action warns and lists none.
+      Empty when there are none, with `lectures-dir: ''`, on an event other than
+      `pull_request`, for a pull request from a fork or by Dependabot, and with `placeholder:
+      'true'`.
+    value: ${{ steps.detect-changes.outputs.changed-files }}
+
+runs:
+  using: "composite"
+  steps:
+    # One decision for the whole run (#227): every step below follows
+    # `deploy`. The event allow-list, the Dependabot and fork checks and the
+    # dispatch-alias rules are in the script, shared with the other two
+    # preview actions.
+    - name: Decide whether to deploy
+      id: decide
+      shell: bash
+      env:
+        PROVIDER: Cloudflare Workers
+        EVENT_NAME: ${{ github.event_name }}
+        ACTOR: ${{ github.actor }}
+        REPOSITORY: ${{ github.repository }}
+        HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        DISPATCH_ALIAS: ${{ inputs.dispatch-alias }}
+      run: bash "$GITHUB_ACTION_PATH/../scripts/preview-decide.sh"
+
+    # The inputs each mode needs, checked before anything is installed. The
+    # Worker's name and subdomain, which the URLs are built from, and the
+    # placeholder's value are checked on every event, as dispatch-alias is, so
+    # a typo shows on the next pull request. A deploy's secrets and build-dir
+    # only when one will run: a fork's pull request, which is skipped, gets no
+    # secrets. The secrets themselves never reach this step, only whether they
+    # are set. The naming rules are deploy-cloudflare's.
+    - name: Check the inputs
+      id: check-inputs
+      shell: bash
+      env:
+        PLACEHOLDER: ${{ inputs.placeholder }}
+        DEPLOY: ${{ steps.decide.outputs.deploy }}
+        ALIAS: ${{ steps.decide.outputs.alias }}
+        HAVE_TOKEN: ${{ inputs.cloudflare-api-token != '' }}
+        HAVE_ACCOUNT_ID: ${{ inputs.cloudflare-account-id != '' }}
+        HAVE_BUILD_DIR: ${{ inputs.build-dir != '' }}
+        WORKER_NAME: ${{ inputs.worker-name }}
+        ACCOUNT_SUBDOMAIN: ${{ inputs.account-subdomain }}
+        DISPATCH_ALIAS: ${{ inputs.dispatch-alias }}
+        BUILD_DIR: ${{ inputs.build-dir }}
+        LECTURES_DIR: ${{ inputs.lectures-dir }}
+      run: |
+        # shellcheck source=scripts/workflow-command.sh
+        . "$GITHUB_ACTION_PATH/../scripts/workflow-command.sh"
+        fail() { annotate error "$1"; exit 1; }
+        # Each of these is one value, and a line break in one would end the
+        # line that prints it, and could start a workflow command (#267), or
+        # write another key to GITHUB_OUTPUT below. preview-decide.sh has
+        # already refused one in dispatch-alias.
+        single_line "worker-name=$WORKER_NAME" "account-subdomain=$ACCOUNT_SUBDOMAIN" \
+          "build-dir=$BUILD_DIR" "lectures-dir=$LECTURES_DIR" || exit 1
+        case "$PLACEHOLDER" in
+          true|false) ;;
+          *) fail "placeholder is [$PLACEHOLDER], not 'true' or 'false'" ;;
+        esac
+
+        label='^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'
+        [[ "$WORKER_NAME" =~ $label ]] \
+          || fail "worker-name [$WORKER_NAME] is not a valid workers.dev hostname label (lowercase letters, digits and dashes, not starting or ending with a dash, at most 63 characters)."
+        subdomain=$(printf '%s' "$ACCOUNT_SUBDOMAIN" | tr '[:upper:]' '[:lower:]')
+        subdomain=${subdomain#https://}; subdomain=${subdomain%/}; subdomain=${subdomain%.workers.dev}
+        [[ "$subdomain" =~ $label ]] \
+          || fail "account-subdomain [$ACCOUNT_SUBDOMAIN] is not a workers.dev subdomain; pass the part before .workers.dev."
+
+        # Every preview is served at <alias>-<worker>.<subdomain>.workers.dev,
+        # and Cloudflare requires <alias>-<worker> to fit in one hostname
+        # label; wrangler does not check it before uploading. preview-decide.sh
+        # has checked the alias's own form, which starts with a letter as
+        # Cloudflare also requires. A dispatch-alias is checked on every event,
+        # and a pull request's pr-<number> wherever it will be deployed to.
+        fits() { [ $(( ${#1} + 1 + ${#WORKER_NAME} )) -le 63 ]; }
+        [ -z "$DISPATCH_ALIAS" ] || fits "$DISPATCH_ALIAS" \
+          || fail "dispatch-alias [$DISPATCH_ALIAS] is too long for this Worker: [$DISPATCH_ALIAS-$WORKER_NAME] must fit in one 63-character hostname label."
+        [ "$DEPLOY" != true ] || [ -z "$ALIAS" ] || fits "$ALIAS" \
+          || fail "worker-name [$WORKER_NAME] is too long for this preview: [$ALIAS-$WORKER_NAME] must fit in one 63-character hostname label."
+
+        if [ "$PLACEHOLDER" = true ]; then
+          for given in "cloudflare-api-token=$HAVE_TOKEN" "cloudflare-account-id=$HAVE_ACCOUNT_ID"; do
+            [ "${given#*=}" != true ] \
+              || echo "::warning::${given%%=*} is not used with placeholder: 'true'. Leave it out, so that the placeholder's job holds no deploy secret."
+          done
+        elif [ "$DEPLOY" = true ]; then
+          missing=()
+          [ "$HAVE_TOKEN" = true ] || missing+=(cloudflare-api-token)
+          [ "$HAVE_ACCOUNT_ID" = true ] || missing+=(cloudflare-account-id)
+          [ "$HAVE_BUILD_DIR" = true ] || missing+=(build-dir)
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::A deploy needs cloudflare-api-token, cloudflare-account-id and build-dir, and this run has no ${missing[*]}. A secret that the repository does not have is empty."
+            exit 1
+          fi
+        fi
+
+        # The comment script builds the placeholder's URL from the site as
+        # https://<alias>-<site>.workers.dev, the deploy step's URL too.
+        {
+          echo "subdomain=$subdomain"
+          echo "site=$WORKER_NAME.$subdomain"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Detect Changed Lecture Files
+      id: detect-changes
+      if: steps.decide.outputs.deploy == 'true' && inputs.placeholder != 'true' && inputs.lectures-dir != '' && github.event_name == 'pull_request'
+      shell: bash
+      env:
+        LECTURES_DIR: ${{ inputs.lectures-dir }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      run: bash "$GITHUB_ACTION_PATH/../scripts/detect-changed-lectures.sh"
+
+    - name: Install Wrangler CLI
+      id: install-cli
+      # Exactly the deploy's condition, so the CLI is installed only for a
+      # deploy that will run (#193). The placeholder deploys nothing.
+      if: steps.decide.outputs.deploy == 'true' && inputs.placeholder != 'true'
+      shell: bash
+      run: |
+        # Exactly the version in package.json / package-lock.json beside this
+        # file (#105): this CLI is handed the deploy token, so it is pinned
+        # like every third-party Action in this repo, and Dependabot's npm
+        # entry keeps the pin current.
+        #
+        # Installed into a fresh directory under RUNNER_TEMP rather than
+        # $GITHUB_ACTION_PATH, which in a container job is the _actions directory
+        # mounted from the host. RUNNER_TEMP is cleared between jobs, so nothing
+        # accumulates on a persistent self-hosted runner, as it would in /tmp.
+        # Install scripts stay on: workerd and esbuild use theirs to put their
+        # native binaries in place. Nothing is added to the caller's PATH; the
+        # deploy step below uses the absolute path.
+        D="$(mktemp -d "${RUNNER_TEMP:-/tmp}/preview-workers.XXXXXX")"
+        cp "$GITHUB_ACTION_PATH/package.json" "$GITHUB_ACTION_PATH/package-lock.json" "$D/"
+        npm ci --prefix "$D" --no-audit --no-fund \
+          || { echo "::error::npm ci of the pinned wrangler failed — see the npm output above (it needs registry.npmjs.org)"; exit 1; }
+
+        WRANGLER="$D/node_modules/.bin/wrangler"
+        "$WRANGLER" --version \
+          || { echo "::error::wrangler installed but does not run — see the output above"; exit 1; }
+        echo "bin=$WRANGLER" >> "$GITHUB_OUTPUT"
+        echo "dir=$D" >> "$GITHUB_OUTPUT"
+
+    - name: Upload a preview version to the Cloudflare Worker
+      id: deploy
+      if: steps.decide.outputs.deploy == 'true' && inputs.placeholder != 'true'
+      shell: bash
+      env:
+        CLOUDFLARE_API_TOKEN: ${{ inputs.cloudflare-api-token }}
+        CLOUDFLARE_ACCOUNT_ID: ${{ inputs.cloudflare-account-id }}
+        WRANGLER_SEND_METRICS: 'false'
+        CI: 'true'
+        ALIAS: ${{ steps.decide.outputs.alias }}
+        EVENT_NAME: ${{ github.event_name }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        REF_NAME: ${{ github.ref_name }}
+        # The pull request's head, or on a dispatched or scheduled run the
+        # commit it ran on.
+        COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        WORKER_NAME: ${{ inputs.worker-name }}
+        SUBDOMAIN: ${{ steps.check-inputs.outputs.subdomain }}
+        BUILD_DIR: ${{ inputs.build-dir }}
+        WRANGLER: ${{ steps.install-cli.outputs.bin }}
+        WRANGLER_DIR: ${{ steps.install-cli.outputs.dir }}
+      run: |
+        # shellcheck source=scripts/workflow-command.sh
+        . "$GITHUB_ACTION_PATH/../scripts/workflow-command.sh"
+        SHORT_SHA="${COMMIT_SHA:0:7}"
+        if [ "$EVENT_NAME" = "pull_request" ]; then
+          WHAT="PR #${PR_NUMBER}"
+        else
+          WHAT="${EVENT_NAME} on ${REF_NAME}"
+        fi
+
+        # The config is generated per run, as deploy-cloudflare's is. Its
+        # paths resolve against the config file, so the site's is absolute.
+        [ -d "$BUILD_DIR" ] || { annotate error "build-dir [$BUILD_DIR] is not a directory."; exit 1; }
+        SITE_DIR=$(cd "$BUILD_DIR" && pwd -P)
+        CONFIG="$WRANGLER_DIR/$WORKER_NAME.wrangler.jsonc"
+        node "$GITHUB_ACTION_PATH/../scripts/write-wrangler-config.js" "$CONFIG" "$WORKER_NAME" "$SITE_DIR"
+
+        # The alias URL is CONSTRUCTED, as every preview action's is (#14):
+        # it is the one the placeholder's comment already links to, and
+        # Cloudflare serves every alias of a Worker at
+        # <alias>-<worker>.<subdomain>.workers.dev.
+        DEPLOY_URL="https://${ALIAS}-${WORKER_NAME}.${SUBDOMAIN}.workers.dev"
+
+        echo "🔍 Uploading a preview for ${WHAT} to the Cloudflare Worker ${WORKER_NAME}, alias ${ALIAS}..."
+
+        # `versions upload` makes a new version of the Worker and points the
+        # alias at it, and never sends the Worker's production traffic to it:
+        # that is `wrangler versions deploy`, which this action never runs.
+        # The output streams to the log as wrangler runs, stderr included, and
+        # tee keeps a copy, so that the group below can be closed on a line of
+        # its own. wrangler also appends a JSON record of the upload to
+        # WRANGLER_OUTPUT_FILE_PATH, which the URLs are checked against below.
+        #
+        # `set +e` because the step runs under `bash -eo pipefail`: a failing
+        # wrangler would otherwise abort the step before EXIT= could read
+        # PIPESTATUS, with no diagnostic (#105).
+        LOG="$(mktemp)"
+        RECORD="$(mktemp)"
+        message="${WHAT} (${SHORT_SHA})"; message=${message:0:100}
+        echo "::group::Upload Output"
+        set +e
+        WRANGLER_OUTPUT_FILE_PATH="$RECORD" "$WRANGLER" versions upload \
+          --config "$CONFIG" \
+          --preview-alias "$ALIAS" \
+          --message "$message" \
+          2>&1 | tee "$LOG"
+        EXIT=${PIPESTATUS[0]}
+        set -e
+        # A workflow command is only read at the start of a line, so end any
+        # unterminated last line first or ::endgroup:: is printed as text.
+        [ -z "$(tail -c 1 "$LOG")" ] || echo
+        echo "::endgroup::"
+
+        if [ "$EXIT" -ne 0 ]; then
+          echo "❌ Error: the upload to the Cloudflare Worker failed"
+          echo "::error::wrangler versions upload failed (exit $EXIT) — see the Upload Output group above. A permissions error usually means the token cannot edit this Worker, or the account ID is wrong; a Worker that does not exist must be created first."
+          exit "$EXIT"
+        fi
+
+        # wrangler's record of the upload, a `version-upload` line, names the
+        # URLs Cloudflare serves the alias and the version at, which it builds
+        # from the Worker's workers.dev settings. The record's lines are JSON,
+        # one to a line, so each starts with `{` and none can be read as a
+        # workflow command.
+        echo "::group::wrangler's record of the upload"
+        grep '^{.*"type":"version-upload"' "$RECORD" || echo "(none)"
+        echo "::endgroup::"
+        FIELDS="$(mktemp)"
+        node -e '
+          let entry = null;
+          for (const line of require("fs").readFileSync(process.argv[1], "utf8").split("\n")) {
+            let e;
+            try { e = JSON.parse(line); } catch { continue; }
+            if (e && e.type === "version-upload" && e.version === 1) entry = e;
+          }
+          const s = v => (typeof v === "string" ? v : "");
+          process.stdout.write([entry ? "yes" : "no", s(entry && entry.preview_alias_url), s(entry && entry.preview_url)].join("\0") + "\0");
+        ' "$RECORD" > "$FIELDS" || printf 'no\0\0\0' > "$FIELDS"
+        { IFS= read -r -d '' FOUND; IFS= read -r -d '' ALIAS_URL; IFS= read -r -d '' VERSION_URL; } < "$FIELDS"
+
+        # A URL that Cloudflare does not serve the preview at must not reach
+        # the comment, nor deployed: 'true'. For a Worker, unlike a Pages
+        # project (#216), the built URL cannot legitimately differ: the
+        # subdomain is the account's, and the Worker's name is used as it is.
+        # So a different one means account-subdomain is wrong, and none means
+        # the Worker's preview URLs are off, which `versions upload` does not
+        # turn on. Either fails, after the upload, which serves nothing. A
+        # wrangler that writes no record at all leaves the built URL unchecked.
+        if [ "$FOUND" != yes ]; then
+          DEPLOYMENT_URL=""
+          annotate warning "wrangler wrote no record of the upload (a version-upload line, version 1, in WRANGLER_OUTPUT_FILE_PATH), so deploy-url is built from the inputs and not checked against Cloudflare's, and deployment-url is empty: ${DEPLOY_URL}"
+        elif [ -z "$ALIAS_URL" ]; then
+          annotate error "wrangler uploaded the version, but Cloudflare named no preview URL for it, so ${DEPLOY_URL} does not serve it. The Worker ${WORKER_NAME} has its preview URLs off: turn them on in the Cloudflare dashboard, in the Worker's Settings under Domains & Routes, and run this job again."
+          exit 1
+        elif [ "$ALIAS_URL" != "$DEPLOY_URL" ]; then
+          annotate error "Cloudflare serves this preview at [${ALIAS_URL}], not at ${DEPLOY_URL}, which the inputs give. Check account-subdomain [${SUBDOMAIN}]: it is the part of the Worker's URL before .workers.dev. A comment posted with placeholder: 'true' links to the same host as deploy-url."
+          exit 1
+        else
+          # The version's own URL, the only way to look at this one push
+          # later, checked against a strict pattern before it goes anywhere.
+          re="^https://[0-9a-f]{8}-${WORKER_NAME}\.${SUBDOMAIN}\.workers\.dev$"
+          if [[ "$VERSION_URL" =~ $re ]]; then
+            DEPLOYMENT_URL="$VERSION_URL"
+          else
+            DEPLOYMENT_URL=""
+            annotate warning "wrangler's record of the upload gives no version URL of the form https://<8 hex digits>-${WORKER_NAME}.${SUBDOMAIN}.workers.dev (it gives [${VERSION_URL}]), so deployment-url is empty"
+          fi
+        fi
+
+        echo "deploy-url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
+        echo "deployment-url=$DEPLOYMENT_URL" >> "$GITHUB_OUTPUT"
+
+        echo "✅ Upload successful!"
+        echo "📍 Preview (stable):  $DEPLOY_URL"
+        if [ -n "$DEPLOYMENT_URL" ]; then
+          echo "📌 This version:      $DEPLOYMENT_URL"
+        else
+          echo "📌 This version:      (not named in wrangler's record)"
+        fi
+        # No pull request means no comment, so put the URL on the run's
+        # summary page instead.
+        [ "$EVENT_NAME" = "pull_request" ] || echo "::notice::Cloudflare Workers preview deployed to $DEPLOY_URL"
+
+    # The comment is built and posted by a script shared with the other two
+    # preview actions (#153). Its path is resolved here, from
+    # $GITHUB_ACTION_PATH, as the steps above find theirs: in a container job,
+    # `github.action_path` gives the runner's path, which the container does
+    # not have. The two steps run after a deploy, and for the placeholder,
+    # whose pending comment the deploy's comment later replaces.
+    - name: Find the comment script
+      id: comment-script
+      if: steps.decide.outputs.deploy == 'true' && github.event_name == 'pull_request' && (inputs.placeholder == 'true' || steps.deploy.outputs.deploy-url != '')
+      shell: bash
+      run: |
+        SCRIPT="$GITHUB_ACTION_PATH/../scripts/preview-comment.cjs"
+        [ -f "$SCRIPT" ] || { echo "::error::the comment script is missing from the action: $SCRIPT"; exit 1; }
+        echo "path=$SCRIPT" >> "$GITHUB_OUTPUT"
+
+    - name: Comment on PR
+      id: comment
+      if: steps.decide.outputs.deploy == 'true' && github.event_name == 'pull_request' && (inputs.placeholder == 'true' || steps.deploy.outputs.deploy-url != '')
+      uses: actions/github-script@v9
+      env:
+        PREVIEW_COMMENT_SCRIPT: ${{ steps.comment-script.outputs.path }}
+        # Picks the comment's heading and hidden marker in the script.
+        PROVIDER: workers
+        PREVIEW_STATE: ${{ inputs.placeholder == 'true' && 'pending' || 'ready' }}
+        DEPLOY_URL: ${{ steps.deploy.outputs.deploy-url }}
+        # The placeholder builds the URL from these, having no deploy to ask:
+        # the same URL as the deploy step's.
+        PREVIEW_ALIAS: ${{ steps.decide.outputs.alias }}
+        PREVIEW_SITE: ${{ steps.check-inputs.outputs.site }}
+        # Named under Build Info, when wrangler's record gave it.
+        DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
+        CHANGED_FILES: ${{ steps.detect-changes.outputs.changed-files }}
+        LECTURES_DIR: ${{ inputs.lectures-dir }}
+        STRIP_LECTURES_DIR: ${{ steps.detect-changes.outputs.strip-lectures-dir }}
+        COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+      with:
+        github-token: ${{ github.token }}
+        # Untrusted PR data (file paths, deploy URL) is read from env by the
+        # script, never interpolated into this body (avoids script injection).
+        script: |
+          await require(process.env.PREVIEW_COMMENT_SCRIPT).run({ github, context, core });
+
+branding:
+  icon: 'cloud'
+  color: 'orange'

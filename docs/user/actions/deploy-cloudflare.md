@@ -64,7 +64,7 @@ A public site needs only the steps marked *private and public*. The rest set up 
    ```
 
    The action repeats the check before every deploy, and refuses to deploy if it fails, but checking now catches a setup mistake before any workflow depends on the site.
-4. **Create the deploy token** (*private and public*): an account-owned API token with **Editor** on this one Worker, from Cloudflare's per-Worker roles, not the account-wide *Workers Scripts: Edit*. It can deploy this Worker but cannot create one, so a mistyped `worker-name` fails instead of creating a new Worker with nothing in front of it. For a private site the check before the upload refuses that case too, whatever the token can do. For a public site it does not, so the token is what stops it.
+4. **Create the deploy token** (*private and public*): an account-owned API token with **Editor** on this one Worker, from Cloudflare's per-Worker roles, not the account-wide *Workers Scripts: Edit*. Make it under **Manage account**, **Account API tokens**, **Create token**, with **Individual Workers Editor** scoped to **Specified Workers** and this Worker alone: a token made under **My Profile** cannot be scoped to one Worker. It can deploy this Worker but cannot create one, so a mistyped `worker-name` fails instead of creating a new Worker with nothing in front of it. For a private site the check before the upload refuses that case too, whatever the token can do. For a public site it does not, so the token is what stops it.
 5. **Add the secrets to the repository** (*private and public*) that deploys the site, under **Settings**, **Secrets and variables**, **Actions**:
 
    | Secret | Value |

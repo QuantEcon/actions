@@ -151,10 +151,11 @@ jobs:
           # Listed by hand, since the loop below adds only each action's
           # action.yml: the lockfiles, which preview-cli-install tests, the
           # scripts the preview actions share, which preview-change-detection,
-          # preview-decide and preview-comment run on their own,
+          # preview-decide and preview-comment run on their own, the wrangler
+          # config writer, which dc-wrangler-config and preview-workers-config run,
           # publish-gh-pages' packing script, which publish-release-packaging runs,
           # and the workflow-command helper that every action sources.
-          MUST_RUN=".github/workflows/test-actions.yml .github/fixtures/mini-lectures/environment.yml preview-cloudflare/package-lock.json preview-netlify/package-lock.json scripts/detect-changed-lectures.sh scripts/preview-decide.sh scripts/preview-comment.cjs scripts/package-release-assets.sh scripts/workflow-command.sh"
+          MUST_RUN=".github/workflows/test-actions.yml .github/fixtures/mini-lectures/environment.yml preview-cloudflare/package-lock.json preview-netlify/package-lock.json preview-workers/package-lock.json scripts/detect-changed-lectures.sh scripts/preview-decide.sh scripts/preview-comment.cjs scripts/write-wrangler-config.js scripts/package-release-assets.sh scripts/workflow-command.sh"
           for d in $DIRS; do MUST_RUN="$MUST_RUN $d/action.yml"; done
           # The container-images job decides for itself which images to build,
           # but runs only when this gate says relevant: an IGNORED that matched
@@ -4154,12 +4155,12 @@ jobs:
   # ==========================================================================
 
   preview-cli-install:
-    # #105: preview-cloudflare and preview-netlify install their CLI with
-    # `npm ci` from a lockfile beside action.yml, and Dependabot bumps those
-    # lockfiles. The actions cannot deploy here — that needs the provider's
-    # token — and they skip Dependabot's PRs outright, so preview-wiring below
-    # installs nothing on exactly the PRs that bump a CLI. Without this job a
-    # CLI bump would merge with no CI signal at all.
+    # #105: preview-cloudflare, preview-netlify and preview-workers install
+    # their CLI with `npm ci` from a lockfile beside action.yml, and
+    # Dependabot bumps those lockfiles. The actions cannot deploy here — that
+    # needs the provider's token — and they skip Dependabot's PRs outright, so
+    # preview-wiring below installs nothing on exactly the PRs that bump a
+    # CLI. Without this job a CLI bump would merge with no CI signal at all.
     #
     # Scope, stated honestly: this proves each lockfile installs on a clean
     # runner and that the CLI it installs starts and reports the pinned
@@ -4185,7 +4186,7 @@ jobs:
           set -euo pipefail
           echo "node $(node --version), npm $(npm --version)"
           # action dir, npm package, bin name
-          for spec in preview-cloudflare:wrangler:wrangler preview-netlify:netlify-cli:netlify; do
+          for spec in preview-cloudflare:wrangler:wrangler preview-netlify:netlify-cli:netlify preview-workers:wrangler:wrangler; do
             IFS=: read -r dir pkg bin <<< "$spec"
             want=$(node -p "require('./$dir/package.json').dependencies['$pkg']")
             echo "::group::$dir: npm ci ($pkg $want)"
@@ -4199,7 +4200,7 @@ jobs:
             grep -qF "$want" <<< "$got" \
               || { echo "::error::$dir: $bin reports [$got], expected the pinned $want"; exit 1; }
           done
-          echo "✅ both pinned CLIs install from their lockfiles and run"
+          echo "✅ each pinned CLI installs from its lockfile and runs"
 
   preview-change-detection:
     # scripts/detect-changed-lectures.sh, which both preview actions run to
@@ -4520,7 +4521,7 @@ jobs:
           echo "✅ preview-decide.sh deploys only on pull_request, or on workflow_dispatch or schedule with a valid dispatch-alias ($n cases)"
 
   preview-comment:
-    # #153, and finding M2 of the 2026-10-06 review: both preview actions post
+    # #153, and finding M2 of the 2026-10-06 review: the preview actions post
     # their comment with scripts/preview-comment.cjs, after a deploy and, with
     # placeholder: 'true', before one. The comment step runs only after a real
     # deploy or in a job with pull-requests: write, so preview-wiring below
@@ -4533,7 +4534,8 @@ jobs:
     #     with the step's env.
     # It asserts that each deploy's comment renders as v0.14.0's inline
     # scripts rendered it, after one hidden marker line (those fixtures are
-    # their bodies); that the placeholder's comment lists the lectures by
+    # their bodies), and preview-workers' as its own fixtures, which came
+    # after (#145); that the placeholder's comment lists the lectures by
     # change detection's rules, and that the deploy's comment then replaces
     # it, never the other way round for one commit; and that the action
     # updates its own comment however many come before it, and never anyone
@@ -4559,7 +4561,7 @@ jobs:
           set -euo pipefail
           python3 -m venv "$RUNNER_TEMP/venv"
           "$RUNNER_TEMP/venv/bin/pip" install --disable-pip-version-check --quiet -r scripts/requirements.txt
-          "$RUNNER_TEMP/venv/bin/python" - preview-netlify preview-cloudflare > "$RUNNER_TEMP/comment-steps.json" <<'PY'
+          "$RUNNER_TEMP/venv/bin/python" - preview-netlify preview-cloudflare preview-workers > "$RUNNER_TEMP/comment-steps.json" <<'PY'
           import json, os, sys, yaml
           steps = {}
           for d in sys.argv[1:]:
@@ -4756,6 +4758,253 @@ jobs:
           [ "$bad" -eq 0 ]
           echo "✅ preview-cloudflare builds deploy-url on the address in wrangler's record, and falls back to <project-name>.pages.dev with a warning ($n cases)"
 
+  preview-workers-url:
+    # #145: preview-workers builds deploy-url from worker-name and
+    # account-subdomain, as its placeholder does, and checks it against the
+    # alias URL in wrangler's record of the upload, a `version-upload` line in
+    # WRANGLER_OUTPUT_FILE_PATH. A real upload needs a Cloudflare token, so
+    # this job runs the deploy step from action.yml, as preview-cloudflare-url
+    # does, with a stub in place of wrangler that prints what `versions
+    # upload` prints and appends the case's record. Each case is one of the
+    # step's promises:
+    #   - deploy-url and deployment-url set when the record's alias URL is the
+    #     built one, on a pull request and on a dispatch;
+    #   - the step failing, with nothing in GITHUB_OUTPUT, when the record
+    #     names another alias URL, as a wrong account-subdomain gives, or none,
+    #     as a Worker with its preview URLs off gives;
+    #   - with no record of a version it knows, a warning, the built deploy-url
+    #     and an empty deployment-url;
+    #   - a version URL not of the form https://<8 hex>-<worker>.<subdomain>
+    #     .workers.dev left out of deployment-url, with a warning;
+    #   - a line break in the record never starting a workflow command;
+    #   - a failed upload failing the step, with no outputs.
+    # The release canary runs the real wrangler, against qe-preview-canary;
+    # preview-workers-config below checks that the pinned one still writes the
+    # record.
+    name: 'preview-workers: deploy-url is checked against the URL in wrangler''s record of the upload'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # The Node the manual tells hosted-runner callers to set up, which the
+      # step writes the config and reads the record with.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      # PyYAML, at the pin in scripts/requirements.txt, as the gate installs it.
+      - name: Read the deploy step
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --disable-pip-version-check --quiet -r scripts/requirements.txt
+          "$RUNNER_TEMP/venv/bin/python" - preview-workers/action.yml "$RUNNER_TEMP/deploy" <<'PY'
+          import os, sys, yaml
+          with open(sys.argv[1]) as f:
+              step = {s['id']: s for s in yaml.safe_load(f)['runs']['steps'] if 'id' in s}['deploy']
+          assert step['shell'] == 'bash', step['shell']
+          os.makedirs(sys.argv[2])
+          with open(os.path.join(sys.argv[2], 'run.sh'), 'w') as f:
+              f.write(step['run'])
+          # The names the step reads from env, each of which the cases set.
+          with open(os.path.join(sys.argv[2], 'env'), 'w') as f:
+              f.write(' '.join(sorted(step['env'])) + '\n')
+          PY
+
+      - name: Run it against a stub wrangler
+        run: |
+          set -euo pipefail
+          d="$RUNNER_TEMP/deploy"
+          want="ALIAS BUILD_DIR CI CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN COMMIT_SHA EVENT_NAME PR_NUMBER REF_NAME SUBDOMAIN WORKER_NAME WRANGLER WRANGLER_DIR WRANGLER_SEND_METRICS"
+          got=$(cat "$d/env")
+          [ "$got" = "$want" ] || { echo "::error::the deploy step reads [$got] from env, and this job sets [$want]"; exit 1; }
+          mkdir -p harness-site
+          echo '<h1>preview</h1>' > harness-site/index.html
+          # The step resolves build-dir the same way.
+          site=$(cd harness-site && pwd -P)
+
+          # wrangler versions upload, as the step runs it: it refuses any other
+          # command line, and a config that does not name the Worker and the
+          # site's absolute path. Then its output, and the record it appends
+          # where WRANGLER_OUTPUT_FILE_PATH says, after the session line it
+          # writes first.
+          cat > "$d/wrangler" <<'STUB'
+          #!/usr/bin/env bash
+          want=(versions upload --config "$STUB_CONFIG" --preview-alias "$STUB_PREVIEW_ALIAS" --message "$STUB_MESSAGE")
+          [ "$*" = "${want[*]}" ] || { echo "stub: expected [${want[*]}], got [$*]" >&2; exit 64; }
+          grep -qF '"name": "harness-worker"' "$STUB_CONFIG" && grep -qF "\"directory\": \"$STUB_SITE\"" "$STUB_CONFIG" \
+            || { echo "stub: the config does not name harness-worker and $STUB_SITE:" >&2; cat "$STUB_CONFIG" >&2; exit 64; }
+          out="${WRANGLER_OUTPUT_FILE_PATH:-}"
+          echo " ⛅️ wrangler (harness stub)"
+          [ -z "$out" ] || echo '{"type":"wrangler-session","version":1,"wrangler_version":"stub","command_line_args":["versions","upload"],"log_file_path":"","timestamp":"2026-11-10T00:00:00.000Z"}' >> "$out"
+          if [ "$STUB_EXIT" -ne 0 ]; then
+            echo "✘ [ERROR] A request to the Cloudflare API failed (harness stub)."
+            exit "$STUB_EXIT"
+          fi
+          echo "Uploaded harness-worker (1.00 sec)"
+          echo "Worker Version ID: 1a2b3c4d-0000-4000-8000-000000000000"
+          [ -z "$out" ] || [ -z "$STUB_RECORD" ] || printf '%s\n' "$STUB_RECORD" >> "$out"
+          STUB
+          chmod +x "$d/wrangler"
+
+          SHA=0123456789abcdef0123456789abcdef01234567
+          # record KIND ALIAS_URL VERSION_URL: the line wrangler appends after
+          # an upload of harness-worker. v1 is what the pinned wrangler writes,
+          # with each URL left out when it is empty, as wrangler leaves them out
+          # when the Worker's preview URLs are off; v2 is a version the step
+          # does not know; none is a wrangler that writes nothing.
+          record() {
+            local urls="" version=1
+            [ -z "$3" ] || urls="$urls,\"preview_url\":\"$3\""
+            [ -z "$2" ] || urls="$urls,\"preview_alias_url\":\"$2\""
+            [ "$1" != v2 ] || version=2
+            case "$1" in
+              v1 | v2)
+                printf '{"type":"version-upload","version":%s,"worker_name":"harness-worker","worker_tag":"0f0f0f0f0f0f4000800000000000000f","version_id":"1a2b3c4d-0000-4000-8000-000000000000"%s,"worker_name_overridden":false,"timestamp":"2026-11-10T00:00:01.000Z"}' \
+                  "$version" "$urls" ;;
+              none) ;;
+            esac
+          }
+
+          W=harness-worker.harness-sub.workers.dev
+          bad=0 n=0
+          # name|event|alias|record|alias URL|version URL|wrangler's exit|the step's exit|deploy-url|deployment-url|annotation
+          while IFS='|' read -r name event alias kind alias_url version_url code want_code want_deploy want_deployment want_note; do
+            case "$name" in '' | '#'*) continue ;; esac
+            n=$((n + 1))
+            c="$d/cases/$name"
+            mkdir -p "$c/wrangler"
+            : > "$c/output"
+            if [ "$event" = pull_request ]; then message="PR #5 (0123456)"; else message="$event on main (0123456)"; fi
+            set +e
+            env GITHUB_OUTPUT="$c/output" GITHUB_ACTION_PATH="$PWD/preview-workers" \
+              CLOUDFLARE_API_TOKEN=harness-not-a-token CLOUDFLARE_ACCOUNT_ID=00000000000000000000000000000000 \
+              WRANGLER_SEND_METRICS=false CI=true \
+              ALIAS="$alias" EVENT_NAME="$event" PR_NUMBER=5 REF_NAME=main COMMIT_SHA="$SHA" \
+              WORKER_NAME=harness-worker SUBDOMAIN=harness-sub BUILD_DIR=harness-site \
+              WRANGLER="$d/wrangler" WRANGLER_DIR="$c/wrangler" \
+              STUB_CONFIG="$c/wrangler/harness-worker.wrangler.jsonc" STUB_PREVIEW_ALIAS="$alias" STUB_MESSAGE="$message" \
+              STUB_SITE="$site" STUB_EXIT="$code" STUB_RECORD="$(record "$kind" "$alias_url" "$version_url")" \
+              bash --noprofile --norc -eo pipefail "$d/run.sh" > "$c/stdout" 2>&1
+            got_code=$?
+            set -e
+
+            want_output=""
+            [ "$want_code" -ne 0 ] || want_output=$(printf 'deploy-url=%s\ndeployment-url=%s' "$want_deploy" "$want_deployment")
+            got_output=$(cat "$c/output")
+            count() { grep -c "$1" "$c/stdout" || true; }
+            got_notes=""
+            [ "$(count '^::warning::wrangler wrote no record of the upload')" = 0 ] || got_notes="$got_notes no-record"
+            [ "$(count "^::warning::wrangler's record of the upload gives no version URL")" = 0 ] || got_notes="$got_notes version"
+            [ "$(count '^::error::Cloudflare serves this preview at ')" = 0 ] || got_notes="$got_notes mismatch"
+            [ "$(count '^::error::wrangler uploaded the version, but Cloudflare named no preview URL')" = 0 ] || got_notes="$got_notes previews-off"
+            [ "$(count '^::error::wrangler versions upload failed (exit 1)')" = 0 ] || got_notes="$got_notes failed"
+            got_notes=${got_notes# }
+            problems=()
+            [ "$got_code" = "$want_code" ] || problems+=("the step exited $got_code, expected $want_code")
+            # On one line each, for the annotation. Plain assignments, as in
+            # scripts/workflow-command.sh.
+            shown_got=${got_output//$'\n'/, }
+            shown_want=${want_output//$'\n'/, }
+            [ "$got_output" = "$want_output" ] || problems+=("GITHUB_OUTPUT holds [$shown_got], expected [$shown_want]")
+            [ "${got_notes:-none}" = "$want_note" ] || problems+=("annotations [${got_notes:-none}], expected [$want_note]")
+            ! grep -q '^::warning::harness-145' "$c/stdout" || problems+=("a line break in the record started a workflow command")
+            if [ "${#problems[@]}" -gt 0 ]; then
+              echo "::group::$name: the step's output"
+              sed 's/^/  | /' "$c/stdout"
+              echo "::endgroup::"
+              for p in "${problems[@]}"; do echo "::error::$name: $p"; done
+              bad=1
+            else
+              echo "✓ $name: exit $got_code, deploy-url [$want_deploy], deployment-url [$want_deployment], annotation: $want_note"
+            fi
+          done <<CASES
+          match|pull_request|pr-5|v1|https://pr-5-$W|https://1a2b3c4d-$W|0|0|https://pr-5-$W|https://1a2b3c4d-$W|none
+          match-dispatch|workflow_dispatch|dispatch-harness|v1|https://dispatch-harness-$W|https://1a2b3c4d-$W|0|0|https://dispatch-harness-$W|https://1a2b3c4d-$W|none
+          other-subdomain|pull_request|pr-5|v1|https://pr-5-harness-worker.harness-other.workers.dev|https://1a2b3c4d-harness-worker.harness-other.workers.dev|0|1|||mismatch
+          other-alias|pull_request|pr-5|v1|https://pr-6-$W|https://1a2b3c4d-$W|0|1|||mismatch
+          previews-off|pull_request|pr-5|v1|||0|1|||previews-off
+          no-record|pull_request|pr-5|none|||0|0|https://pr-5-$W||no-record
+          unknown-version|pull_request|pr-5|v2|https://pr-5-$W|https://1a2b3c4d-$W|0|0|https://pr-5-$W||no-record
+          version-no-hash|pull_request|pr-5|v1|https://pr-5-$W|https://$W|0|0|https://pr-5-$W||version
+          version-other-worker|pull_request|pr-5|v1|https://pr-5-$W|https://1a2b3c4d-harness-other.harness-sub.workers.dev|0|0|https://pr-5-$W||version
+          version-with-path|pull_request|pr-5|v1|https://pr-5-$W|https://1a2b3c4d-$W/index.html|0|0|https://pr-5-$W||version
+          alias-line-break|pull_request|pr-5|v1|https://pr-5-$W\\n::warning::harness-145 a line break reached the log|https://1a2b3c4d-$W|0|1|||mismatch
+          version-line-break|pull_request|pr-5|v1|https://pr-5-$W|https://1a2b3c4d-$W\\n::warning::harness-145 a line break reached the log|0|0|https://pr-5-$W||version
+          upload-fails|pull_request|pr-5|none|||1|1|||failed
+          CASES
+
+          [ "$n" -eq 13 ] || { echo "::error::expected 13 cases, ran $n"; exit 1; }
+          [ "$bad" -eq 0 ]
+          echo "✅ preview-workers sets deploy-url only when wrangler's record of the upload names it, fails when the record names another or none, and warns when there is no record ($n cases)"
+
+  preview-workers-config:
+    # #145: preview-workers writes its config with scripts/write-wrangler-config.js,
+    # as deploy-cloudflare does, and checks its URLs against the
+    # `version-upload` record that wrangler appends to WRANGLER_OUTPUT_FILE_PATH.
+    # Its own lockfile, the same writer and the same flags as the action, with
+    # --dry-run, so no account is needed: a dry run writes the record too,
+    # with no version or URLs. This is the check a Dependabot bump of wrangler
+    # in preview-workers/package-lock.json runs against: one that dropped a
+    # config key, or renamed the record or changed its version, would leave
+    # every caller on the step's warning.
+    name: 'preview-workers: the pinned wrangler accepts the generated config, and writes its record of the upload'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Dry-run a preview upload
+        env:
+          CI: 'true'
+          WRANGLER_SEND_METRICS: 'false'
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/wrangler-check"
+          mkdir -p "$dir" "$RUNNER_TEMP/site"
+          cp preview-workers/package.json preview-workers/package-lock.json "$dir/"
+          npm ci --prefix "$dir" --no-audit --no-fund
+          echo '<h1>ok</h1>' > "$RUNNER_TEMP/site/index.html"
+
+          node scripts/write-wrangler-config.js "$dir/harness.wrangler.jsonc" harness-worker "$RUNNER_TEMP/site"
+          cat "$dir/harness.wrangler.jsonc"
+
+          wrangler="$dir/node_modules/.bin/wrangler"
+          record="$RUNNER_TEMP/record.ndjson"
+          WRANGLER_OUTPUT_FILE_PATH="$record" "$wrangler" versions upload --config "$dir/harness.wrangler.jsonc" \
+            --preview-alias pr-5 --message "PR #5 (0123456)" --dry-run 2>&1 | tee "$RUNNER_TEMP/upload.log"
+          # wrangler only warns on a config key it no longer knows, and a
+          # dropped key (preview_urls, say) would silently change behaviour.
+          if grep -q 'Unexpected fields' "$RUNNER_TEMP/upload.log"; then
+            echo "::error::the pinned wrangler does not recognise a key in the generated config (see 'Unexpected fields' above)"; exit 1
+          fi
+          echo "wrangler's record of the dry run:"
+          cat "$record"
+          node -e '
+            const lines = require("fs").readFileSync(process.argv[1], "utf8").split("\n").filter(Boolean);
+            const found = lines.map(l => { try { return JSON.parse(l); } catch { return null; } })
+              .filter(e => e && e.type === "version-upload");
+            if (found.length !== 1 || found[0].version !== 1 || found[0].worker_name !== "harness-worker") {
+              console.log("::error::the pinned wrangler wrote " + found.length + " version-upload records, not one of version 1 naming harness-worker; preview-workers reads version 1, and would warn on every upload");
+              process.exit(1);
+            }
+          ' "$record"
+          echo "✅ wrangler $("$wrangler" --version | tail -1) accepts the generated config for versions upload, and writes a version-upload record of version 1"
+
   preview-wiring:
     # What preview-decide above cannot see: that each action follows the
     # decision. An invalid dispatch-alias or placeholder input must stop it
@@ -4829,6 +5078,31 @@ jobs:
           project-name: 'harness-no-such-project'
           lectures-dir: ''
 
+      # #145: a dispatch-alias that is valid on its own, but does not fit in
+      # one hostname label with this worker-name, which is 35 characters.
+      - name: 'preview-workers: dispatch-alias too long for the Worker'
+        id: workers-bad
+        continue-on-error: true
+        uses: ./preview-workers
+        with:
+          cloudflare-api-token: 'harness-fake-token'
+          cloudflare-account-id: '00000000000000000000000000000000'
+          worker-name: 'harness-no-such-worker-abcdefghijkl'
+          account-subdomain: 'quantecon-harness'
+          build-dir: 'harness-site'
+          lectures-dir: ''
+          dispatch-alias: 'dispatch-abcdefghijklmnopqrs'
+
+      - name: "preview-workers: placeholder neither 'true' nor 'false'"
+        id: workers-bad-placeholder
+        continue-on-error: true
+        uses: ./preview-workers
+        with:
+          placeholder: 'yes'
+          worker-name: 'harness-no-such-worker'
+          account-subdomain: 'quantecon-harness'
+          lectures-dir: ''
+
       - name: Assert an invalid input failed before any install
         env:
           RESULTS: |
@@ -4836,6 +5110,8 @@ jobs:
             preview-cloudflare|${{ steps.cloudflare-bad.outcome }}|${{ steps.cloudflare-bad.outputs.deployed }}|${{ steps.cloudflare-bad.outputs.deploy-url }}
             preview-netlify|${{ steps.netlify-bad-placeholder.outcome }}|${{ steps.netlify-bad-placeholder.outputs.deployed }}|${{ steps.netlify-bad-placeholder.outputs.deploy-url }}
             preview-cloudflare|${{ steps.cloudflare-bad-placeholder.outcome }}|${{ steps.cloudflare-bad-placeholder.outputs.deployed }}|${{ steps.cloudflare-bad-placeholder.outputs.deploy-url }}
+            preview-workers|${{ steps.workers-bad.outcome }}|${{ steps.workers-bad.outputs.deployed }}|${{ steps.workers-bad.outputs.deploy-url }}
+            preview-workers|${{ steps.workers-bad-placeholder.outcome }}|${{ steps.workers-bad-placeholder.outputs.deployed }}|${{ steps.workers-bad-placeholder.outputs.deploy-url }}
         run: |
           set -euo pipefail
           bad=0 n=0
@@ -4852,7 +5128,7 @@ jobs:
               echo "✓ $action, case $n: refused the input before installing its CLI"
             fi
           done <<< "$RESULTS"
-          [ "$n" -eq 4 ] || { echo "::error::expected 4 cases, read $n"; exit 1; }
+          [ "$n" -eq 6 ] || { echo "::error::expected 6 cases, read $n"; exit 1; }
           [ "$bad" -eq 0 ]
           echo "✅ an invalid dispatch-alias or placeholder input fails each action before anything is installed"
 
@@ -4882,6 +5158,19 @@ jobs:
           lectures-dir: ''
           dispatch-alias: 'dispatch-harness'
 
+      - name: 'preview-workers: a deploy without its account ID'
+        id: workers-no-account-id
+        continue-on-error: true
+        uses: ./preview-workers
+        with:
+          cloudflare-api-token: 'harness-fake-token'
+          cloudflare-account-id: ''
+          worker-name: 'harness-no-such-worker'
+          account-subdomain: 'quantecon-harness'
+          build-dir: 'harness-site'
+          lectures-dir: ''
+          dispatch-alias: 'dispatch-harness'
+
       - name: Assert a deploy without its inputs failed before any install
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -4891,6 +5180,7 @@ jobs:
           RESULTS: |
             preview-netlify|${{ steps.netlify-no-token.outcome }}|${{ steps.netlify-no-token.outputs.deployed }}|${{ steps.netlify-no-token.outputs.deploy-url }}
             preview-cloudflare|${{ steps.cloudflare-no-build-dir.outcome }}|${{ steps.cloudflare-no-build-dir.outputs.deployed }}|${{ steps.cloudflare-no-build-dir.outputs.deploy-url }}
+            preview-workers|${{ steps.workers-no-account-id.outcome }}|${{ steps.workers-no-account-id.outputs.deployed }}|${{ steps.workers-no-account-id.outputs.deploy-url }}
         run: |
           set -euo pipefail
           # As in the last assertion below: where a deploy would run, the
@@ -4917,9 +5207,9 @@ jobs:
               echo "✓ $action: outcome=$outcome, nothing installed"
             fi
           done <<< "$RESULTS"
-          [ "$n" -eq 2 ] || { echo "::error::expected 2 cases, read $n"; exit 1; }
+          [ "$n" -eq 3 ] || { echo "::error::expected 3 cases, read $n"; exit 1; }
           [ "$bad" -eq 0 ]
-          echo "✅ a deploy without its token or build-dir fails before anything is installed"
+          echo "✅ a deploy without its token, account ID or build-dir fails before anything is installed"
 
       # A valid alias, on this workflow's own event. On a pull request it is
       # ignored and the target is pr-<number>.
@@ -4946,6 +5236,19 @@ jobs:
           lectures-dir: ''
           dispatch-alias: 'dispatch-harness'
 
+      - name: 'preview-workers: on this event, with a valid dispatch-alias'
+        id: workers
+        continue-on-error: true
+        uses: ./preview-workers
+        with:
+          cloudflare-api-token: 'harness-fake-token'
+          cloudflare-account-id: '00000000000000000000000000000000'
+          worker-name: 'harness-no-such-worker'
+          account-subdomain: 'quantecon-harness'
+          build-dir: 'harness-site'
+          lectures-dir: ''
+          dispatch-alias: 'dispatch-harness'
+
       - name: Assert each action installed its CLI exactly when it was going to deploy
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -4955,6 +5258,7 @@ jobs:
           RESULTS: |
             preview-netlify|${{ steps.netlify.outcome }}|${{ steps.netlify.outputs.deployed }}|${{ steps.netlify.outputs.deploy-url }}
             preview-cloudflare|${{ steps.cloudflare.outcome }}|${{ steps.cloudflare.outputs.deployed }}|${{ steps.cloudflare.outputs.deploy-url }}
+            preview-workers|${{ steps.workers.outcome }}|${{ steps.workers.outputs.deployed }}|${{ steps.workers.outputs.deploy-url }}
         run: |
           set -euo pipefail
           # This workflow runs on pull_request, push and workflow_dispatch. A
@@ -4974,8 +5278,13 @@ jobs:
           while IFS='|' read -r action outcome deployed url; do
             [ -n "$action" ] || continue
             n=$((n + 1))
-            # The install's last act is to link the CLI into bin/.
-            cli=$(compgen -G "$RUNNER_TEMP/$action.*/bin/*" || true)
+            # The install's last act is to link the CLI into bin/, for the
+            # two that put it on PATH. preview-workers puts it on no PATH, so
+            # npm ci's own link of it shows the install ran.
+            case "$action" in
+              preview-workers) cli=$(compgen -G "$RUNNER_TEMP/$action.*/node_modules/.bin/wrangler" || true) ;;
+              *) cli=$(compgen -G "$RUNNER_TEMP/$action.*/bin/*" || true) ;;
+            esac
             if [ "$deployed" != "false" ] || [ -n "$url" ]; then
               echo "::error::$action: expected deployed=false and no deploy-url with fake credentials, got deployed=[$deployed] deploy-url=[$url]"
               bad=1
@@ -4989,7 +5298,7 @@ jobs:
               echo "✓ $action: outcome=$outcome, deployed=$deployed, CLI ${cli:+installed at }${cli:-not installed}"
             fi
           done <<< "$RESULTS"
-          [ "$n" -eq 2 ] || { echo "::error::expected 2 cases, read $n"; exit 1; }
+          [ "$n" -eq 3 ] || { echo "::error::expected 3 cases, read $n"; exit 1; }
           [ "$bad" -eq 0 ]
           echo "✅ each action installed its CLI only for a deploy, and set deployed"
 
@@ -5062,6 +5371,8 @@ jobs:
       - preview-decide
       - preview-comment
       - preview-cloudflare-url
+      - preview-workers-url
+      - preview-workers-config
       - preview-wiring
     steps:
       # This is the job intended to be the single required status check, so it

@@ -319,7 +319,8 @@ runs:
         echo "bin=$dir/node_modules/.bin/wrangler" >> "$GITHUB_OUTPUT"
         echo "dir=$dir" >> "$GITHUB_OUTPUT"
 
-    # Generated per run, not committed per repo; see scripts/write-wrangler-config.js.
+    # Generated per run, not committed per repo; see
+    # scripts/write-wrangler-config.js, which preview-workers shares.
     - name: Write the Worker config
       id: config
       shell: bash

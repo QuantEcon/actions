@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`preview-workers`**: a new action that previews a pull request on an existing Cloudflare
+  Worker, as Cloudflare moves static sites from Pages to Workers. It uploads the built site as a
+  new version of the Worker with `wrangler versions upload --preview-alias pr-<number>`, which
+  never changes what the Worker serves in production, at
+  `https://pr-<number>-<worker-name>.<account-subdomain>.workers.dev`, and comments on the pull
+  request as `preview-netlify` and `preview-cloudflare` do, with a comment of its own. It has
+  their trust gate, `dispatch-alias`, `placeholder` and outputs. `deploy-url` is built from the
+  inputs and checked against wrangler's record of the upload: a wrong `account-subdomain`, or a
+  Worker whose preview URLs are off, fails the job rather than post a link that cannot load.
+  `deployment-url` is the version's own preview URL, which keeps showing that push. The wrangler
+  config is generated for each run by the writer `deploy-cloudflare` uses, now in `scripts/`,
+  with no change to `deploy-cloudflare`. The token is an account-owned API token scoped to the
+  one Worker, which the chapter shows how to make. (#145)
+
 ### Changed
 - **Container images**: builds of `main` outside the kept window are now deleted from GHCR. A
   new monthly workflow, `prune-images.yml`, keeps `main`'s newest 10 builds and every version of

@@ -103,6 +103,17 @@ jobs:
       #     project-name: 'my-lecture-site'      # The deploy step's project-name
       #     lectures-dir: 'lectures'
 
+      # ─── Cloudflare Workers Alternative ──────────────────────────
+      # With the deploy job's Cloudflare Workers step, replace the step above with:
+      #
+      # - name: Post the preview comment
+      #   uses: quantecon/actions/preview-workers@v0
+      #   with:
+      #     placeholder: 'true'
+      #     worker-name: 'my-lecture-site'       # The deploy step's worker-name
+      #     account-subdomain: 'my-subdomain'    # And its account-subdomain
+      #     lectures-dir: 'lectures'
+
   # ─── Build ───────────────────────────────────────────────────────
   # Builds the site and hands it to the deploy job as an artifact. It holds
   # no secrets and only read access, because it runs the notebooks.
@@ -271,6 +282,20 @@ jobs:
       #     cloudflare-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       #     cloudflare-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       #     project-name: 'my-lecture-site'      # Cloudflare Pages project name
+      #     build-dir: '_build/html'
+      #     lectures-dir: 'lectures'
+
+      # ─── Cloudflare Workers Alternative ──────────────────────────
+      # Replace the Netlify step above with this to use a Cloudflare Worker.
+      # Secrets needed: CLOUDFLARE_WORKERS_TOKEN, CLOUDFLARE_ACCOUNT_ID
+      #
+      # - name: Deploy PR preview
+      #   uses: quantecon/actions/preview-workers@v0
+      #   with:
+      #     cloudflare-api-token: ${{ secrets.CLOUDFLARE_WORKERS_TOKEN }}
+      #     cloudflare-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      #     worker-name: 'my-lecture-site'       # The Worker's name
+      #     account-subdomain: 'my-subdomain'    # <account-subdomain>.workers.dev
       #     build-dir: '_build/html'
       #     lectures-dir: 'lectures'
 

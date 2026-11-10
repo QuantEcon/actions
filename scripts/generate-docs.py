@@ -63,6 +63,7 @@ ORDER = [
     "restore-jupyter-cache",
     "preview-netlify",
     "preview-cloudflare",
+    "preview-workers",
     "publish-gh-pages",
     "deploy-cloudflare",
 ]
