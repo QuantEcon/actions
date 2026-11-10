@@ -4,7 +4,7 @@
 
 ## When it runs
 
-- **After each `Build QuantEcon Containers` run** that succeeds, against the `:latest` it pushed, with the actions checked out at the commit that built it.
+- **After each `Build QuantEcon Containers` run** on `main` that succeeds, against the `:latest` it promoted, with the actions checked out at the commit that built it.
 - **Weekly, on Monday at 02:00 UTC**, against `:latest`, since the images are no longer rebuilt on a schedule (#235). This run is what catches a lecture repository, or the actions, drifting against images that have not changed.
 - **By hand:** `gh workflow run test-containers-lectures.yml`.
 

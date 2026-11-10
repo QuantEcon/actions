@@ -15,14 +15,16 @@ name: Validate Container Images
 #          (moves with the pull request) and pr-<N>-<YYYYMMDD>-<HHMMSS>-<sha7>
 #          (one per run: what this run tests). Never :latest.
 #   smoke  test-container.yml against the candidates: the real `container:`
-#          job, smoke test and size report that :latest gets after each push.
+#          job, smoke test and size report that main's candidates get before
+#          they are promoted.
 # When the pull request closes, the `closed` trigger deletes its candidates
 # (scripts/delete-pr-images.sh).
 #
-# Not here: main's own builds (phase 2 of #142). build-containers.yml still
-# pushes :latest directly, tested only afterwards by test-container.yml and
-# test-containers-lectures.yml. Publishing a candidate from main, testing it,
-# and retagging :latest on green is that phase.
+# Main's own builds are build-containers.yml's (phase 2 of #142): it pushes
+# candidates, smoke-tests them through the same workflow, and only then points
+# :latest at them, with scripts/promote-image.sh. Each build here dry-runs that
+# script on its candidate, so a change that would break the promotion fails a
+# pull request rather than leave :latest behind after a merge.
 #
 # A fork's pull request gets a read-only token and cannot push a candidate, so
 # one that changes an image fails `plan` rather than pass untested. Do not
@@ -65,6 +67,16 @@ jobs:
           # Assigned first: under set -e this fails the step on a bad pin.
           pins=$(scripts/check-base-pins.sh)
           while IFS= read -r pin; do echo "Base image: $pin"; done <<< "$pins" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # The promotion's checks, against a stand-in registry. On every event,
+      # like the other self-tests here: it needs no image.
+      - name: Self-test the promotion script
+        run: scripts/promote-image.sh --self-test
+
+      # The count behind build-containers.yml's alert on a cancelled run,
+      # against a stand-in for gh.
+      - name: Self-test the newer-run count
+        run: scripts/newer-runs.sh --self-test
 
       - name: Decide which images to build
         id: plan
@@ -259,17 +271,27 @@ jobs:
           echo "::error::when this pull request closes, scripts/delete-pr-images.sh would not delete $IMAGE@$DIGEST, so the candidate would stay in GHCR"
           exit 1
 
+      # What build-containers.yml's promote job does on main, as a dry run:
+      # the candidate tag resolves to the digest pushed, :latest can be read,
+      # and imagetools would push this exact manifest as :latest. It moves
+      # nothing.
+      - name: Dry-run the promotion to :latest
+        env:
+          OWNER: ${{ github.repository_owner }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          IMAGE_NAME: ${{ matrix.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          DRY_RUN: 'true'
+        run: scripts/promote-image.sh "$IMAGE_NAME@$DIGEST"
+
   smoke:
     name: Smoke test
     needs: [plan, build]
     # A ceiling for test-container.yml, not a grant: each of its jobs sets its
-    # own permissions. issues and actions are for its notify-failure job,
-    # which runs only on workflow_run, never from here.
+    # own permissions.
     permissions:
       contents: read
       packages: read
-      issues: write
-      actions: read
     uses: ./.github/workflows/test-container.yml
     with:
       images: ${{ needs.plan.outputs.images }}

@@ -17,7 +17,7 @@ The templates use the full image. It runs any lecture written against the Anacon
 
 The lean image is a little smaller to pull, because TeX Live is most of the size of both. Use it when the lectures need only its pinned list, plus the packages they add themselves. A package the full image has and the lean one lacks fails the build at the import, so a repository moving to the lean image adds such packages to its `environment-update` file.
 
-Each [`Test Container`](https://github.com/QuantEcon/actions/actions/workflows/test-container.yml) run reports the size of both images, compressed and on disk, in the summaries of its `Image size` jobs.
+Each [`Build QuantEcon Containers`](https://github.com/QuantEcon/actions/actions/workflows/build-containers.yml) run reports the size of the images it built, compressed and on disk, in the summaries of its `Image size` jobs.
 
 ## What is in them
 
@@ -81,11 +81,11 @@ Nothing rebuilds the images on a schedule. An image changes when a pull request 
 - **A change to an image's recipe,** its `Dockerfile` or `environment.yml`. The science stack moves as one coordinated change, to the next Anaconda baseline the lecture repositories pin, in both images together.
 - **Dependabot's pull requests,** for the packages outside the Anaconda baseline, such as `quantecon-book-theme`, and for the Ubuntu base. The base is pinned by digest, so Ubuntu's security updates arrive when Dependabot proposes a new `ubuntu:24.04` digest, which happens whenever Canonical republishes the image, every few weeks.
 
-Each such pull request builds its images as candidates tagged `pr-<number>`, and smoke-tests them, before it can merge. The merge rebuilds the images and moves `:latest`, which every workflow that names `:latest` uses from its next run.
+Each such pull request builds its images as candidates tagged `pr-<number>`, and smoke-tests them, before it can merge. The merge rebuilds the images and smoke-tests them again, and only if every test passes moves `:latest`, which every workflow that names `:latest` uses from its next run. If a test fails, `:latest` stays on the images it had.
 
 The Ubuntu packages, TeX Live among them, are the versions in Ubuntu's archive when an image's apt layer was last built. That layer is rebuilt when the pinned base moves or the apt step changes, and not otherwise.
 
-After each image build, and weekly on Monday at 02:00 UTC, a test run builds four lecture repositories in both `:latest` images. The weekly run catches a lecture repository, or the actions, drifting against images that have not changed. It changes no image itself.
+After each change reaches `:latest`, and weekly on Monday at 02:00 UTC, a test run builds four lecture repositories in both `:latest` images. The weekly run catches a lecture repository, or the actions, drifting against images that have not changed. It changes no image itself.
 
 ## Pinning an image
 
