@@ -4,8 +4,8 @@
 # (#142). A workflow whose concurrency group cancels a run in progress when a
 # newer one starts calls this from its failure alert: a cancelled run with a
 # newer run behind it leaves the reporting to that run. build-containers.yml
-# calls it; another workflow that takes the same rule calls it too, so that
-# their rules cannot drift apart. The caller passes the branch its
+# and test-containers-lectures.yml both call it (#286), so that their rules
+# cannot drift apart. The caller passes the branch its
 # concurrency group is keyed on, github.ref_name when the group is
 # <name>-${{ github.ref }}: for a workflow_run or scheduled run that is the
 # default branch, whatever branch triggered it.
