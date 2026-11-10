@@ -48,9 +48,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   checked for the candidate's build. It replaces the canary pull request and `cache.yml` dispatch
   that a staged release ran by hand, which now stage only what the gate does not reach: a
   preview's pull-request half, `setup-environment` outside a container, `setup-latex`,
-  `deploy-cloudflare`, `preview-workers`, and a release's own scenarios. A red gate run assigns a `release-gate`
-  issue in the canary to whoever dispatched it. `docs/dev/TESTING.md` describes the gate, and
-  `docs/dev/PLAN.md` drops items 0a, 0b and 0d. (#135, #136)
+  `deploy-cloudflare`, `preview-workers`, and a release's own scenarios. A red gate run from
+  `main` assigns a `release-gate` issue in the canary to whoever dispatched it. `TESTING.md`
+  describes the gate, and `PLAN.md` drops items 0a, 0b and 0d. (#135, #136)
 
 ## [0.17.0] - 2026-11-10
 
