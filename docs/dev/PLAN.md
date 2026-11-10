@@ -4,7 +4,7 @@ Current priorities for `QuantEcon/actions`, the repositories that use the action
 
 ## Current state
 
-- **Actions (11):** `setup-environment`, `setup-latex`, `build-lectures`, `build-jupyter-cache`, `restore-jupyter-cache`, `preview-netlify`, `preview-cloudflare`, `preview-workers`, `publish-gh-pages`, `restore-gh-pages`, `deploy-cloudflare`. Latest release **`v0.18.0`** (2026-11-10). `@v0` points to **`v0.17.0`**, and moves to `v0.18.0` once it has passed the release gate.
+- **Actions (11):** `setup-environment`, `setup-latex`, `build-lectures`, `build-jupyter-cache`, `restore-jupyter-cache`, `preview-netlify`, `preview-cloudflare`, `preview-workers`, `publish-gh-pages`, `restore-gh-pages`, `deploy-cloudflare`. Latest release **`v0.18.0`** (2026-11-10), and `@v0` points to it.
 - **Containers (2):** `quantecon` (full) and `quantecon-build` (lean), on the Anaconda 2026.07 baseline, with the Ubuntu base pinned by digest. See the Dependency policy below, and [CONTAINERS.md](CONTAINERS.md).
 - **Testing:** the action harness on every pull request, the container checks, and the canary repository; see [TESTING.md](TESTING.md). A release that changes what an action does passes the release gate, `gate.yml` in the canary, before `v0` moves, and anything the gate does not reach is staged there by hand ([CONTRIBUTING.md](../../CONTRIBUTING.md#staged-releases)).
 
@@ -19,8 +19,10 @@ Current priorities for `QuantEcon/actions`, the repositories that use the action
 | `lecture-python-intro` | `publish-gh-pages` | **`@v0.12.0`** |
 | `lecture-python-advanced.myst` | `publish-gh-pages` | **`@v0.12.0`** |
 | `lecture-python-programming` | `publish-gh-pages` | **`@v0.12.0`** |
-| `lecture-python-programming.fr` | `preview-netlify` (ci.yml), `publish-gh-pages` (with `create-release-assets`) | **`@v0.12.0`** (2 call sites) |
+| `lecture-python-programming.fr` | `preview-netlify` (ci.yml), `publish-gh-pages` | **`@v0.12.0`** (2 call sites) |
 | `continuous_time_mcs` | `publish-gh-pages` | **`@v0.12.0`** |
+
+All eight lecture repositories that use `publish-gh-pages` pass `create-release-assets: 'true'`, so each tagged publish leaves a release that `restore-gh-pages` can put back (checked 2026-11-10).
 
 Eight call sites across six repositories are exact pins, all on `@v0.12.0` (checked 2026-11-05). Each falls a release behind whenever one ships, until someone merges its Dependabot bump. Exact pins are what stranded `lecture-dp` three releases behind, with alerting that had never worked (#83), and a Dependabot bump surfaces a release without moving the pin: `lecture-python.myst#1000` sat open for 13 days before it was closed as superseded. Moving the lecture family to `@v0` (QuantEcon/workspace-lectures#33) needs each release to pass a gate before `v0` moves to it. The release gate does that (P0 below), so when to repin is the lecture family's call.
 
