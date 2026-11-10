@@ -119,7 +119,9 @@ git push origin v0 --force
 **Rolling back a container image:** every `build-containers.yml` run that promotes writes to
 its `promote` job's step summary the digest it promoted, the digest `:latest` held before it, and
 the command that restores the latter. Each build is also tagged `main-<YYYYMMDD>-<HHMMSS>-<sha>`,
-and none of those tags is deleted, so an earlier image can be found by date in GHCR as well. With a token that can write the package (`docker login ghcr.io`),
+so an earlier image can be found by date in GHCR as well, among the newest 10 builds and every
+build of the last 90 days, which `prune-images.yml` keeps (see
+[CONTAINERS.md](docs/dev/CONTAINERS.md#which-versions-are-kept)). With a token that can write the package (`docker login ghcr.io`),
 point `:latest` back at the previous digest:
 
 ```bash

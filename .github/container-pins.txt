@@ -1,0 +1,8 @@
+# Container image digests that scripts/prune-images.sh never deletes, nor any
+# manifest they list (#277). One <image>@sha256:<digest> per line; a # starts
+# a comment. Add a digest here before pinning it anywhere, say who pins it,
+# and remove it when nothing does. An edit here rebuilds no image.
+
+# QuantEcon/test-lecture-theme-sphinx (ci.yml, cache.yml, publish.yml) and
+# QuantEcon/test-lecture-theme-mystmd (ci.yml)
+quantecon-build@sha256:937af97c5b9185877cc53cded64d002df6d6ce5e561467931add2a029baada93

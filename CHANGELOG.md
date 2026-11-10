@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Container images**: builds of `main` outside the kept window are now deleted from GHCR. A
+  new monthly workflow, `prune-images.yml`, keeps `main`'s newest 10 builds and every version of
+  the last 90 days, tagged or not, so every build of the last 90 days; the newest builds are the
+  rollback targets. It keeps a dispatch from a branch for 14 days. It always keeps `:latest`, a
+  pull request's candidates, every digest in `.github/container-pins.txt`, any version carrying a
+  tag it does not own, and every manifest these list. Until now nothing was deleted: 338 versions
+  of `quantecon` had built up, and 221 of `quantecon-build`. A workflow that pins an image by
+  digest keeps working while that build is kept. To keep a pin for longer, add its digest to
+  `.github/container-pins.txt` in a pull request, or have the version tagged with a name that
+  does not end in `-<7 hex digits>`. The one pin known in QuantEcon, `quantecon-build` in the two
+  theme test repositories, is in the file. A dispatch is a dry run unless told otherwise, a pull
+  request that changes the pruner lists what it would delete, and a run with more than 50
+  versions of an image to delete deletes none. (#277)
+
 ## [0.17.0] - 2026-11-10
 
 ### Added
