@@ -94,8 +94,10 @@ canary's `gate/README.md` gives the fixture's rules.
    gh workflow run gate.yml --repo QuantEcon/test-actions-lecture-intro --ref main -f candidate=vX.Y.Z
    gh run watch <run id> --repo QuantEcon/test-actions-lecture-intro --exit-status
    ```
-   If no URL is printed, the run is the newest that
-   `gh run list --repo QuantEcon/test-actions-lecture-intro --workflow gate.yml --limit 1` lists.
+   If no URL is printed, this prints the newest run's id:
+   ```bash
+   gh run list --repo QuantEcon/test-actions-lecture-intro --workflow gate.yml --limit 1 --json databaseId --jq '.[0].databaseId'
+   ```
    A red run from `main` also opens or comments on a `release-gate` issue in the canary, assigned
    to whoever dispatched it.
 3. If the release changes something the gate does not reach (below), stage that by hand on the
