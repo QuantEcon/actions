@@ -87,11 +87,15 @@ three builders, restores its caches both ways, and deploys both previews and Git
 canary's `gate/README.md` gives the fixture's rules.
 
 1. Do steps 1, 2 and 4: the `vX.Y.Z` tag and its Release exist, and `v0` has not moved.
-2. Dispatch the gate on the canary's `main`, and wait for it:
+2. Dispatch the gate on the canary's `main`, and wait for it. `gh workflow run` prints the new
+   run's URL, and the number at its end is the run id that `gh run watch` takes; with
+   `--exit-status`, a red run fails the command:
    ```bash
    gh workflow run gate.yml --repo QuantEcon/test-actions-lecture-intro --ref main -f candidate=vX.Y.Z
    gh run watch <run id> --repo QuantEcon/test-actions-lecture-intro --exit-status
    ```
+   If no URL is printed, the run is the newest that
+   `gh run list --repo QuantEcon/test-actions-lecture-intro --workflow gate.yml --limit 1` lists.
    A red run from `main` also opens or comments on a `release-gate` issue in the canary, assigned
    to whoever dispatched it.
 3. If the release changes something the gate does not reach (below), stage that by hand on the
