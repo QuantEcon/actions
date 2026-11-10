@@ -4533,7 +4533,7 @@ jobs:
 
           # Only the good release's site is left, and nothing escaped one.
           find "$RUNNER_TEMP" -mindepth 2 -maxdepth 2 -path "$RUNNER_TEMP/restore-gh-pages.*/site" > "$RUNNER_TEMP/sites"
-          left=$(grep -vxF -- "$good" "$RUNNER_TEMP/sites" || true)
+          left=$(grep -vxF -- "$good" "$RUNNER_TEMP/sites" | paste -sd' ' - || true)
           [ -z "$left" ] || fail "a refused case left a site behind: $left"
           escaped=$(find "$RUNNER_TEMP" -name escaped.html)
           [ -z "$escaped" ] || fail "the '..' case wrote $escaped"
