@@ -4847,17 +4847,20 @@ jobs:
             exit "$STUB_EXIT"
           fi
           echo "Uploaded harness-worker (1.00 sec)"
-          echo "Worker Version ID: 1a2b3c4d-0000-4000-8000-000000000000"
+          echo "Worker Version ID: 8815c202-4b21-4d5d-a2d5-35b0beb4d8ae"
           [ -z "$out" ] || [ -z "$STUB_RECORD" ] || printf '%s\n' "$STUB_RECORD" >> "$out"
           STUB
           chmod +x "$d/wrangler"
 
           SHA=0123456789abcdef0123456789abcdef01234567
           # record KIND ALIAS_URL VERSION_URL: the line wrangler appends after
-          # an upload of harness-worker. v1 is what the pinned wrangler writes,
-          # with each URL left out when it is empty, as wrangler leaves them out
-          # when the Worker's preview URLs are off; v2 is a version the step
-          # does not know; none is a wrangler that writes nothing.
+          # an upload of harness-worker. v1 is what the pinned wrangler
+          # writes: the line recorded from the canary's first real upload, to
+          # qe-preview-canary on 2026-11-10 (wrangler 4.158.0), with this
+          # job's Worker and URLs in it. Each URL is left out when it is empty,
+          # as wrangler leaves them out when the Worker's preview URLs are off.
+          # v2 is a version the step does not know; none is a wrangler that
+          # writes nothing.
           record() {
             local urls="" version=1
             [ -z "$3" ] || urls="$urls,\"preview_url\":\"$3\""
@@ -4865,7 +4868,7 @@ jobs:
             [ "$1" != v2 ] || version=2
             case "$1" in
               v1 | v2)
-                printf '{"type":"version-upload","version":%s,"worker_name":"harness-worker","worker_tag":"0f0f0f0f0f0f4000800000000000000f","version_id":"1a2b3c4d-0000-4000-8000-000000000000"%s,"worker_name_overridden":false,"timestamp":"2026-11-10T00:00:01.000Z"}' \
+                printf '{"type":"version-upload","version":%s,"worker_name":"harness-worker","worker_tag":"88e84f4325a3457799958325904f92d4","version_id":"8815c202-4b21-4d5d-a2d5-35b0beb4d8ae"%s,"worker_name_overridden":false,"bundle_size":{"raw_bytes":348,"gzip_bytes":249},"timestamp":"2026-11-10T06:07:26.338Z"}' \
                   "$version" "$urls" ;;
               none) ;;
             esac
@@ -4924,18 +4927,18 @@ jobs:
               echo "✓ $name: exit $got_code, deploy-url [$want_deploy], deployment-url [$want_deployment], annotation: $want_note"
             fi
           done <<CASES
-          match|pull_request|pr-5|v1|https://pr-5-$W|https://1a2b3c4d-$W|0|0|https://pr-5-$W|https://1a2b3c4d-$W|none
-          match-dispatch|workflow_dispatch|dispatch-harness|v1|https://dispatch-harness-$W|https://1a2b3c4d-$W|0|0|https://dispatch-harness-$W|https://1a2b3c4d-$W|none
-          other-subdomain|pull_request|pr-5|v1|https://pr-5-harness-worker.harness-other.workers.dev|https://1a2b3c4d-harness-worker.harness-other.workers.dev|0|1|||mismatch
-          other-alias|pull_request|pr-5|v1|https://pr-6-$W|https://1a2b3c4d-$W|0|1|||mismatch
+          match|pull_request|pr-5|v1|https://pr-5-$W|https://8815c202-$W|0|0|https://pr-5-$W|https://8815c202-$W|none
+          match-dispatch|workflow_dispatch|dispatch-harness|v1|https://dispatch-harness-$W|https://8815c202-$W|0|0|https://dispatch-harness-$W|https://8815c202-$W|none
+          other-subdomain|pull_request|pr-5|v1|https://pr-5-harness-worker.harness-other.workers.dev|https://8815c202-harness-worker.harness-other.workers.dev|0|1|||mismatch
+          other-alias|pull_request|pr-5|v1|https://pr-6-$W|https://8815c202-$W|0|1|||mismatch
           previews-off|pull_request|pr-5|v1|||0|1|||previews-off
           no-record|pull_request|pr-5|none|||0|0|https://pr-5-$W||no-record
-          unknown-version|pull_request|pr-5|v2|https://pr-5-$W|https://1a2b3c4d-$W|0|0|https://pr-5-$W||no-record
+          unknown-version|pull_request|pr-5|v2|https://pr-5-$W|https://8815c202-$W|0|0|https://pr-5-$W||no-record
           version-no-hash|pull_request|pr-5|v1|https://pr-5-$W|https://$W|0|0|https://pr-5-$W||version
-          version-other-worker|pull_request|pr-5|v1|https://pr-5-$W|https://1a2b3c4d-harness-other.harness-sub.workers.dev|0|0|https://pr-5-$W||version
-          version-with-path|pull_request|pr-5|v1|https://pr-5-$W|https://1a2b3c4d-$W/index.html|0|0|https://pr-5-$W||version
-          alias-line-break|pull_request|pr-5|v1|https://pr-5-$W\\n::warning::harness-145 a line break reached the log|https://1a2b3c4d-$W|0|1|||mismatch
-          version-line-break|pull_request|pr-5|v1|https://pr-5-$W|https://1a2b3c4d-$W\\n::warning::harness-145 a line break reached the log|0|0|https://pr-5-$W||version
+          version-other-worker|pull_request|pr-5|v1|https://pr-5-$W|https://8815c202-harness-other.harness-sub.workers.dev|0|0|https://pr-5-$W||version
+          version-with-path|pull_request|pr-5|v1|https://pr-5-$W|https://8815c202-$W/index.html|0|0|https://pr-5-$W||version
+          alias-line-break|pull_request|pr-5|v1|https://pr-5-$W\\n::warning::harness-145 a line break reached the log|https://8815c202-$W|0|1|||mismatch
+          version-line-break|pull_request|pr-5|v1|https://pr-5-$W|https://8815c202-$W\\n::warning::harness-145 a line break reached the log|0|0|https://pr-5-$W||version
           upload-fails|pull_request|pr-5|none|||1|1|||failed
           CASES
 
