@@ -55,7 +55,7 @@ should pin an exact `v0.x.y` tag. After the 1.0.0 release, we'll add floating ma
    ```
 
 3. **Move the floating `v0` tag to this release** so `@v0` consumers pick it up. If the release
-   changes action behaviour, hold this step until the canary passes: see
+   changes action behaviour, hold this step until the release gate passes: see
    [Staged Releases](#staged-releases). The `^{}` peels the annotated tag so `v0` points at the
    release **commit** directly (a lightweight tag), not at the `v0.x.y` tag object:
    ```bash
@@ -78,26 +78,45 @@ should pin an exact `v0.x.y` tag. After the 1.0.0 release, we'll add floating ma
 ### Staged Releases
 
 A release that changes what an action does, not just its docs, is staged: hold step 3 until the
-candidate has passed on the canary, `QuantEcon/test-actions-lecture-intro`. Merging to `main`
-reaches no consumer, but moving `v0` reaches every `@v0` consumer on its next run, and the canary
-pins `@v0` too, so on its own it only meets a release after it ships. Automating this gate is #135.
+candidate has passed the release gate. Merging to `main` reaches no consumer, but moving `v0`
+reaches every `@v0` consumer on its next run. The gate is `gate.yml` in the canary,
+`QuantEcon/test-actions-lecture-intro`. It checks the candidate out and runs the actions from that
+checkout on a fixture in which nothing else moves between runs: an image pinned by digest, no
+network reads at build time, nothing Dependabot updates. It runs `build-jupyter-cache` with all
+three builders, restores its caches both ways, and deploys both previews and GitHub Pages. The
+canary's `gate/README.md` gives the fixture's rules.
 
 1. Do steps 1, 2 and 4: the `vX.Y.Z` tag and its Release exist, and `v0` has not moved.
-2. In the canary, open a PR from a branch of the canary repository itself (the preview actions
-   skip fork PRs) with every `quantecon/actions/...@v0` in its `ci.yml` changed to `@vX.Y.Z`.
-   That runs `restore-jupyter-cache`, `build-lectures`, and real `preview-netlify` and
-   `preview-cloudflare` deploys with `pull_request` semantics.
-3. From a canary branch whose `cache.yml` points at `build-jupyter-cache@vX.Y.Z`, dispatch
-   `cache.yml`. That runs `build-jupyter-cache`'s own steps.
-4. Move `v0` (step 3 above) only when both are green.
+2. Dispatch the gate on the canary's `main`, and wait for it:
+   ```bash
+   gh workflow run gate.yml --repo QuantEcon/test-actions-lecture-intro --ref main -f candidate=vX.Y.Z
+   gh run watch <run id> --repo QuantEcon/test-actions-lecture-intro --exit-status
+   ```
+   A red run from `main` also opens or comments on a `release-gate` issue in the canary, assigned
+   to whoever dispatched it.
+3. If the release changes something the gate does not reach (below), stage that by hand on the
+   canary too, and say which in the release PR.
+4. Move `v0` (step 3 above) only when the gate, and anything staged by hand, is green. Link the
+   gate's run in the release PR.
+
+The gate does not reach:
+
+- a preview action's pull-request half: the `pr-<N>` alias, change detection and the comment.
+  Stage it with a PR from a branch of the canary repository itself (the preview actions skip
+  fork PRs) with every `quantecon/actions/...@v0` in its `ci.yml` changed to `@vX.Y.Z`;
+- `setup-environment` outside a container, `setup-latex`, `deploy-cloudflare` and
+  `preview-workers`, since the gate builds in a container and deploys to no Worker. Stage them
+  with a throwaway workflow on a canary branch, or for `preview-workers` a canary PR as above;
+- a scenario of the release's own, such as a cache restored across several pushes;
+- how consumers fetch the actions by tag. The gate runs them from a checkout, and rewrites
+  `build-jupyter-cache`'s four nested `@v0` calls to that checkout, so its siblings run at the
+  candidate, but not in the action exactly as shipped.
 
 Known limits:
 
-- `build-jupyter-cache` calls `setup-environment@v0` and `build-lectures@v0`, so the dispatch
-  runs the candidate against the previous release's siblings. A fix to either sibling reaches
-  that chain untested until `v0` moves.
-- Steps 2-3 never run `publish-gh-pages` (the canary's `publish.yml` fires only on a `publish*`
-  tag) or `setup-environment` at the candidate ref.
+- The gate tests the actions, not the images: its image moves only by hand, after a promotion to
+  `:latest` that the lecture matrix has passed, as the canary's `gate/README.md` describes. Its
+  digest is in `.github/container-pins.txt`, so it is never pruned.
 - Repositories pinned to an exact tag get a Dependabot bump PR on each repository's own
   Dependabot schedule, not when the tag is pushed; merging it stays a human decision.
 - Container images do not stage through the canary. A pull request that changes an image

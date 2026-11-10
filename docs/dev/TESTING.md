@@ -8,7 +8,8 @@ How a change to this repository is tested: the action harness on every pull requ
 | [`validate-containers.yml`](../../.github/workflows/validate-containers.yml), called by the harness | Each image a pull request changes, built as a `pr-<N>` candidate and smoke-tested | Within the harness, on a pull request that changes an image |
 | [`test-container.yml`](../../.github/workflows/test-container.yml) | The smoke test and size report, on an image's candidates before they can reach `:latest` | Called by `validate-containers.yml` on a pull request's candidates and by `build-containers.yml` on main's, before it promotes them; and by hand for any tag |
 | [`test-containers-lectures.yml`](../../.github/workflows/test-containers-lectures.yml) | Four lecture repositories built in both images | After each promotion to `:latest`, weekly on Monday at 02:00 UTC, and by hand |
-| [QuantEcon/test-actions-lecture-intro](https://github.com/QuantEcon/test-actions-lecture-intro), the canary | A release, in a real lecture repository, with real deploys | On its own pull requests and weekly cache build, and in every staged release |
+| [QuantEcon/test-actions-lecture-intro](https://github.com/QuantEcon/test-actions-lecture-intro), the canary | A release, in a real lecture repository, with real deploys | On its own pull requests and weekly cache build, and for what the release gate does not reach |
+| [`gate.yml`](https://github.com/QuantEcon/test-actions-lecture-intro/blob/main/.github/workflows/gate.yml) in the canary, the release gate | A release candidate, checked out and run on a frozen fixture: the cache build, both restores, both previews and a GitHub Pages deploy | By hand, on the canary's `main`, before `v0` moves |
 
 ## The action harness
 
@@ -70,7 +71,18 @@ A pull request that changes an image builds and smoke-tests it before it can mer
 - `cache.yml`, weekly on Sunday at 03:00 UTC and by hand: `build-jupyter-cache`;
 - `publish.yml`, on a `publish*` tag: `publish-gh-pages`.
 
-In a staged release, a branch of the canary points these at the candidate tag before `v0` moves: see [Staged Releases](../../CONTRIBUTING.md#staged-releases).
+In a staged release, a branch of the canary points these at the candidate tag only for what the release gate does not reach: see [Staged Releases](../../CONTRIBUTING.md#staged-releases).
+
+### The release gate
+
+`gate.yml` in the canary tests a candidate before `v0` moves. It is dispatched on the canary's `main` with `candidate`, a commit SHA or a `v*` tag of this repository, and refuses one that is reachable from neither `main` nor a `v*` tag, before any job that holds a secret. It checks that commit out and runs every action from it, as `uses: ./actions-repo/<action>`, on the fixture in the canary's `gate/`. The fixture's image is pinned by digest, its pages read nothing from the network, and Dependabot updates nothing in it, so a red gate means the candidate.
+
+- **The cache build:** `build-jupyter-cache` with all three builders and nothing restored, after its four nested `uses: quantecon/actions/…@v0` lines are rewritten to the checkout, so its siblings run at the candidate. A nested call left over fails the job. It checks that every page executed, from a line each page prints, in the HTML and the PDF's LaTeX.
+- **Two site builds** restore that run's caches, the execution cache as `templates/ci.yml` does and the build cache as the canary's `ci.yml` does, and must restore that run's key.
+- **The deploys** run in jobs of their own that execute no notebook, under environments that allow `main` only: `preview-netlify` and `preview-cloudflare` with `dispatch-alias: dispatch-release-gate`, which must report `deployed`, and `publish-gh-pages` in its `upload` and `deploy` modes. Each deployed URL must serve a marker file holding the candidate's SHA, compared by content.
+- **The verdict** passes only if every job did. A red run from `main` opens or comments on a `release-gate` issue in the canary, assigned to whoever dispatched it.
+
+`self-test: build-fails` appends a raising cell to the fixture, and `self-test: nothing-deployed` runs the previews without their alias. Each must turn the gate red. On any branch but `main` the deploy jobs are refused, so such a run is always red, and the jobs before the deploys show whether the build works.
 
 ## Locally
 
@@ -83,8 +95,9 @@ In a staged release, a branch of the canary points these at the candidate tag be
 
 ## What is not covered
 
-- **Real deploys.** No harness job deploys anywhere: that needs real sites and secrets. The canary's pull requests deploy real previews, and its tag runs publish to GitHub Pages; a `deploy-cloudflare` deploy is proven only by the first consumer run after a release.
+- **Real deploys.** No harness job deploys anywhere: that needs real sites and secrets. The release gate deploys both previews and GitHub Pages for each candidate, and the canary's pull requests and tag runs deploy them too; a `deploy-cloudflare` deploy is proven only by the first consumer run after a release.
 - **A filed failure issue.** The harness checks the issue's text and the guards that lead to it, but filing one needs `issues: write` and would open real issues on every run, so only an unattended consumer or canary run files one.
-- **`build-jupyter-cache`'s siblings at the candidate.** They run at `@v0`, here and in a staged release, so a change to either reaches that chain untested until `v0` moves.
-- **A release before `v0` moves, automatically.** Staged releases are run by hand. A `gate.yml` in the canary that tests a candidate is #135, with its fixture #136.
+- **`build-jupyter-cache` exactly as shipped, at the candidate.** In the harness its siblings run at `@v0`. The release gate runs them at the candidate, but in a copy of the action with its nested calls rewritten.
+- **How consumers fetch a release.** The release gate runs the actions from a checkout, so the download a consumer's `uses: …@v0` makes is first exercised after `v0` moves. And the gate runs when a releaser dispatches it, not on a schedule.
+- **`setup-environment` outside a container, `setup-latex`, `deploy-cloudflare` and `preview-workers` at the candidate.** The gate builds in a container and deploys to no Worker; a release that changes them stages them by hand.
 - **The lecture repositories' own content**, beyond the four the lecture matrix builds.
