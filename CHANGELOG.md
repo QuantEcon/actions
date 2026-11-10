@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-11-10
+
 ### Added
 - **`preview-workers`**: a new action that previews a pull request on an existing Cloudflare
   Worker, as Cloudflare moves static sites from Pages to Workers. It uploads the built site as a
@@ -36,6 +38,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   theme test repositories, is in the file. A dispatch is a dry run unless told otherwise, a pull
   request that changes the pruner lists what it would delete, and a run with more than 50
   versions of an image to delete deletes none. (#277)
+- **`preview-netlify`, `preview-cloudflare`, `deploy-cloudflare`**: through Dependabot's lockfile
+  bump, `preview-cloudflare` and `deploy-cloudflare` pin wrangler 4.158.0, up from 4.156.1, and
+  `preview-netlify` pins netlify-cli 27.16.2, up from 27.16.1. `preview-workers` ships with
+  wrangler 4.158.0. The harness installs each from its lockfile and runs it. (#294)
+- **`publish-gh-pages`**: `softprops/action-gh-release`, which attaches the release assets, moves
+  from 3.0.3 to 3.0.4, through Dependabot's bump. The patch release classifies GitHub API errors
+  more safely. (#295)
+- **Container images**: `quantecon-book-theme` moves from 0.22.1 to 0.22.2 in both images,
+  through Dependabot's bump. The patch release's dark-mode button is labelled "Toggle dark mode",
+  and a site that sets no author no longer shows "Author name not set" in its page header. Both
+  images were smoke-tested before `:latest` moved. (#293)
 
 ### Documentation
 - **Releases** (CONTRIBUTING, Staged Releases): a release that changes an action passes the
