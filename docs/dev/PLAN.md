@@ -6,7 +6,7 @@ Current priorities for `QuantEcon/actions`, the repositories that use the action
 
 - **Actions (10):** `setup-environment`, `setup-latex`, `build-lectures`, `build-jupyter-cache`, `restore-jupyter-cache`, `preview-netlify`, `preview-cloudflare`, `preview-workers`, `publish-gh-pages`, `deploy-cloudflare`. Latest release **`v0.17.0`** (2026-11-10). `@v0` points to **`v0.16.0`**, and moves to `v0.17.0` once its staged release and the lecture matrix have passed.
 - **Containers (2):** `quantecon` (full) and `quantecon-build` (lean), on the Anaconda 2026.07 baseline, with the Ubuntu base pinned by digest. See the Dependency policy below, and [CONTAINERS.md](CONTAINERS.md).
-- **Testing:** the action harness on every pull request, the container checks, and the canary repository; see [TESTING.md](TESTING.md). A release that changes what an action does is staged by hand on the canary before `v0` moves ([CONTRIBUTING.md](../../CONTRIBUTING.md#staged-releases)).
+- **Testing:** the action harness on every pull request, the container checks, and the canary repository; see [TESTING.md](TESTING.md). A release that changes what an action does passes the release gate, `gate.yml` in the canary, before `v0` moves, and anything the gate does not reach is staged there by hand ([CONTRIBUTING.md](../../CONTRIBUTING.md#staged-releases)).
 
 ## Consumers in production
 
@@ -24,7 +24,7 @@ Current priorities for `QuantEcon/actions`, the repositories that use the action
 
 Eight call sites across six repositories are exact pins, all on `@v0.12.0` (checked 2026-11-05). Each falls a release behind whenever one ships, until someone merges its Dependabot bump. Exact pins are what stranded `lecture-dp` three releases behind, with alerting that had never worked (#83), and a Dependabot bump surfaces a release without moving the pin: `lecture-python.myst#1000` sat open for 13 days before it was closed as superseded. Moving the lecture family to `@v0` (QuantEcon/workspace-lectures#33) waits on release gating, P0 below.
 
-The canary meets a release first on one path only. Its weekly cache build runs on Sunday at 03:00 UTC, a day ahead of the consumers' Monday builds. But its `ci.yml` runs on pull requests and by hand, with no schedule and no `dispatch-alias`, and its `publish.yml` runs only on a `publish*` tag, so neither the preview path nor the publish path has an automatic lead over consumers. And its workflows name `@v0`, the tag a release moves, so they test a candidate only when someone stages one by hand.
+The canary meets a release first on one path only. Its weekly cache build runs on Sunday at 03:00 UTC, a day ahead of the consumers' Monday builds. But its `ci.yml` runs on pull requests and by hand, with no schedule and no `dispatch-alias`, and its `publish.yml` runs only on a `publish*` tag, so neither the preview path nor the publish path has an automatic lead over consumers. And its workflows name `@v0`, the tag a release moves, so a candidate is tested by the release gate instead (P0 below).
 
 Lecture repositories are tracked centrally in [QuantEcon/meta#321](https://github.com/QuantEcon/meta/issues/321), and the preview rollout in [QuantEcon/meta#327](https://github.com/QuantEcon/meta/issues/327).
 
@@ -34,14 +34,11 @@ The numbered items keep the numbers the July 2026 review gave them, which issues
 
 ### P0: release gating (#138)
 
-A release reaches a published lecture site before any test has met it, unless it is staged by hand. The gate is a workflow in the canary that tests a checkout of the candidate (decided on #143), not a second repository or a `v0-next` tag.
+The release gate is `gate.yml` in the canary. It tests a checkout of the candidate on a frozen fixture in the canary's `gate/` before `v0` moves (#135, #136, decided on #143), and [TESTING.md](TESTING.md#the-release-gate) describes it. Its two self-tests turn it red, and a red run from `main` assigns a `release-gate` issue in the canary to whoever dispatched it, which reaches their GitHub notifications. What remains:
 
 | # | Item | Refs |
 |---|---|---|
-| 0a | **The gate's fixture**, in its own folder in the canary. Purpose-built, about five lectures, all three builders, and a staged-failure self-test from the start. It must cover plotly/kaleido static export, which the container smoke fixture covers and the canary does not. Gate builds are frozen: the image by a committed digest, cold builds, intersphinx off, so a run reads nothing that has moved since the last one. The canary's other workflows keep `quantecon-build:latest` and `@v0` | #136, #85, #143 |
-| 0b | **`gate.yml` in the canary, green before `v0` moves.** A `workflow_dispatch` workflow that takes the candidate as an input, checks it out and calls `uses: ./actions-repo/<action>`, which works in container jobs. It accepts only commits reachable from `main` or a `v*` tag, and its secrets live in a canary environment restricted to the canary's `main`. It covers `build-jupyter-cache`'s sibling chain by rewriting the four `uses: …@v0` lines to local paths before the step runs, at the cost of testing a patched `action.yml`; it does not exercise how consumers fetch the actions by tag. `publish-gh-pages` is in the gate for its deploy only: the release-asset packaging is tested in this repository's harness (`publish-release-packaging`). The preview leg deploys and asserts through `dispatch-alias` and `deployed` | #135, #143, #227 |
-| 0c | **Close the ungated consumer paths regardless of 0b.** Schedule the canary's `ci.yml` and `publish.yml` ahead of the consumers' Monday builds. `publish.yml` has no `workflow_dispatch`, and its job-level `if:` accepts only tag pushes, so a scheduled or dispatched run would skip its only job and never go red. `ci.yml` should pass `dispatch-alias` and fail unless `deployed` is `'true'` | #135, #136 |
-| 0d | **Prove the gate can stop a release, and that a red gate reaches a person.** Both have precedent here: container smoke tests that could not fail (#108), and a canary that failed eight weeks running and filed no issue (#83) | #135, #83, #108 |
+| 0c | **Close the ungated consumer paths.** Schedule the canary's `ci.yml` and `publish.yml` ahead of the consumers' Monday builds. `publish.yml` has no `workflow_dispatch`, and its job-level `if:` accepts only tag pushes, so a scheduled or dispatched run would skip its only job and never go red. `ci.yml` should pass `dispatch-alias` and fail unless `deployed` is `'true'`. Revisited once the release gate has replaced the hand-staged legs that these two workflows still carry | #135, #136 |
 
 ### Backlog
 
@@ -63,7 +60,7 @@ The lean image pins every package in its `environment.yml` that the `anaconda` m
 
 | Area | Issues | Where it stands |
 |---|---|---|
-| Release gating | #138 (tracking), #135, #136 | P0, items 0a–0d |
+| Release gating | #138 (tracking), #135, #136 | The release gate is live in the canary; P0 item 0c remains |
 | Testing | #100, #282 | Stage 1, the harness, and the canary are live; the gate is split out to #138. #282, a harness run of the pinned wrangler against a stub of Cloudflare's API, is low priority |
 | Previews | #291 | A Cloudflare Pages preview never answers 404, since a build with no `404.html` makes Pages serve `index.html` for every unknown path. Low priority |
 | Preview speed | #92 (tracking), #147–#152, #154–#158 | HTML-only previews are decided (#146): #148 is unblocked, and the PDF check that goes with it is in `templates/ci.yml` |

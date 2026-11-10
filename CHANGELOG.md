@@ -37,6 +37,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   request that changes the pruner lists what it would delete, and a run with more than 50
   versions of an image to delete deletes none. (#277)
 
+### Documentation
+- **Releases** (CONTRIBUTING, Staged Releases): a release that changes an action passes the
+  release gate before `v0` moves. The gate is `gate.yml` in the canary,
+  QuantEcon/test-actions-lecture-intro, dispatched on its `main` with the candidate, which it
+  refuses unless it is reachable from `main` or a `v*` tag. It checks the candidate out and runs
+  the actions from that checkout on a fixture whose image is pinned by digest and whose pages
+  read nothing from the network: `build-jupyter-cache` cold with all three builders, its siblings
+  at the candidate too; both cache restores; both previews and a GitHub Pages deploy, each
+  checked for the candidate's build. It replaces the canary pull request and `cache.yml` dispatch
+  that a staged release ran by hand, which now stage only what the gate does not reach: a
+  preview's pull-request half, `setup-environment` outside a container, `setup-latex`,
+  `deploy-cloudflare`, `preview-workers`, and a release's own scenarios. A red gate run from
+  `main` assigns a `release-gate` issue in the canary to whoever dispatched it. `TESTING.md`
+  describes the gate, and `PLAN.md` drops items 0a, 0b and 0d. (#135, #136)
+
 ## [0.17.0] - 2026-11-10
 
 ### Added
