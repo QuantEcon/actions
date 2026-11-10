@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-10
+
 ### Added
 - **`setup-latex`**: a new action that installs TeX Live, or any apt packages, on a standard
   Ubuntu runner, from a cache of the downloaded `.deb` archives. A plain `apt-get install`
