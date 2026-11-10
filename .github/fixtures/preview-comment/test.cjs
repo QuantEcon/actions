@@ -8,7 +8,8 @@
 //     shared: the GOLDEN *.md files here are the bodies that the two inline
 //     scripts of v0.14.0 rendered for the GOLDEN inputs below, run through
 //     runSteps, and the shared script must render the hidden marker line and
-//     then exactly that;
+//     then exactly that. preview-workers (#145) came after, so its WORKERS
+//     fixtures were rendered by the shared script and read by eye;
 //   - the action updates its own comment however many come before it, and
 //     never anyone else's (finding M2 of the 2026-10-06 review);
 //   - with placeholder: 'true', it posts the PENDING comment, *-pending*.md,
@@ -18,7 +19,10 @@
 //     deploy's comment for its own commit;
 //   - the input check refuses a deploy without its secrets or build-dir, a
 //     placeholder without a valid site name, and a line break in build-dir,
-//     lectures-dir or project-name (#267), and never sees a secret.
+//     lectures-dir, project-name, worker-name or account-subdomain (#267),
+//     and never sees a secret; preview-workers' refuses a Worker name or
+//     subdomain that is not a hostname label, and an alias that does not
+//     fit in one with the Worker's name.
 //
 // Usage: node test.cjs STEPS_JSON, where STEPS_JSON maps each action's
 // directory to its `check-inputs`, `comment-script` and `comment` steps and
@@ -37,6 +41,7 @@ const BOT = 'github-actions[bot]';
 const MARKER = {
   'preview-netlify': '<!-- quantecon-preview:netlify -->',
   'preview-cloudflare': '<!-- quantecon-preview:cloudflare -->',
+  'preview-workers': '<!-- quantecon-preview:workers -->',
 };
 const CONTEXT = {
   owner: 'QuantEcon',
@@ -49,6 +54,7 @@ const SHA = '0123456789abcdef0123456789abcdef01234567';
 const OLD_SHA = 'fedcba9876543210fedcba9876543210fedcba98';
 const NETLIFY_URL = 'https://pr-5--harness-site.netlify.app';
 const CLOUDFLARE_URL = 'https://pr-5.harness-project.pages.dev';
+const WORKERS_URL = 'https://pr-5-harness-worker.harness-sub.workers.dev';
 const TWO_LECTURES = 'lectures/aiyagari.md\nlectures/mccall_model.md';
 
 // Each one is a fixture, <name>.md: the step env the action would pass, as
@@ -76,6 +82,20 @@ const GOLDEN = [
     // No lecture changed, and wrangler named no per-deployment URL.
     name: 'cloudflare-no-deployment-url', action: 'preview-cloudflare',
     env: { DEPLOY_URL: CLOUDFLARE_URL, DEPLOYMENT_URL: '', CHANGED_FILES: '', LECTURES_DIR: 'lectures', STRIP_LECTURES_DIR: 'true', COMMIT_SHA: SHA },
+  },
+];
+
+// preview-workers' deploy comments, <name>.md, rendered by the shared script
+// and read by eye: the same inputs as the Cloudflare ones above, on a Worker.
+const WORKERS = [
+  {
+    name: 'workers-lectures', action: 'preview-workers',
+    env: { DEPLOY_URL: WORKERS_URL, DEPLOYMENT_URL: 'https://1a2b3c4d-harness-worker.harness-sub.workers.dev', CHANGED_FILES: TWO_LECTURES, LECTURES_DIR: 'lectures', STRIP_LECTURES_DIR: 'true', COMMIT_SHA: SHA },
+  },
+  {
+    // No lecture changed, and wrangler's record named no version URL.
+    name: 'workers-no-deployment-url', action: 'preview-workers',
+    env: { DEPLOY_URL: WORKERS_URL, DEPLOYMENT_URL: '', CHANGED_FILES: '', LECTURES_DIR: 'lectures', STRIP_LECTURES_DIR: 'true', COMMIT_SHA: SHA },
   },
 ];
 
@@ -129,9 +149,15 @@ const PENDING = [
     env: { PREVIEW_STATE: 'pending', PREVIEW_ALIAS: 'pr-5', PREVIEW_SITE: 'harness-project', LECTURES_DIR: 'lectures', COMMIT_SHA: SHA },
     api: { files: TWO_FILES, contents: ['lectures/_toc.yml'] },
   },
+  {
+    // The site is <worker>.<subdomain>, as the input check writes it.
+    name: 'workers-pending', action: 'preview-workers',
+    env: { PREVIEW_STATE: 'pending', PREVIEW_ALIAS: 'pr-5', PREVIEW_SITE: 'harness-worker.harness-sub', LECTURES_DIR: 'lectures', COMMIT_SHA: SHA },
+    api: { files: TWO_FILES, contents: ['lectures/_toc.yml'] },
+  },
 ];
 
-const golden = name => GOLDEN.find(g => g.name === name) || PENDING.find(g => g.name === name);
+const golden = name => [...GOLDEN, ...WORKERS, ...PENDING].find(g => g.name === name);
 const fixture = name => fs.readFileSync(path.join(__dirname, `${name}.md`), 'utf8');
 
 // Comments, in the API's shape. Ids are positions, from 1.
@@ -195,6 +221,18 @@ const lookupCases = () => [
     comments: [bot(before('cloudflare-lectures'))], expect: 'none' },
   { name: "the placeholder: a person's comment quoting this push's deploy is not its own", golden: 'netlify-pending',
     comments: [person(after('netlify-lectures')), bot(earlier(after('netlify-lectures')))], expect: { update: 2 } },
+
+  // preview-workers keeps a comment of its own beside preview-cloudflare's,
+  // whose heading starts the same way, so a repository moving from one to
+  // the other, or running both, never has one written over by the other.
+  { name: "the deploy: replaces the placeholder's comment in place", golden: 'workers-lectures',
+    comments: [person('Thanks!'), bot(after('workers-pending'))], expect: { update: 2 } },
+  { name: "the placeholder, after this push's deploy: leaves the deploy's comment", golden: 'workers-pending',
+    comments: [bot(after('workers-lectures'))], expect: 'none' },
+  { name: "preview-cloudflare's comments only, with and without the marker: posts one", golden: 'workers-lectures',
+    comments: [bot(before('cloudflare-lectures')), bot(after('cloudflare-lectures'))], expect: 'create' },
+  { name: "preview-workers' comment only: posts one", golden: 'cloudflare-lectures',
+    comments: [bot(before('workers-lectures')), bot(after('workers-lectures'))], expect: 'create' },
 ];
 
 // The input check's cases, one action each: `env` is the step's env, `rc` the
@@ -204,6 +242,16 @@ const NETLIFY_SET = { HAVE_TOKEN: 'true', HAVE_SITE_ID: 'true', HAVE_BUILD_DIR: 
 const NETLIFY_NONE = { HAVE_TOKEN: 'false', HAVE_SITE_ID: 'false', HAVE_BUILD_DIR: 'false' };
 const CLOUDFLARE_SET = { HAVE_TOKEN: 'true', HAVE_ACCOUNT_ID: 'true', HAVE_BUILD_DIR: 'true' };
 const CLOUDFLARE_NONE = { HAVE_TOKEN: 'false', HAVE_ACCOUNT_ID: 'false', HAVE_BUILD_DIR: 'false' };
+// preview-workers: a pull request from the repository itself, which deploys to
+// pr-5, and what its check writes for the comment and the deploy step. A case
+// with `output` must write exactly that to GITHUB_OUTPUT.
+const WORKERS_DEPLOY = {
+  PLACEHOLDER: 'false', DEPLOY: 'true', ALIAS: 'pr-5', WORKER_NAME: 'harness-worker', ACCOUNT_SUBDOMAIN: 'harness-sub',
+  DISPATCH_ALIAS: '', BUILD_DIR: '_build/html', LECTURES_DIR: 'lectures',
+};
+const WORKERS_SET = CLOUDFLARE_SET;
+const WORKERS_NONE = CLOUDFLARE_NONE;
+const WORKERS_OUTPUT = 'subdomain=harness-sub\nsite=harness-worker.harness-sub\n';
 const CHECKS = [
   { name: 'a deploy with every input, as every caller passes them', action: 'preview-netlify',
     env: { PLACEHOLDER: 'false', DEPLOY: 'true', SITE_NAME: '', ...NETLIFY_SET }, rc: 0, out: 'quiet' },
@@ -271,6 +319,65 @@ const CHECKS = [
   { name: 'project-name with a line break, refused before anything else and escaped', action: 'preview-cloudflare',
     env: { PLACEHOLDER: 'false', DEPLOY: 'true', ...CLOUDFLARE_SET, PROJECT_NAME: 'harness\n::warning::injected', BUILD_DIR: '_build/html' },
     rc: 1, out: /^::error::project-name must be a single line, got 'harness%0A::warning::injected'\n?$/ },
+  { name: 'a deploy with every input, as every caller passes them', action: 'preview-workers',
+    env: { ...WORKERS_DEPLOY, ...WORKERS_SET }, rc: 0, out: 'quiet', output: WORKERS_OUTPUT },
+  { name: 'a deploy without its token', action: 'preview-workers',
+    env: { ...WORKERS_DEPLOY, ...WORKERS_SET, HAVE_TOKEN: 'false' }, rc: 1,
+    out: /^::error::A deploy needs cloudflare-api-token, cloudflare-account-id and build-dir, and this run has no cloudflare-api-token\. /m },
+  { name: 'a deploy without any of the three', action: 'preview-workers',
+    env: { ...WORKERS_DEPLOY, ...WORKERS_NONE }, rc: 1,
+    out: /this run has no cloudflare-api-token cloudflare-account-id build-dir\. / },
+  { name: "a fork's pull request, which deploys nothing and has no secrets", action: 'preview-workers',
+    env: { ...WORKERS_DEPLOY, DEPLOY: 'false', ALIAS: '', ...WORKERS_NONE }, rc: 0, out: 'quiet', output: WORKERS_OUTPUT },
+  { name: 'the placeholder, with no secrets', action: 'preview-workers',
+    env: { ...WORKERS_DEPLOY, PLACEHOLDER: 'true', ...WORKERS_NONE }, rc: 0, out: 'quiet', output: WORKERS_OUTPUT },
+  { name: 'the placeholder, given the account ID it does not use', action: 'preview-workers',
+    env: { ...WORKERS_DEPLOY, PLACEHOLDER: 'true', ...WORKERS_NONE, HAVE_ACCOUNT_ID: 'true' }, rc: 0,
+    out: /^::warning::cloudflare-account-id is not used with placeholder: 'true'\. [^\n]*\n?$/ },
+  { name: 'placeholder neither true nor false', action: 'preview-workers',
+    env: { ...WORKERS_DEPLOY, ...WORKERS_SET, PLACEHOLDER: 'yes' }, rc: 1,
+    out: /^::error::placeholder is \[yes\], not 'true' or 'false'$/m },
+  { name: 'account-subdomain given as its workers.dev address', action: 'preview-workers',
+    env: { ...WORKERS_DEPLOY, ...WORKERS_SET, ACCOUNT_SUBDOMAIN: 'harness-sub.workers.dev' }, rc: 0, out: 'quiet', output: WORKERS_OUTPUT },
+  { name: 'account-subdomain given as a URL, in capitals', action: 'preview-workers',
+    env: { ...WORKERS_DEPLOY, ...WORKERS_SET, ACCOUNT_SUBDOMAIN: 'https://Harness-Sub.workers.dev/' }, rc: 0, out: 'quiet', output: WORKERS_OUTPUT },
+  { name: 'account-subdomain that is not one label', action: 'preview-workers',
+    env: { ...WORKERS_DEPLOY, ...WORKERS_SET, ACCOUNT_SUBDOMAIN: 'harness.sub' }, rc: 1,
+    out: /^::error::account-subdomain \[harness\.sub\] is not a workers\.dev subdomain; /m },
+  { name: 'account-subdomain empty, on a placeholder', action: 'preview-workers',
+    env: { ...WORKERS_DEPLOY, PLACEHOLDER: 'true', ...WORKERS_NONE, ACCOUNT_SUBDOMAIN: '' }, rc: 1,
+    out: /^::error::account-subdomain \[\] is not a workers\.dev subdomain; /m },
+  { name: "worker-name with a capital and an underscore, on a fork's run that deploys nothing", action: 'preview-workers',
+    env: { ...WORKERS_DEPLOY, DEPLOY: 'false', ALIAS: '', ...WORKERS_NONE, WORKER_NAME: 'Harness_Worker' }, rc: 1,
+    out: /^::error::worker-name \[Harness_Worker\] is not a valid workers\.dev hostname label /m },
+  { name: 'worker-name ending with a dash', action: 'preview-workers',
+    env: { ...WORKERS_DEPLOY, ...WORKERS_SET, WORKER_NAME: 'harness-worker-' }, rc: 1,
+    out: /^::error::worker-name \[harness-worker-\] is not a valid/m },
+  { name: 'worker-name empty', action: 'preview-workers',
+    env: { ...WORKERS_DEPLOY, ...WORKERS_SET, WORKER_NAME: '' }, rc: 1,
+    out: /^::error::worker-name \[\] is not a valid/m },
+  { name: 'worker-name of 54 characters, on pull request 99999: fits', action: 'preview-workers',
+    env: { ...WORKERS_DEPLOY, ...WORKERS_SET, ALIAS: 'pr-99999', WORKER_NAME: 'w'.repeat(54) }, rc: 0, out: 'quiet',
+    output: `subdomain=harness-sub\nsite=${'w'.repeat(54)}.harness-sub\n` },
+  { name: 'worker-name of 55 characters, on pull request 99999: too long', action: 'preview-workers',
+    env: { ...WORKERS_DEPLOY, ...WORKERS_SET, ALIAS: 'pr-99999', WORKER_NAME: 'w'.repeat(55) }, rc: 1,
+    out: /^::error::worker-name \[w{55}\] is too long for this preview: \[pr-99999-w{55}\] must fit in one 63-character hostname label\.$/m },
+  { name: 'the same, for the placeholder', action: 'preview-workers',
+    env: { ...WORKERS_DEPLOY, PLACEHOLDER: 'true', ...WORKERS_NONE, ALIAS: 'pr-99999', WORKER_NAME: 'w'.repeat(55) }, rc: 1,
+    out: /is too long for this preview: \[pr-99999-w{55}\]/ },
+  { name: "the same, on a fork's run that deploys nothing", action: 'preview-workers',
+    env: { ...WORKERS_DEPLOY, DEPLOY: 'false', ALIAS: '', ...WORKERS_NONE, WORKER_NAME: 'w'.repeat(55) }, rc: 0, out: 'quiet' },
+  { name: 'a dispatch-alias of 28 characters with a worker-name of 34: fits', action: 'preview-workers',
+    env: { ...WORKERS_DEPLOY, ...WORKERS_SET, DISPATCH_ALIAS: 'dispatch-abcdefghijklmnopqrs', WORKER_NAME: 'w'.repeat(34) }, rc: 0, out: 'quiet' },
+  { name: 'a dispatch-alias of 28 characters with a worker-name of 35, on a pull request: too long', action: 'preview-workers',
+    env: { ...WORKERS_DEPLOY, ...WORKERS_SET, DISPATCH_ALIAS: 'dispatch-abcdefghijklmnopqrs', WORKER_NAME: 'w'.repeat(35) }, rc: 1,
+    out: /^::error::dispatch-alias \[dispatch-abcdefghijklmnopqrs\] is too long for this Worker: \[dispatch-abcdefghijklmnopqrs-w{35}\] must fit in one 63-character hostname label\.$/m },
+  { name: 'worker-name with a line break, refused before anything else and escaped', action: 'preview-workers',
+    env: { ...WORKERS_DEPLOY, ...WORKERS_SET, WORKER_NAME: 'harness-worker\n::warning::injected' }, rc: 1,
+    out: /^::error::worker-name must be a single line, got 'harness-worker%0A::warning::injected'\n?$/ },
+  { name: "account-subdomain with a line break, on a fork's run that deploys nothing", action: 'preview-workers',
+    env: { ...WORKERS_DEPLOY, DEPLOY: 'false', ALIAS: '', ...WORKERS_NONE, ACCOUNT_SUBDOMAIN: 'harness-sub\r\n' }, rc: 1,
+    out: /^::error::account-subdomain must be a single line, got 'harness-sub%0D%0A'\n?$/ },
 ];
 
 // What each action's steps must say, where the cases above take a value for
@@ -306,6 +413,15 @@ const WIRING = {
       PLACEHOLDER: '${{ inputs.placeholder }}', DEPLOY: '${{ steps.decide.outputs.deploy }}',
       HAVE_TOKEN: "${{ inputs.cloudflare-api-token != '' }}", HAVE_ACCOUNT_ID: "${{ inputs.cloudflare-account-id != '' }}", HAVE_BUILD_DIR: "${{ inputs.build-dir != '' }}",
       PROJECT_NAME: '${{ inputs.project-name }}', BUILD_DIR: '${{ inputs.build-dir }}', LECTURES_DIR: '${{ inputs.lectures-dir }}',
+    },
+  },
+  'preview-workers': {
+    comment: { PREVIEW_SITE: '${{ steps.check-inputs.outputs.site }}' },
+    check: {
+      PLACEHOLDER: '${{ inputs.placeholder }}', DEPLOY: '${{ steps.decide.outputs.deploy }}', ALIAS: '${{ steps.decide.outputs.alias }}',
+      HAVE_TOKEN: "${{ inputs.cloudflare-api-token != '' }}", HAVE_ACCOUNT_ID: "${{ inputs.cloudflare-account-id != '' }}", HAVE_BUILD_DIR: "${{ inputs.build-dir != '' }}",
+      WORKER_NAME: '${{ inputs.worker-name }}', ACCOUNT_SUBDOMAIN: '${{ inputs.account-subdomain }}', DISPATCH_ALIAS: '${{ inputs.dispatch-alias }}',
+      BUILD_DIR: '${{ inputs.build-dir }}', LECTURES_DIR: '${{ inputs.lectures-dir }}',
     },
   },
 };
@@ -502,7 +618,7 @@ async function main() {
   };
   const runGolden = (g, comments) => runSteps(steps, g.action, g.env, comments, g.api);
 
-  for (const action of ['preview-netlify', 'preview-cloudflare']) {
+  for (const action of ['preview-netlify', 'preview-cloudflare', 'preview-workers']) {
     await check(`${action}: its steps' conditions and env are wired as the cases assume`, async () => {
       const s = steps[action];
       const problems = [];
@@ -528,10 +644,11 @@ async function main() {
       const out = r.stdout + r.stderr;
       if (r.status !== t.rc) throw new Error(`exited ${r.status}, not ${t.rc}; output: [${out}]`);
       if (t.out === 'quiet' ? out !== '' : !t.out.test(out)) throw new Error(`output [${out}] does not match ${t.out}`);
+      if (t.output !== undefined && r.output !== t.output) throw new Error(`GITHUB_OUTPUT holds ${JSON.stringify(r.output)}, not ${JSON.stringify(t.output)}`);
     });
   }
 
-  for (const g of GOLDEN) {
+  for (const g of [...GOLDEN, ...WORKERS]) {
     await check(`${g.action}: renders ${g.name}.md, after the marker`, async () => {
       const result = await runGolden(g, []);
       const w = oneWrite(result);
@@ -611,7 +728,7 @@ async function main() {
     if (writes.length) throw new Error(`expected no write, got ${writes.length}`);
   });
 
-  const want = 2 + CHECKS.length + GOLDEN.length + PENDING.length + 3 + lookup.length + 3;
+  const want = 3 + CHECKS.length + GOLDEN.length + WORKERS.length + PENDING.length + 3 + lookup.length + 3;
   if (n !== want) {
     console.log(`::error::expected ${want} cases, ran ${n}`);
     process.exit(1);
@@ -621,7 +738,7 @@ async function main() {
 }
 
 // For rendering the fixtures with an older action.yml's steps.
-module.exports = { GOLDEN, PENDING, runSteps };
+module.exports = { GOLDEN, WORKERS, PENDING, runSteps };
 
 if (require.main === module) {
   main().catch(e => {

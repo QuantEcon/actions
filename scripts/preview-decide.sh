@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 #
 # Decide whether a preview action deploys on this run, and to which alias
-# (#227). Shared by the preview-netlify and preview-cloudflare actions, so the
-# two cannot disagree. Each calls it once, first: its change detection, CLI
-# install, deploy and comment all follow the `deploy` output, so the install
-# can never run without the deploy (#193), nor the deploy without these checks.
+# (#227). Shared by the preview-netlify, preview-cloudflare and preview-workers
+# actions, so they cannot disagree. Each calls it once, first: its change
+# detection, CLI install, deploy and comment all follow the `deploy` output, so
+# the install can never run without the deploy (#193), nor the deploy without
+# these checks.
 #
 # The events are an ALLOW-list, never a deny-list:
 #
@@ -20,7 +21,7 @@
 #
 # Inputs (environment variables; the action passes the github context through
 # env, never into a script body):
-#   PROVIDER        - "Netlify" or "Cloudflare", for the messages
+#   PROVIDER        - "Netlify", "Cloudflare" or "Cloudflare Workers", for the messages
 #   EVENT_NAME      - github.event_name
 #   ACTOR           - github.actor
 #   REPOSITORY      - github.repository
@@ -66,11 +67,14 @@ fail() { echo "::error::$(esc "$1")"; exit 1; }
 # The `dispatch-` prefix keeps the alias clear of every pull request's
 # pr-<number> and of the production site. Single dashes only: Netlify writes
 # the URL as <alias>--<site>, so a `--` inside the alias would be ambiguous.
-# Both actions build the URL from the alias rather than reading it back, so it
+# Each action builds the URL from the alias rather than reading it back, so it
 # must reach the provider unchanged: Netlify's --alias takes at most 37
 # characters, and Pages documents no length rule for branch aliases, only that
 # it lowercases them and maps other characters to `-`. 28 stays well inside
-# both, with room enough for dispatch-canary-weekly.
+# both, with room enough for dispatch-canary-weekly. A Worker's alias must
+# also start with a letter, as these do, and fit in one 63-character hostname
+# label with the Worker's name; preview-workers checks that itself, since it
+# depends on the name.
 if [ -n "$DISPATCH_ALIAS" ]; then
   [[ "$DISPATCH_ALIAS" =~ ^dispatch(-[a-z0-9]+)+$ && ${#DISPATCH_ALIAS} -le 28 ]] \
     || fail "dispatch-alias [$DISPATCH_ALIAS] must be dispatch- followed by lowercase letters and digits, in words joined by single dashes, at most 28 characters in all, such as dispatch-canary."

@@ -1,0 +1,8 @@
+{
+  "private": true,
+  "name": "quantecon-actions-preview-workers",
+  "description": "Pins the wrangler CLI that the preview-workers action installs with npm ci from package-lock.json. Bumped by Dependabot; not published.",
+  "dependencies": {
+    "wrangler": "4.158.0"
+  }
+}

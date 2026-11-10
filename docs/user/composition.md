@@ -11,7 +11,7 @@ The actions are steps in one chain. A cache build on the default branch executes
 3. **Restore.** [`restore-jupyter-cache`](actions/restore-jupyter-cache.md) restores the cache build's `_build` directory, before the build.
 4. **Build.** [`build-lectures`](actions/build-lectures.md) builds one format per step. Jupyter Book re-executes only the notebooks whose code has changed since the cache build.
 5. **Delivery.** One of:
-   - [`preview-netlify`](actions/preview-netlify.md) or [`preview-cloudflare`](actions/preview-cloudflare.md): a preview of a pull request, linked from a comment on it, which the same action can also post before the build, with `placeholder`;
+   - [`preview-netlify`](actions/preview-netlify.md), [`preview-cloudflare`](actions/preview-cloudflare.md) or [`preview-workers`](actions/preview-workers.md): a preview of a pull request, linked from a comment on it, which the same action can also post before the build, with `placeholder`;
    - [`publish-gh-pages`](actions/publish-gh-pages.md): the site on GitHub Pages, with the release assets on a tag;
    - [`deploy-cloudflare`](actions/deploy-cloudflare.md): the site on a Cloudflare Worker, private behind Cloudflare Access or public.
 

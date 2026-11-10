@@ -319,7 +319,8 @@ runs:
         echo "bin=$dir/node_modules/.bin/wrangler" >> "$GITHUB_OUTPUT"
         echo "dir=$dir" >> "$GITHUB_OUTPUT"
 
-    # Generated per run, not committed per repo; see write-config.js.
+    # Generated per run, not committed per repo; see
+    # scripts/write-wrangler-config.js, which preview-workers shares.
     - name: Write the Worker config
       id: config
       shell: bash
@@ -329,7 +330,7 @@ runs:
         BUILD_DIR: ${{ steps.inputs.outputs.build-dir }}
       run: |
         set -euo pipefail
-        node "$GITHUB_ACTION_PATH/write-config.js" "$CONFIG" "$WORKER_NAME" "$BUILD_DIR"
+        node "$GITHUB_ACTION_PATH/../scripts/write-wrangler-config.js" "$CONFIG" "$WORKER_NAME" "$BUILD_DIR"
         cat "$CONFIG"
         echo "path=$CONFIG" >> "$GITHUB_OUTPUT"
 
