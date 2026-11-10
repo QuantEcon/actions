@@ -4,7 +4,7 @@ Current priorities for `QuantEcon/actions`, the repositories that use the action
 
 ## Current state
 
-- **Actions (9):** `setup-environment`, `setup-latex`, `build-lectures`, `build-jupyter-cache`, `restore-jupyter-cache`, `preview-netlify`, `preview-cloudflare`, `publish-gh-pages`, `deploy-cloudflare`. Latest release **`v0.17.0`** (2026-11-10). `@v0` points to **`v0.16.0`**, and moves to v0.17.0 once its staged release and the lecture matrix have passed.
+- **Actions (9):** `setup-environment`, `setup-latex`, `build-lectures`, `build-jupyter-cache`, `restore-jupyter-cache`, `preview-netlify`, `preview-cloudflare`, `publish-gh-pages`, `deploy-cloudflare`. Latest release **`v0.17.0`** (2026-11-10). `@v0` points to **`v0.16.0`**, and moves to `v0.17.0` once its staged release and the lecture matrix have passed.
 - **Containers (2):** `quantecon` (full) and `quantecon-build` (lean), on the Anaconda 2026.07 baseline, with the Ubuntu base pinned by digest. See the Dependency policy below, and [CONTAINERS.md](CONTAINERS.md).
 - **Testing:** the action harness on every pull request, the container checks, and the canary repository; see [TESTING.md](TESTING.md). A release that changes what an action does is staged by hand on the canary before `v0` moves ([CONTRIBUTING.md](../../CONTRIBUTING.md#staged-releases)).
 
