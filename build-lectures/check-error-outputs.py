@@ -52,7 +52,7 @@ CAUSES = {
                   "and the page shows the traceback.", "raised while displaying"),
     "raised": ("The cell raised, and the notebook stopped there: the page shows the "
                "traceback, and no output for the cells after it.", "raised"),
-    None: ("The page shows the traceback.", "unknown: the last code cell"),
+    None: ("The page shows the traceback.", "unknown: no later cell was to run"),
 }
 
 
@@ -119,8 +119,9 @@ def cause(code_cells, ordinal):
     """Whether the code cell at ordinal raised, or raised while displaying.
 
     "raised" when no code cell after it ran, "displayed" when one did, and None
-    for the last code cell, after which nothing shows either way. A cell tagged
-    skip-execution never runs, so it is no evidence.
+    when no code cell after it was to run, so nothing shows either way: the
+    last code cell, or one followed only by cells tagged skip-execution, which
+    never run.
     """
     later = [c for c in code_cells[ordinal + 1:]
              if "skip-execution" not in (c.get("metadata") or {}).get("tags", [])]
