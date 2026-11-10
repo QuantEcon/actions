@@ -38,7 +38,7 @@ Each build of `main` is three package versions in GHCR: an index, tagged, and th
 
 - **`main`'s builds** are kept while they are among the newest 10, or under 90 days old: these are the rollback targets;
 - **a dispatch from a branch,** tagged `<branch>-<sha7>`, is kept for 14 days;
-- **an untagged version** is kept for 7 days, and for as long as a kept image lists it;
+- **an untagged version** is kept while under 90 days old, as a build is, and for as long as a kept image lists it. A build whose tags moved on to a later build of the same commit is untagged, but still a build someone may have pinned;
 - **always kept:** `:latest`, each digest in [`.github/container-pins.txt`](../../.github/container-pins.txt), a pull request's `pr-<N>` candidates, any version carrying a tag the pruner does not own (one that does not end in `-<7 hex digits>`), and every manifest these list.
 
 A digest pinned anywhere else must be in the pins file, or it goes with its build. The run deletes nothing when it cannot read a listing or a kept manifest, or when an image has more than 50 versions to delete; a scheduled run that stops files the tracking issue. A dispatch is a dry run unless `dry-run` is false, and `max-delete` raises the ceiling for a run someone is watching. A pull request that changes the script or the pins file dry-runs it against GHCR, and its step summary lists every version a live run would delete. `validate-containers.yml` self-tests the script on every harness run. A deletion cannot be undone.

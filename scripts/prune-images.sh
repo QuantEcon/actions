@@ -20,8 +20,12 @@
 #             KEEP_DAYS: they are the rollback targets.
 #   branch    every tag is <branch>-<sha7> or <branch>-<date>-<time>-<sha7>,
 #             a dispatch from a branch, never promoted. Kept for BRANCH_DAYS.
-#   untagged  no tag. Kept when younger than UNTAGGED_DAYS, since a build
-#             pushes an index's manifests before the index.
+#   untagged  no tag. Kept when younger than UNTAGGED_DAYS, by default
+#             KEEP_DAYS, so that every version of the last KEEP_DAYS is kept,
+#             tagged or not: a build whose tags moved on to a later build of
+#             the same commit is still one someone may have pinned. The age
+#             also covers a build in progress, which pushes an index's
+#             manifests before the index.
 #   anything else is kept: :latest, a pull request's pr-<N> candidates, which
 #             delete-pr-images.sh removes when it closes, and any version
 #             carrying a tag this script does not own, which someone has put
@@ -55,7 +59,7 @@
 #   KEEP_BUILDS    default 10
 #   KEEP_DAYS      default 90
 #   BRANCH_DAYS    default 14
-#   UNTAGGED_DAYS  default 7
+#   UNTAGGED_DAYS  default KEEP_DAYS
 #   MAX_DELETE     per image, default 50
 #   PINS_FILE      default .github/container-pins.txt
 #   NOW            the time to age versions against, in Unix seconds (default now)
@@ -78,7 +82,7 @@ manifest_digests() {
 # `delete`, `rule` and `why`. Called under ||, so set -e is off: every step
 # returns 1 itself when it fails.
 plan_image() {
-  local image=$1 registry=$2 digest
+  local image=$1 registry=$2 digest pin
   if ! gh api --paginate "orgs/$OWNER/packages/container/$image/versions?per_page=100" > "$work/$image.raw" 2> "$work/err"; then
     cat "$work/err" >&2
     echo "::error::cannot list the versions of $registry/$image" >&2
@@ -126,7 +130,11 @@ plan_image() {
   # build's index is tagged, so none of them needs reading.
   manifest_digests "$registry/$image:latest" > "$work/$image.protected" \
     || { echo "::error::cannot read $registry/$image:latest, so cannot rule out deleting what it points at" >&2; return 1; }
-  sed -n "s|^$image@\(sha256:[0-9a-f]\{64\}\)\$|\1|p" "$work/pins" > "$work/$image.read"
+  # This image's pins, by its name as a fixed string: each line is already
+  # <image>@sha256:<digest>.
+  while IFS= read -r pin; do
+    if [ "${pin%%@*}" = "$image" ]; then echo "${pin#*@}"; fi
+  done < "$work/pins" > "$work/$image.read"
   jq -r 'select(.delete == false and (.tags | length) > 0) | .digest' "$work/$image.byrule" >> "$work/$image.read" \
     || return 1
   while IFS= read -r digest; do
@@ -176,7 +184,7 @@ main() {
   DRY_RUN=${DRY_RUN:-true}
   case $DRY_RUN in true | false) ;; *) fail "DRY_RUN [$DRY_RUN] is neither true nor false" ;; esac
   KEEP_BUILDS=${KEEP_BUILDS:-10} KEEP_DAYS=${KEEP_DAYS:-90} BRANCH_DAYS=${BRANCH_DAYS:-14}
-  UNTAGGED_DAYS=${UNTAGGED_DAYS:-7} MAX_DELETE=${MAX_DELETE:-50}
+  UNTAGGED_DAYS=${UNTAGGED_DAYS:-$KEEP_DAYS} MAX_DELETE=${MAX_DELETE:-50}
   for var in KEEP_BUILDS KEEP_DAYS BRANCH_DAYS UNTAGGED_DAYS MAX_DELETE; do
     [[ ${!var} =~ ^[1-9][0-9]*$ ]] || fail "$var [${!var}] is not a positive integer"
   done
@@ -314,6 +322,17 @@ self_test() {
   run DRY_RUN=false || fail "self-test: the live run failed: $(cat "$dir/err")"
   got=$(paste -sd' ' - < "$dir/calls")
   [ "$got" = "$want" ] || fail "self-test: the live run deleted [$got], expected [$want]"
+  # By default an untagged version is kept as long as a main build: at
+  # KEEP_DAYS=35, the 30-day-old orphan stays, and only build 40's go.
+  run DRY_RUN=false UNTAGGED_DAYS= KEEP_DAYS=35 || fail "self-test: the run with the default UNTAGGED_DAYS failed: $(cat "$dir/err")"
+  got=$(paste -sd' ' - < "$dir/calls")
+  [ "$got" = "DELETE 60 DELETE 40 DELETE 41 DELETE 42" ] || fail "self-test: with UNTAGGED_DAYS defaulting to KEEP_DAYS=35, deleted [$got]"
+  # A pin names its image exactly: for image i.g, a pin for ixg protects nothing.
+  cp "$dir/img.json" "$dir/i.g.json"
+  printf 'ixg@%s\ni.g@%s\n' "$(d 40)" "$(d 50)" > "$dir/dotpins"
+  run DRY_RUN=false IMAGES=i.g PINS_FILE="$dir/dotpins" || fail "self-test: the run for i.g failed: $(cat "$dir/err")"
+  got=$(paste -sd' ' - < "$dir/calls")
+  [ "$got" = "$want" ] || fail "self-test: for i.g, with a pin for ixg, deleted [$got], expected [$want]"
   # After a quiet spell, the newest KEEP_BUILDS still stay.
   run DRY_RUN=false KEEP_DAYS=1 || fail "self-test: the run with KEEP_DAYS=1 failed: $(cat "$dir/err")"
   got=$(paste -sd' ' - < "$dir/calls")

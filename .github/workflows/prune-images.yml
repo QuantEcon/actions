@@ -3,7 +3,7 @@ name: Prune Container Images
 # Deletes the container images' old candidate versions from GHCR, through
 # scripts/prune-images.sh (#277): main's builds that are neither among the
 # newest 10 nor under 90 days old, branch dispatches after 14 days, and
-# untagged manifests that nothing kept lists, after 7. It never deletes
+# untagged versions over 90 days old that nothing kept lists. It never deletes
 # :latest, a digest in .github/container-pins.txt, a pull request's
 # candidates or a version carrying a tag it does not own, nor any manifest
 # those list. A deletion cannot be undone.
