@@ -291,12 +291,15 @@ jobs:
     # guard-polarity lesson #123 encoded in `build-jupyter-cache`.
     #
     # `always()` is required because `failure()` is false once a needed job is
-    # cancelled. The cost is that a run superseded by the workflow-level
-    # `cancel-in-progress` also reaches here — accepted deliberately: supersedes
-    # are rare (a container build landing while the weekly run is going, or
-    # the reverse), the filed issue is
-    # deduplicated rather than duplicated, and a spare issue is much cheaper
-    # than another three-week silence.
+    # cancelled. But the workflow-level `cancel-in-progress` also cancels a run
+    # that a newer one superseded, and the newer run reports for itself (a
+    # dispatch, through whoever is watching it), so a
+    # cancelled run files only when no newer run of this workflow exists on its
+    # branch: otherwise a container build landing during a matrix run files a
+    # false alarm, as #249 did twice in one morning. A failed leg always files,
+    # and so does a timed-out one, since nothing newer has started. When the
+    # runs cannot be listed, it files. build-containers.yml's alert takes the
+    # same rule, through the same script (#286).
     if: ${{ always() && github.event_name != 'workflow_dispatch' && (needs.test.result == 'failure' || needs.test.result == 'cancelled') }}
     timeout-minutes: 10
     permissions:
@@ -309,7 +312,28 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Check whether a newer run superseded this one
+        id: superseded
+        if: ${{ needs.test.result == 'cancelled' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          # If the runs cannot be listed, report the cancellation.
+          if ! newer=$(scripts/newer-runs.sh test-containers-lectures.yml "$BRANCH" "$RUN_NUMBER"); then
+            echo "::warning::cannot list this workflow's runs, so the cancellation is reported"
+            exit 0
+          fi
+          if [ "$newer" -gt 0 ]; then
+            echo "superseded=true" >> "$GITHUB_OUTPUT"
+            echo "Cancelled, and $newer newer run(s) of this workflow exist on $BRANCH, which report for themselves: no issue filed."
+          fi
+
       - name: Open or update the failure tracking issue
+        if: steps.superseded.outputs.superseded != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_LABELS: bug,infrastructure
