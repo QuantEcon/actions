@@ -4,7 +4,7 @@ Current priorities for `QuantEcon/actions`, the repositories that use the action
 
 ## Current state
 
-- **Actions (10):** `setup-environment`, `setup-latex`, `build-lectures`, `build-jupyter-cache`, `restore-jupyter-cache`, `preview-netlify`, `preview-cloudflare`, `preview-workers`, `publish-gh-pages`, `deploy-cloudflare`. Latest release **`v0.17.0`** (2026-11-10). `@v0` points to **`v0.16.0`**, and moves to `v0.17.0` once its staged release and the lecture matrix have passed.
+- **Actions (10):** `setup-environment`, `setup-latex`, `build-lectures`, `build-jupyter-cache`, `restore-jupyter-cache`, `preview-netlify`, `preview-cloudflare`, `preview-workers`, `publish-gh-pages`, `deploy-cloudflare`. Latest release **`v0.17.0`** (2026-11-10), and `@v0` points to it.
 - **Containers (2):** `quantecon` (full) and `quantecon-build` (lean), on the Anaconda 2026.07 baseline, with the Ubuntu base pinned by digest. See the Dependency policy below, and [CONTAINERS.md](CONTAINERS.md).
 - **Testing:** the action harness on every pull request, the container checks, and the canary repository; see [TESTING.md](TESTING.md). A release that changes what an action does passes the release gate, `gate.yml` in the canary, before `v0` moves, and anything the gate does not reach is staged there by hand ([CONTRIBUTING.md](../../CONTRIBUTING.md#staged-releases)).
 
@@ -22,7 +22,7 @@ Current priorities for `QuantEcon/actions`, the repositories that use the action
 | `lecture-python-programming.fr` | `preview-netlify` (ci.yml), `publish-gh-pages` (with `create-release-assets`) | **`@v0.12.0`** (2 call sites) |
 | `continuous_time_mcs` | `publish-gh-pages` | **`@v0.12.0`** |
 
-Eight call sites across six repositories are exact pins, all on `@v0.12.0` (checked 2026-11-05). Each falls a release behind whenever one ships, until someone merges its Dependabot bump. Exact pins are what stranded `lecture-dp` three releases behind, with alerting that had never worked (#83), and a Dependabot bump surfaces a release without moving the pin: `lecture-python.myst#1000` sat open for 13 days before it was closed as superseded. Moving the lecture family to `@v0` (QuantEcon/workspace-lectures#33) waits on release gating, P0 below.
+Eight call sites across six repositories are exact pins, all on `@v0.12.0` (checked 2026-11-05). Each falls a release behind whenever one ships, until someone merges its Dependabot bump. Exact pins are what stranded `lecture-dp` three releases behind, with alerting that had never worked (#83), and a Dependabot bump surfaces a release without moving the pin: `lecture-python.myst#1000` sat open for 13 days before it was closed as superseded. Moving the lecture family to `@v0` (QuantEcon/workspace-lectures#33) needs each release to pass a gate before `v0` moves to it. The release gate does that (P0 below), so when to repin is the lecture family's call.
 
 The canary meets a release first on one path only. Its weekly cache build runs on Sunday at 03:00 UTC, a day ahead of the consumers' Monday builds. But its `ci.yml` runs on pull requests and by hand, with no schedule and no `dispatch-alias`, and its `publish.yml` runs only on a `publish*` tag, so neither the preview path nor the publish path has an automatic lead over consumers. And its workflows name `@v0`, the tag a release moves, so a candidate is tested by the release gate instead (P0 below).
 
@@ -32,13 +32,13 @@ Lecture repositories are tracked centrally in [QuantEcon/meta#321](https://githu
 
 The numbered items keep the numbers the July 2026 review gave them, which issues cite.
 
-### P0: release gating (#138)
+### P0: release gating
 
 The release gate is `gate.yml` in the canary. It tests a checkout of the candidate on a frozen fixture in the canary's `gate/` before `v0` moves (#135, #136, decided on #143), and [TESTING.md](TESTING.md#the-release-gate) describes it. Its two self-tests turn it red, and a red run from `main` assigns a `release-gate` issue in the canary to whoever dispatched it, which reaches their GitHub notifications. What remains:
 
 | # | Item | Refs |
 |---|---|---|
-| 0c | **Close the ungated consumer paths.** Schedule the canary's `ci.yml` and `publish.yml` ahead of the consumers' Monday builds. `publish.yml` has no `workflow_dispatch`, and its job-level `if:` accepts only tag pushes, so a scheduled or dispatched run would skip its only job and never go red. `ci.yml` should pass `dispatch-alias` and fail unless `deployed` is `'true'`. Revisited once the release gate has replaced the hand-staged legs that these two workflows still carry | #135, #136 |
+| 0c | **Close the ungated consumer paths.** Schedule the canary's `ci.yml` and `publish.yml` ahead of the consumers' Monday builds. `publish.yml` has no `workflow_dispatch`, and its job-level `if:` accepts only tag pushes, so a scheduled or dispatched run would skip its only job and never go red. `ci.yml` should pass `dispatch-alias` and fail unless `deployed` is `'true'`. Revisited once the release gate has replaced the hand-staged legs that these two workflows still carry | #302 |
 
 ### Backlog
 
@@ -60,8 +60,8 @@ The lean image pins every package in its `environment.yml` that the `anaconda` m
 
 | Area | Issues | Where it stands |
 |---|---|---|
-| Release gating | #138 (tracking), #135, #136 | The release gate is live in the canary; P0 item 0c remains |
-| Testing | #100, #282 | Stage 1, the harness, and the canary are live; the gate is split out to #138. #282, a harness run of the pinned wrangler against a stub of Cloudflare's API, is low priority |
+| Release gating | #302 | The release gate is live in the canary. #302 is P0 item 0c, low priority until v0.18.0 has run the gate and the hand-staged legs side by side |
+| Testing | #100, #282 | Stage 1, the harness, the canary and the release gate are live. #282, a harness run of the pinned wrangler against a stub of Cloudflare's API, is low priority |
 | Previews | #291 | A Cloudflare Pages preview never answers 404, since a build with no `404.html` makes Pages serve `index.html` for every unknown path. Low priority |
 | Preview speed | #92 (tracking), #147–#152, #154–#158 | HTML-only previews are decided (#146): #148 is unblocked, and the PDF check that goes with it is in `templates/ci.yml` |
 | Environment and reproducibility | #30, #129, #18, #2 | #30 is backlog item 12; #129 is parked as a discussion; #18, container-mode caching, is parked until a repository passes `environment-update`; #2 is exploratory |
