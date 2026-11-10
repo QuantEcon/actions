@@ -12,6 +12,13 @@ This reads the notebooks myst-nb wrote, outputs included, to
 nothing allows. A notebook it cannot read is reported too, since it went
 unchecked.
 
+A cell that raised leaves an error output too. -W fails the build that
+executes its page, but the check still meets it after a build without -W, and
+after a build that read no page because an earlier build in the job had (#300).
+The two are told apart by the code cells after it: nbclient stops at a cell
+that raises, so none of them ran, while after a display-time error the next
+one runs.
+
 Allowed, as nbclient and myst-nb allow an exception that a cell raises:
   - a cell tagged `raises-exception`;
   - a notebook whose `mystnb` metadata sets `execution_allow_errors`;
@@ -39,6 +46,14 @@ SOURCE_SUFFIXES = (".md", ".ipynb", ".myst", ".py", ".Rmd")
 CODE_CELL_FENCE = re.compile(r"^\s*(`{3,}|~{3,})\s*\{code-cell\}")
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 TRACEBACK_LINES = 200
+# For each cause(): the end of the annotation, and the summary table's word.
+CAUSES = {
+    "displayed": ("The kernel reported this cell as successful, so -W did not catch it, "
+                  "and the page shows the traceback.", "raised while displaying"),
+    "raised": ("The cell raised, and the notebook stopped there: the page shows the "
+               "traceback, and no output for the cells after it.", "raised"),
+    None: ("The page shows the traceback.", "unknown: the last code cell"),
+}
 
 
 def escape_data(text):
@@ -100,6 +115,22 @@ def code_cell_lines(source):
     return [n + 1 for n, line in enumerate(lines) if CODE_CELL_FENCE.match(line)]
 
 
+def cause(code_cells, ordinal):
+    """Whether the code cell at ordinal raised, or raised while displaying.
+
+    "raised" when no code cell after it ran, "displayed" when one did, and None
+    for the last code cell, after which nothing shows either way. A cell tagged
+    skip-execution never runs, so it is no evidence.
+    """
+    later = [c for c in code_cells[ordinal + 1:]
+             if "skip-execution" not in (c.get("metadata") or {}).get("tags", [])]
+    if not later:
+        return None
+    if any(c.get("execution_count") is not None for c in later):
+        return "displayed"
+    return "raised"
+
+
 def set_count(count):
     """The action's error-output-count output."""
     output = os.environ.get("GITHUB_OUTPUT")
@@ -157,12 +188,14 @@ def main():
             if allowed_here or "raises-exception" in (cell.get("metadata") or {}).get("tags", []):
                 allowed += len(errors)
                 continue
+            how = cause(code_cells, ordinal)
             for output in errors:
                 hits.append({
                     "source": source,
                     "line": starts[ordinal] if starts else None,
                     "cell": ordinal + 1,
                     "count": cell.get("execution_count"),
+                    "cause": how,
                     "error": f"{output.get('ename', 'Error')}: {output.get('evalue', '')}",
                     "traceback": ANSI.sub("", "\n".join(output.get("traceback") or [])),
                 })
@@ -186,8 +219,7 @@ def main():
         props = f"file={escape_property(str(hit['source']))}"
         if hit["line"]:
             props += f",line={hit['line']}"
-        message = (f"{hit['source']}, {where}: {hit['error']}. The kernel reported this cell as "
-                   f"successful, so -W did not catch it, and the page shows the traceback.")
+        message = f"{hit['source']}, {where}: {hit['error']}. {CAUSES[hit['cause']][0]}"
         print(f"::{level} {props}::{escape_data(message)}")
         # The traceback is the notebook's own text: stop-commands keeps it from
         # being read as workflow commands.
@@ -206,17 +238,20 @@ def main():
             rows += [
                 f"### {verdict} {len(hits)} error output(s) in the executed notebooks",
                 "",
-                "Each is a traceback that the page shows. The kernel reported the cell as successful, "
-                "so `-W` did not catch it: usually an exception raised while output was displayed, "
-                "such as a figure that failed to draw. Fix the cell, or tag it `raises-exception` if "
-                "the error is meant to be shown.",
+                "Each is a traceback that the page shows. An exception raised while output was "
+                "displayed, such as a figure that failed to draw, leaves the cell successful to the "
+                "kernel, so `-W` cannot catch it. A cell that raised fails a `-W` build that executes "
+                "its page: it reaches this check when `extra-args` has no `-W`, or when an earlier "
+                "build in the job read the page and this one read none. Fix the cell, or tag it "
+                "`raises-exception` if the error is meant to be shown.",
                 "",
-                "| Document | Cell | Error |",
-                "|---|---|---|",
+                "| Document | Cell | Error | Cause |",
+                "|---|---|---|---|",
             ]
             for hit in hits:
                 cell = f"{hit['cell']}" + (f" (line {hit['line']})" if hit["line"] else "")
-                rows.append(f"| `{hit['source']}` | {cell} | {escape_cell(hit['error'])} |")
+                rows.append(f"| `{hit['source']}` | {cell} | {escape_cell(hit['error'])} "
+                            f"| {CAUSES[hit['cause']][1]} |")
             rows.append("")
         if unreadable:
             rows += [f"### {verdict} {len(unreadable)} executed notebook(s) that could not be read", ""]
