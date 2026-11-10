@@ -467,6 +467,15 @@ jobs:
           mode: 'upload'
           build-dir: ${{ env.LINE_BREAK }}
 
+      # restore-gh-pages came after #267. Past its first check it would make
+      # its $RUNNER_TEMP directory, which the assertion below looks for.
+      - name: 'restore-gh-pages: tag'
+        id: restore-gh-pages
+        continue-on-error: true
+        uses: ./restore-gh-pages
+        with:
+          tag: ${{ env.LINE_BREAK }}
+
       - name: 'deploy-cloudflare: build-dir'
         id: deploy-cloudflare
         continue-on-error: true
@@ -531,6 +540,7 @@ jobs:
             build-lectures|${{ steps.build-lectures.outcome }}|${{ steps.build-lectures.outputs.build-path }}
             restore-jupyter-cache|${{ steps.restore-jupyter-cache.outcome }}|${{ steps.restore-jupyter-cache.outputs.cache-key }}
             publish-gh-pages|${{ steps.publish-gh-pages.outcome }}|${{ steps.publish-gh-pages.outputs.mode }}
+            restore-gh-pages|${{ steps.restore-gh-pages.outcome }}|${{ steps.restore-gh-pages.outputs.build-dir }}
             deploy-cloudflare|${{ steps.deploy-cloudflare.outcome }}|${{ steps.deploy-cloudflare.outputs.visibility }}
             preview-netlify|${{ steps.preview-netlify.outcome }}|${{ steps.preview-netlify.outputs.deploy-url }}
             preview-cloudflare|${{ steps.preview-cloudflare.outcome }}|${{ steps.preview-cloudflare.outputs.deploy-url }}
@@ -552,7 +562,7 @@ jobs:
               echo "✓ $action: refused the line break in its first step"
             fi
           done <<< "$RESULTS"
-          [ "$n" -eq 9 ] || { echo "::error::expected 9 cases, read $n"; exit 1; }
+          [ "$n" -eq 10 ] || { echo "::error::expected 10 cases, read $n"; exit 1; }
           [ "$bad" -eq 0 ]
           echo "✅ every action refused a line break in an input that is one value, before anything printed it"
 
@@ -4293,6 +4303,388 @@ jobs:
           echo "✅ mode upload uploaded the site with contents: read alone, mode release skipped off a tag, and every refused combination failed before anything ran"
 
   # ==========================================================================
+  # restore-gh-pages — a release's site, restored for publish-gh-pages (#27)
+  # ==========================================================================
+  #
+  # The action reads a release through gh, and a pull request's run has no
+  # release of the site to read, so both jobs serve theirs from a stand-in,
+  # .github/fixtures/release-stub/gh, put first on PATH. Their releases are
+  # packed by publish-gh-pages' own packing script, so the round trip is the
+  # contract itself: what publish-gh-pages attaches, restore-gh-pages
+  # restores. The real releases API, and a real Pages deploy of a restored
+  # site, are the staged canary's to prove.
+
+  restore-round-trip:
+    # #27: a release packed by scripts/package-release-assets.sh, beside an
+    # asset that is not the site, is restored exactly, hidden files, a nested
+    # page and a name with a space included, whether the archive is found by
+    # its tag or named by asset-name, each into a directory of its own, with
+    # commit read from the manifest. A release with no manifest restores too,
+    # with commit empty. And publish-gh-pages' upload takes the restored
+    # directory as its build-dir, as templates/restore.yml hands it on.
+    name: 'restore-gh-pages: a release publish-gh-pages made is restored exactly, and publish-gh-pages takes it'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Pack two releases as publish-gh-pages does, and serve them from the stand-in gh
+        run: |
+          set -euo pipefail
+          releases="$RUNNER_TEMP/releases"
+          site="$RUNNER_TEMP/site"
+          mkdir -p "$site/sub" "$site/_static/.hidden"
+          echo '<h1>restored</h1>' > "$site/index.html"
+          echo '<p>nested</p>' > "$site/sub/a page.html"
+          echo 'config: harness' > "$site/.buildinfo"
+          echo 'in a hidden directory' > "$site/_static/.hidden/file.txt"
+          # pack TAG: the site as publish-gh-pages attaches it to TAG's release.
+          pack() {
+            mkdir -p "$releases/$1"
+            GITHUB_OUTPUT="$RUNNER_TEMP/pack.out" BUILD_DIR="$site" ASSET_NAME=harness-html TAG_NAME="$1" \
+              OUT_DIR="$releases/$1" COMMIT_SHA="$GITHUB_SHA" REPOSITORY="$GITHUB_REPOSITORY" \
+              SIZE_MB="$(du -sm "$site" | cut -f1)" FILE_COUNT="$(find "$site" -type f | wc -l)" \
+              bash scripts/package-release-assets.sh > /dev/null
+          }
+          pack publish-harness-1
+          echo 'release notes' > "$releases/publish-harness-1/notes.txt"
+          pack publish-harness-2
+          rm "$releases/publish-harness-2/harness-html-manifest.json"
+          ls -R "$releases"
+          {
+            echo "GH_STUB_RELEASES=$releases"
+            echo "GH_STUB_LOG=$RUNNER_TEMP/gh.log"
+            echo "SITE=$site"
+          } >> "$GITHUB_ENV"
+          echo "$GITHUB_WORKSPACE/.github/fixtures/release-stub" >> "$GITHUB_PATH"
+
+      - name: 'restore, the archive found by its tag'
+        id: found
+        continue-on-error: true
+        uses: ./restore-gh-pages
+        with:
+          tag: 'publish-harness-1'
+
+      - name: 'restore, the archive named by asset-name'
+        id: named
+        continue-on-error: true
+        uses: ./restore-gh-pages
+        with:
+          tag: 'publish-harness-1'
+          asset-name: 'harness-html'
+
+      - name: 'restore, from a release with no manifest'
+        id: no-manifest
+        continue-on-error: true
+        uses: ./restore-gh-pages
+        with:
+          tag: 'publish-harness-2'
+
+      - name: "Hand the restored site to publish-gh-pages' upload"
+        id: upload
+        continue-on-error: true
+        uses: ./publish-gh-pages
+        with:
+          mode: 'upload'
+          build-dir: ${{ steps.found.outputs.build-dir }}
+
+      - name: Download what the upload uploaded
+        id: download
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: github-pages
+          path: ${{ runner.temp }}/pages
+
+      - name: Assert each restore gave back the site exactly, and the upload took it
+        env:
+          # case|outcome|build-dir|commit|the commit it should be
+          RESULTS: |
+            found|${{ steps.found.outcome }}|${{ steps.found.outputs.build-dir }}|${{ steps.found.outputs.commit }}|${{ github.sha }}
+            named|${{ steps.named.outcome }}|${{ steps.named.outputs.build-dir }}|${{ steps.named.outputs.commit }}|${{ github.sha }}
+            no-manifest|${{ steps.no-manifest.outcome }}|${{ steps.no-manifest.outputs.build-dir }}|${{ steps.no-manifest.outputs.commit }}|
+          UPLOAD: ${{ steps.upload.outcome }}
+          DOWNLOAD: ${{ steps.download.outcome }}
+        run: |
+          set -euo pipefail
+          bad=0 n=0 dirs=
+          fail() { echo "::error::$*"; bad=1; }
+          if [ -e "$GH_STUB_LOG.misuse" ]; then
+            fail "the action called the stand-in gh in a way it does not expect; its calls were: $(paste -sd';' "$GH_STUB_LOG")"
+          fi
+          while IFS='|' read -r id outcome dir commit want; do
+            [ -n "$id" ] || continue
+            n=$((n + 1))
+            if [ "$outcome" != success ] || [ -z "$dir" ]; then
+              fail "$id: expected success and a build-dir, got [$outcome] and [$dir]"
+              continue
+            fi
+            diff -r "$SITE" "$dir" || fail "$id: $dir does not hold exactly the site that was packed (diff above)"
+            [ "$commit" = "$want" ] || fail "$id: commit is [$commit], not [$want]"
+            case " $dirs " in
+              *" $dir "*) fail "$id: build-dir $dir is an earlier restore's too" ;;
+            esac
+            dirs="$dirs $dir"
+            echo "✓ $id: the site restored into $dir, commit [$commit]"
+          done <<< "$RESULTS"
+          [ "$n" -eq 3 ] || { echo "::error::expected 3 cases, read $n"; exit 1; }
+
+          [ "$UPLOAD" = success ] || fail "publish-gh-pages' upload failed on the restored build-dir"
+          if [ "$DOWNLOAD" = success ]; then
+            tar -tf "$RUNNER_TEMP/pages/artifact.tar" > "$RUNNER_TEMP/artifact.list"
+            for f in ./index.html './sub/a page.html'; do
+              grep -qxF "$f" "$RUNNER_TEMP/artifact.list" || fail "the github-pages artifact holds no $f"
+            done
+          else
+            fail "no github-pages artifact to download, so the upload uploaded nothing"
+          fi
+
+          [ "$bad" -eq 0 ]
+          echo "✅ each release was restored exactly, into a directory of its own, and publish-gh-pages uploaded the restored site"
+
+  restore-refuses:
+    # #27: each case differs from a good restore in one thing, and must fail
+    # with build-dir and commit empty. Four fail on their inputs, before gh is
+    # called: an empty tag, a tag gh would read as an option, a tag with a
+    # slash, and an asset-name with a space. The rest fail on the release: no
+    # release, no archive, two archives with asset-name empty, an asset-name
+    # the release does not hold, no checksum, a checksum that names another
+    # file, an archive changed after its checksum was made, an archive that
+    # holds a symlink, and one that holds a path through '..'. None may leave
+    # a site behind, and the '..' case may write nothing outside it. The good
+    # release, last, must restore: it shows the cases fail on their one
+    # difference, not on the job's setup.
+    name: 'restore-gh-pages: a bad input, release, checksum or archive fails before any site is restored'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Make a release for each way one can be wrong, and serve them from the stand-in gh
+        run: |
+          set -euo pipefail
+          releases="$RUNNER_TEMP/releases"
+          site="$RUNNER_TEMP/site"
+          mkdir -p "$site"
+          echo '<h1>harness</h1>' > "$site/index.html"
+          # pack TAG ASSET-NAME SITE: SITE as publish-gh-pages attaches it to TAG's release.
+          pack() {
+            mkdir -p "$releases/$1"
+            GITHUB_OUTPUT="$RUNNER_TEMP/pack.out" BUILD_DIR="$3" ASSET_NAME="$2" TAG_NAME="$1" \
+              OUT_DIR="$releases/$1" COMMIT_SHA="$GITHUB_SHA" REPOSITORY="$GITHUB_REPOSITORY" \
+              SIZE_MB="$(du -sm "$3" | cut -f1)" FILE_COUNT="$(find "$3" -type f | wc -l)" \
+              bash scripts/package-release-assets.sh > /dev/null
+          }
+          pack publish-good harness-html "$site"
+          mkdir -p "$releases/publish-no-archive"
+          echo 'release notes' > "$releases/publish-no-archive/notes.txt"
+          pack publish-two a-html "$site"
+          pack publish-two b-html "$site"
+          pack publish-no-checksum harness-html "$site"
+          rm "$releases/publish-no-checksum/harness-html-checksum.txt"
+          pack publish-other-name harness-html "$site"
+          sed -i 's/  .*$/  other.tar.gz/' "$releases/publish-other-name/harness-html-checksum.txt"
+          pack publish-tampered harness-html "$site"
+          echo '<h1>changed</h1>' > "$RUNNER_TEMP/changed.html"
+          tar -czf "$releases/publish-tampered/harness-html-publish-tampered.tar.gz" -C "$RUNNER_TEMP" changed.html
+          linked="$RUNNER_TEMP/linked"
+          mkdir -p "$linked"
+          cp "$site/index.html" "$linked/"
+          ln -s /etc/hostname "$linked/hostname"
+          pack publish-symlink harness-html "$linked"
+          # tar will not pack a path through '..', so Python does, and the
+          # checksum matches, so that only the extract can refuse it.
+          mkdir -p "$releases/publish-dotdot"
+          python3 - "$releases/publish-dotdot/harness-html-publish-dotdot.tar.gz" "$site/index.html" <<'PY'
+          import sys, tarfile
+          with tarfile.open(sys.argv[1], 'w:gz') as t:
+              t.add(sys.argv[2], arcname='./index.html')
+              t.add(sys.argv[2], arcname='../escaped.html')
+          PY
+          ( cd "$releases/publish-dotdot" && sha256sum harness-html-publish-dotdot.tar.gz > harness-html-checksum.txt )
+          ls -R "$releases"
+          {
+            echo "GH_STUB_RELEASES=$releases"
+            echo "GH_STUB_LOG=$RUNNER_TEMP/gh.log"
+          } >> "$GITHUB_ENV"
+          echo "$GITHUB_WORKSPACE/.github/fixtures/release-stub" >> "$GITHUB_PATH"
+
+      - name: 'refused: an empty tag'
+        id: tag-empty
+        continue-on-error: true
+        uses: ./restore-gh-pages
+        with:
+          tag: ''
+
+      - name: "refused: a tag that starts with '-'"
+        id: tag-option
+        continue-on-error: true
+        uses: ./restore-gh-pages
+        with:
+          tag: '-publish-good'
+
+      - name: 'refused: a tag with a slash'
+        id: tag-slash
+        continue-on-error: true
+        uses: ./restore-gh-pages
+        with:
+          tag: 'publish/good'
+
+      - name: 'refused: an asset-name with a space'
+        id: asset-name-space
+        continue-on-error: true
+        uses: ./restore-gh-pages
+        with:
+          tag: 'publish-good'
+          asset-name: 'harness html'
+
+      - name: Count the stand-in's calls so far
+        id: input-calls
+        run: |
+          set -euo pipefail
+          calls=0
+          [ ! -f "$GH_STUB_LOG" ] || calls=$(wc -l < "$GH_STUB_LOG")
+          echo "calls=$calls" >> "$GITHUB_OUTPUT"
+
+      - name: 'refused: no release for the tag'
+        id: no-release
+        continue-on-error: true
+        uses: ./restore-gh-pages
+        with:
+          tag: 'publish-missing'
+
+      - name: 'refused: a release with no archive'
+        id: no-archive
+        continue-on-error: true
+        uses: ./restore-gh-pages
+        with:
+          tag: 'publish-no-archive'
+
+      - name: 'refused: two archives for the tag, and no asset-name'
+        id: two-archives
+        continue-on-error: true
+        uses: ./restore-gh-pages
+        with:
+          tag: 'publish-two'
+
+      - name: 'refused: an asset-name the release does not hold'
+        id: asset-name-absent
+        continue-on-error: true
+        uses: ./restore-gh-pages
+        with:
+          tag: 'publish-good'
+          asset-name: 'other-html'
+
+      - name: 'refused: no checksum'
+        id: no-checksum
+        continue-on-error: true
+        uses: ./restore-gh-pages
+        with:
+          tag: 'publish-no-checksum'
+
+      - name: 'refused: a checksum that names another file'
+        id: other-name
+        continue-on-error: true
+        uses: ./restore-gh-pages
+        with:
+          tag: 'publish-other-name'
+
+      - name: 'refused: an archive changed after its checksum'
+        id: tampered
+        continue-on-error: true
+        uses: ./restore-gh-pages
+        with:
+          tag: 'publish-tampered'
+
+      - name: 'refused: an archive that holds a symlink'
+        id: symlink
+        continue-on-error: true
+        uses: ./restore-gh-pages
+        with:
+          tag: 'publish-symlink'
+
+      - name: "refused: an archive that holds a path through '..'"
+        id: dotdot
+        continue-on-error: true
+        uses: ./restore-gh-pages
+        with:
+          tag: 'publish-dotdot'
+
+      - name: 'restored: the good release'
+        id: good
+        continue-on-error: true
+        uses: ./restore-gh-pages
+        with:
+          tag: 'publish-good'
+
+      - name: Assert each case was refused with nothing restored, and the good release restored
+        env:
+          INPUT_CALLS: ${{ steps.input-calls.outputs.calls }}
+          # want|case|outcome|build-dir|commit
+          RESULTS: |
+            refused|tag-empty|${{ steps.tag-empty.outcome }}|${{ steps.tag-empty.outputs.build-dir }}|${{ steps.tag-empty.outputs.commit }}
+            refused|tag-option|${{ steps.tag-option.outcome }}|${{ steps.tag-option.outputs.build-dir }}|${{ steps.tag-option.outputs.commit }}
+            refused|tag-slash|${{ steps.tag-slash.outcome }}|${{ steps.tag-slash.outputs.build-dir }}|${{ steps.tag-slash.outputs.commit }}
+            refused|asset-name-space|${{ steps.asset-name-space.outcome }}|${{ steps.asset-name-space.outputs.build-dir }}|${{ steps.asset-name-space.outputs.commit }}
+            refused|no-release|${{ steps.no-release.outcome }}|${{ steps.no-release.outputs.build-dir }}|${{ steps.no-release.outputs.commit }}
+            refused|no-archive|${{ steps.no-archive.outcome }}|${{ steps.no-archive.outputs.build-dir }}|${{ steps.no-archive.outputs.commit }}
+            refused|two-archives|${{ steps.two-archives.outcome }}|${{ steps.two-archives.outputs.build-dir }}|${{ steps.two-archives.outputs.commit }}
+            refused|asset-name-absent|${{ steps.asset-name-absent.outcome }}|${{ steps.asset-name-absent.outputs.build-dir }}|${{ steps.asset-name-absent.outputs.commit }}
+            refused|no-checksum|${{ steps.no-checksum.outcome }}|${{ steps.no-checksum.outputs.build-dir }}|${{ steps.no-checksum.outputs.commit }}
+            refused|other-name|${{ steps.other-name.outcome }}|${{ steps.other-name.outputs.build-dir }}|${{ steps.other-name.outputs.commit }}
+            refused|tampered|${{ steps.tampered.outcome }}|${{ steps.tampered.outputs.build-dir }}|${{ steps.tampered.outputs.commit }}
+            refused|symlink|${{ steps.symlink.outcome }}|${{ steps.symlink.outputs.build-dir }}|${{ steps.symlink.outputs.commit }}
+            refused|dotdot|${{ steps.dotdot.outcome }}|${{ steps.dotdot.outputs.build-dir }}|${{ steps.dotdot.outputs.commit }}
+            restored|good|${{ steps.good.outcome }}|${{ steps.good.outputs.build-dir }}|${{ steps.good.outputs.commit }}
+        run: |
+          set -euo pipefail
+          bad=0 n=0 good=
+          fail() { echo "::error::$*"; bad=1; }
+          if [ -e "$GH_STUB_LOG.misuse" ]; then
+            fail "the action called the stand-in gh in a way it does not expect; its calls were: $(paste -sd';' "$GH_STUB_LOG")"
+          fi
+          [ "$INPUT_CALLS" = 0 ] || fail "the four input cases called gh $INPUT_CALLS times, where their first step should have stopped them"
+          while IFS='|' read -r want id outcome dir commit; do
+            [ -n "$want" ] || continue
+            n=$((n + 1))
+            if [ "$want" = restored ]; then
+              if [ "$outcome" != success ] || [ -z "$dir" ] || [ "$commit" != "$GITHUB_SHA" ]; then
+                fail "$id: expected success, a build-dir and commit $GITHUB_SHA, got [$outcome], [$dir] and [$commit]"
+              else
+                good=$dir
+                echo "✓ $id: restored into $dir"
+              fi
+            elif [ "$outcome" != failure ] || [ -n "$dir$commit" ]; then
+              fail "$id: expected failure with build-dir and commit empty, got [$outcome], [$dir] and [$commit]"
+            else
+              echo "✓ $id: refused"
+            fi
+          done <<< "$RESULTS"
+          [ "$n" -eq 14 ] || { echo "::error::expected 14 cases, read $n"; exit 1; }
+
+          # Only the good release's site is left, and nothing escaped one.
+          find "$RUNNER_TEMP" -mindepth 2 -maxdepth 2 -path "$RUNNER_TEMP/restore-gh-pages.*/site" > "$RUNNER_TEMP/sites"
+          left=$(grep -vxF -- "$good" "$RUNNER_TEMP/sites" | paste -sd' ' - || true)
+          [ -z "$left" ] || fail "a refused case left a site behind: $left"
+          escaped=$(find "$RUNNER_TEMP" -name escaped.html)
+          [ -z "$escaped" ] || fail "the '..' case wrote $escaped"
+
+          [ "$bad" -eq 0 ]
+          echo "✅ every bad input, release, checksum and archive was refused with nothing restored, and the good release restored"
+
+  # ==========================================================================
   # preview-* — the pinned CLIs and the deploy decision (a real deploy needs
   # provider secrets, so none succeeds here)
   # ==========================================================================
@@ -5513,6 +5905,8 @@ jobs:
       - dc-refuses-mismatch
       - publish-release-packaging
       - publish-modes
+      - restore-round-trip
+      - restore-refuses
       - preview-cli-install
       - preview-change-detection
       - preview-decide

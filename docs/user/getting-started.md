@@ -35,6 +35,7 @@ Where the jobs run:
 | [`cache.yml`](https://github.com/QuantEcon/actions/blob/main/templates/cache.yml) | Weekly on Sunday, on demand, and when `environment.yml` changes on the default branch | Builds every format from scratch with `build-jupyter-cache`, and saves the cache only if every build passes. A failed run files an issue, and uploads `_build` for inspection |
 | [`ci.yml`](https://github.com/QuantEcon/actions/blob/main/templates/ci.yml) | Every pull request to the default branch | Restores the cache and builds the HTML; then deploys a preview, and checks the PDF build |
 | [`publish.yml`](https://github.com/QuantEcon/actions/blob/main/templates/publish.yml) | Every push to the default branch, and on demand | Restores the cache and builds the site; then deploys it to GitHub Pages. With a tag trigger and its commented `release-assets` job, it can also attach the site to the tag's release |
+| [`restore.yml`](https://github.com/QuantEcon/actions/blob/main/templates/restore.yml) | By hand, on the default branch, with a release's tag | Puts the site back as that release holds it, with no build: downloads the release's archive, checks its checksum, and deploys it to GitHub Pages. It needs the releases that `publish.yml`'s `release-assets` job makes. See [`restore-gh-pages`](actions/restore-gh-pages.md) |
 
 `ci.yml` runs in four jobs:
 

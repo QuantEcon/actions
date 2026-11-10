@@ -26,6 +26,7 @@ The templates set `permissions:` on each job, so no job has more than its own st
 | `publish.yml`, `build` | `contents: read`, `packages: read` | None |
 | `publish.yml`, `deploy` | `pages: write` and `id-token: write`, for the Pages deploy | None |
 | `publish.yml`, `release-assets`, commented out | `contents: write`, for the release upload | None |
+| `restore.yml`, `restore` | `contents: read` for the release, and `pages: write` and `id-token: write` for the Pages deploy, in one job, since it runs no notebook or repository code | None |
 
 Every checkout in the templates sets `persist-credentials: false`, so no job leaves its `GITHUB_TOKEN` in git's configuration, where any later step could read it.
 
