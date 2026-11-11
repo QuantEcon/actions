@@ -1676,13 +1676,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History
 
-- **v0**: Tracks the latest stable release — the topmost dated section above
-- **v0.x.x**: Development/testing releases
+- **v0**: Tracks the latest release — the topmost dated section above. [docs/user/versioning.md](docs/user/versioning.md) says which reference to pin and how a release reaches a repository.
 
-## Migration from Legacy Workflows
+## Migrating an existing repository
 
-See [docs/MIGRATION-GUIDE.md](docs/MIGRATION-GUIDE.md) for step-by-step instructions on migrating from repository-specific workflows to these centralized actions.
+See [docs/user/getting-started.md](docs/user/getting-started.md#migrating-an-existing-repository).
 
 ## Testing
 
-See [TESTING.md](docs/dev/TESTING.md) for comprehensive testing strategy and validation procedures.
+See [docs/dev/TESTING.md](docs/dev/TESTING.md) for how a change to the actions is tested.
