@@ -4320,9 +4320,11 @@ jobs:
     # page and a name with a space included, whether the archive is found by
     # its tag or named by asset-name, each into a directory of its own, with
     # commit read from the manifest. A release with no manifest restores too,
-    # with commit empty. And publish-gh-pages' upload takes the restored
-    # directory as its build-dir, as templates/restore.yml hands it on.
-    name: 'restore-gh-pages: a release publish-gh-pages made is restored exactly, and publish-gh-pages takes it'
+    # with commit empty. It uploads no github-pages artifact: publish-modes
+    # uploads one in the same run and downloads it by name, and two of them
+    # would make that check read either. The hand-off to publish-gh-pages that
+    # templates/restore.yml makes is tested in the canary, at a release.
+    name: 'restore-gh-pages: a release publish-gh-pages made is restored exactly'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: gate
@@ -4386,31 +4388,13 @@ jobs:
         with:
           tag: 'publish-harness-2'
 
-      - name: "Hand the restored site to publish-gh-pages' upload"
-        id: upload
-        continue-on-error: true
-        uses: ./publish-gh-pages
-        with:
-          mode: 'upload'
-          build-dir: ${{ steps.found.outputs.build-dir }}
-
-      - name: Download what the upload uploaded
-        id: download
-        continue-on-error: true
-        uses: actions/download-artifact@v8
-        with:
-          name: github-pages
-          path: ${{ runner.temp }}/pages
-
-      - name: Assert each restore gave back the site exactly, and the upload took it
+      - name: Assert each restore gave back the site exactly
         env:
           # case|outcome|build-dir|commit|the commit it should be
           RESULTS: |
             found|${{ steps.found.outcome }}|${{ steps.found.outputs.build-dir }}|${{ steps.found.outputs.commit }}|${{ github.sha }}
             named|${{ steps.named.outcome }}|${{ steps.named.outputs.build-dir }}|${{ steps.named.outputs.commit }}|${{ github.sha }}
             no-manifest|${{ steps.no-manifest.outcome }}|${{ steps.no-manifest.outputs.build-dir }}|${{ steps.no-manifest.outputs.commit }}|
-          UPLOAD: ${{ steps.upload.outcome }}
-          DOWNLOAD: ${{ steps.download.outcome }}
         run: |
           set -euo pipefail
           bad=0 n=0 dirs=
@@ -4435,18 +4419,8 @@ jobs:
           done <<< "$RESULTS"
           [ "$n" -eq 3 ] || { echo "::error::expected 3 cases, read $n"; exit 1; }
 
-          [ "$UPLOAD" = success ] || fail "publish-gh-pages' upload failed on the restored build-dir"
-          if [ "$DOWNLOAD" = success ]; then
-            tar -tf "$RUNNER_TEMP/pages/artifact.tar" > "$RUNNER_TEMP/artifact.list"
-            for f in ./index.html './sub/a page.html'; do
-              grep -qxF "$f" "$RUNNER_TEMP/artifact.list" || fail "the github-pages artifact holds no $f"
-            done
-          else
-            fail "no github-pages artifact to download, so the upload uploaded nothing"
-          fi
-
           [ "$bad" -eq 0 ]
-          echo "✅ each release was restored exactly, into a directory of its own, and publish-gh-pages uploaded the restored site"
+          echo "✅ each release was restored exactly, into a directory of its own"
 
   restore-refuses:
     # #27: each case differs from a good restore in one thing, and must fail
