@@ -4,7 +4,7 @@ Current priorities for `QuantEcon/actions`, the repositories that use the action
 
 ## Current state
 
-- **Actions (11):** `setup-environment`, `setup-latex`, `build-lectures`, `build-jupyter-cache`, `restore-jupyter-cache`, `preview-netlify`, `preview-cloudflare`, `preview-workers`, `publish-gh-pages`, `restore-gh-pages`, `deploy-cloudflare`. Latest release **`v0.19.0`** (2026-11-11). `@v0` points to **`v0.18.0`**, and moves to `v0.19.0` once it has passed the release gate.
+- **Actions (11):** `setup-environment`, `setup-latex`, `build-lectures`, `build-jupyter-cache`, `restore-jupyter-cache`, `preview-netlify`, `preview-cloudflare`, `preview-workers`, `publish-gh-pages`, `restore-gh-pages`, `deploy-cloudflare`. Latest release **`v0.19.0`** (2026-11-11), and `@v0` points to it.
 - **Containers (2):** `quantecon` (full) and `quantecon-build` (lean), on the Anaconda 2026.07 baseline, with the Ubuntu base pinned by digest. See the Dependency policy below, and [CONTAINERS.md](CONTAINERS.md).
 - **Testing:** the action harness on every pull request, the container checks, and the canary repository; see [TESTING.md](TESTING.md). A release that changes what an action does passes the release gate, `gate.yml` in the canary, before `v0` moves, and anything the gate does not reach is staged there by hand ([CONTRIBUTING.md](../../CONTRIBUTING.md#staged-releases)).
 
@@ -62,7 +62,7 @@ The lean image pins every package in its `environment.yml` that the `anaconda` m
 
 | Area | Issues | Where it stands |
 |---|---|---|
-| Release gating | #302 | The release gate is live in the canary. #302 is P0 item 0c, low priority until v0.18.0 has run the gate and the hand-staged legs side by side |
+| Release gating | #302 | The release gate is live in the canary. #302 is P0 item 0c, low priority |
 | Testing | #100, #282 | Stage 1, the harness, the canary and the release gate are live. #282, a harness run of the pinned wrangler against a stub of Cloudflare's API, is low priority |
 | Previews | #291 | A Cloudflare Pages preview never answers 404, since a build with no `404.html` makes Pages serve `index.html` for every unknown path. Low priority |
 | Preview speed | #92 (tracking), #147–#152, #154–#158 | HTML-only previews are decided (#146): #148 is unblocked, and the PDF check that goes with it is in `templates/ci.yml` |
