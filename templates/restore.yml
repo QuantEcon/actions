@@ -54,8 +54,9 @@ jobs:
       pages: write              # Required for GitHub Pages deployment
       id-token: write           # Required for GitHub Pages OIDC
 
-    # By default only the default branch may deploy here, so run the workflow
-    # on it.
+    # Only the refs the github-pages environment admits may deploy here: the
+    # default branch, and any tag pattern added for publish.yml's release
+    # assets. Run the workflow on the default branch.
     environment:
       name: github-pages
       url: ${{ steps.publish.outputs.page-url }}
