@@ -167,7 +167,9 @@ In `ci.yml` this action runs in the `build` job, which holds no secrets, and the
    | any other | `--builder <builder>` | a directory under `<output-dir>/_build`, which is what `build-path` gives |
 
    The log shows the full command in its "Build Command" group.
-4. **Error outputs.** After a build that passes, unless `error-outputs` is `ignore`, the action reads every notebook that myst-nb wrote to `<output-dir>/_build/jupyter_execute`, outputs included, whether the build executed it or took it from the cache. It skips a notebook with no source under `source-dir`, since a restored build cache keeps the notebooks of lectures since removed. Each `error` output it finds gets an annotation on the source file, at the cell's `{code-cell}` line in a MyST Markdown source, and its traceback in a log group. The step summary lists them all, and `error-output-count` gives how many. With `fail` the step then fails, and with `warn` it passes. A notebook that cannot be read is reported the same way, and fails the step with `fail` too, since it went unchecked. An error output is allowed where nbclient and myst-nb allow a cell to raise:
+
+   For the `jupyter` builder, with both `-W` and `--keep-going` in `extra-args`, the step also fails when `jb build` exits 0 after logging a warning. sphinx-tojupyter, which provides the builder, ends `jb build` with status 0 before Sphinx can fail it, so the action reads the warnings from `jb build`'s stderr instead, and lists them in a log group. With `-W` alone, `jb build` fails at the first warning on its own.
+4. **Error outputs.** After a build that passes, unless `error-outputs` is `ignore`, the action reads every notebook that myst-nb wrote to `<output-dir>/_build/jupyter_execute`, outputs included, whether the build executed it or took it from the cache. It skips a notebook with no source under `source-dir`, since a restored build cache keeps the notebooks of lectures since removed. Each `error` output it finds gets an annotation on the source file, at the cell's `{code-cell}` line in a MyST Markdown source, and its traceback in a log group. The annotation says how the error got there, from the code cells after it: the cell raised if none of them ran, since execution stops at a cell that raises, and it raised while its output was displayed if one did. When no code cell after it was to run, because it is the last one or every later one is tagged `skip-execution`, there is nothing to tell by. The step summary lists them all, and `error-output-count` gives how many. With `fail` the step then fails, and with `warn` it passes. A notebook that cannot be read is reported the same way, and fails the step with `fail` too, since it went unchecked. An error output is allowed where nbclient and myst-nb allow a cell to raise:
    - in a cell tagged `raises-exception`;
    - in a notebook whose frontmatter sets `execution_allow_errors: true` under `mystnb:`;
    - anywhere in a book whose `_config.yml` sets `allow_errors: true` under `execute:`.
@@ -176,11 +178,11 @@ In `ci.yml` this action runs in the `build` job, which holds no secrets, and the
 
 ### What fails the job
 
-`jb build` exiting with an error. With `-W`, which the default `extra-args` passes, that includes every warning, so a notebook cell that raises an exception fails the build.
+A failed build. For every builder but `jupyter`, that is `jb build` exiting with an error, and with `-W`, which the default `extra-args` passes, every warning makes it one, so a notebook cell that raises an exception fails the build. For the `jupyter` builder under `-W --keep-going`, `jb build` exits 0 whatever it warned about, so the action fails the step on each warning itself: see [Behaviour](#behaviour), step 3. Under `-W` alone, `jb build` fails at the first warning for the `jupyter` builder too.
 
 After a build that passes, an executed notebook that holds an error output, with `error-outputs` at its default, `fail`. `-W` cannot see an exception raised while IPython displays output, such as a figure that fails to draw. The kernel reports that cell as successful, so myst-nb renders the traceback on the page without a warning, and `jb build` exits 0.
 
-A second build over the same `_build`, after one that failed with `-W --keep-going`, reads nothing, warns about nothing and passes: Sphinx's saved state counts every page as up to date. To see the failures again, rebuild with `--all` in `extra-args`.
+A build reads, and executes, only the pages that changed since Sphinx last saved its state in `_build`, and every builder shares that state. So once one build in a job has read the pages, a later one over the same `_build`, whatever its builder, reads none of them, and repeats none of the first build's warnings. After a first build that failed with `-W --keep-going`, a second one passes, and a cell that raised reaches it only through the error-output check. To see the failures again, rebuild with `--all` in `extra-args`.
 
 > [!WARNING]
 > Keep `-W` in any `extra-args` you set. A cell that raises is not an error to Jupyter Book: myst-nb logs it as a warning and carries on, and only `-W` turns that into a failed build. Without it `jb build` exits 0 over a broken lecture. With `error-outputs: fail`, the step still fails on the traceback that the exception leaves in the notebook, but every other warning passes unseen. `--keep-going` makes the build report every such warning before it fails, instead of stopping at the first; without `-W` it does nothing.
@@ -191,9 +193,15 @@ A second build over the same `_build`, after one that failed with `-W --keep-goi
 
 **`❌ BUILD FAILED - Jupyter Book build encountered errors`.** The groups below it hold each failed notebook's traceback. To reproduce the failure locally, run the command from the "Build Command" group, for example `jb build lectures -W --keep-going`.
 
+**`jb build exited 0, but the jupyter build logged <n> warning(s), and -W makes each one an error`.** The `jupyter` build warned, under `-W --keep-going`. The log group "The jupyter build's <n> warning(s)" lists each warning: fix them as for any other builder. A `tojupyter_static_file_path` entry that names a directory the book does not have warns `tojupyter_static_path entry … does not exist`: drop the entry. The same `jb build` command, run locally, exits 0 too: look for `WARNING:` in its output, or run it with `-W` and without `--keep-going`, which fails at the first warning.
+
+**`…: <error>. The cell raised, and the notebook stopped there`.** The cell raised an exception, and the cells after it never ran. `-W` fails the build that executes the page, so this build ran without `-W` in `extra-args`, or it came after another build in the job and read no page: that build's log names the failure. Fix the cell, or tag it `raises-exception` if the error is meant to be shown.
+
+**`…: <error>. The page shows the traceback`.** No code cell after this one was to run: it is the notebook's last, or every later one is tagged `skip-execution`. So the check cannot tell whether the cell raised or its output did. See the entry above and the one below.
+
 **`…: <error>. The kernel reported this cell as successful, so -W did not catch it, and the page shows the traceback`.** The cell's code ran, but displaying its output raised, so the page shows a traceback where the output should be. The log group named after the cell holds the traceback. A common cause is a deprecation that expires inside a figure's drawing: under NumPy 2.4, for example, Matplotlib rejects a length-1 array passed to `ax.text` as a coordinate. Fix the cell, or tag it `raises-exception` if the error is meant to be shown. `error-outputs: 'warn'` lets the build pass while you fix it.
 
-**The build passed, but a notebook failed.** `extra-args` is set without `-W`, and `error-outputs` is `warn` or `ignore`. Add `-W` back.
+**The build passed, but a notebook failed.** `extra-args` is set without `-W`, and `error-outputs` is `warn` or `ignore`. Add `-W` back. Or the build came after another in the same job and read no page: see [What fails the job](#what-fails-the-job).
 
 **`jb: command not found`.** On a standard runner, `setup-environment` has not run, or its environment file does not install `jupyter-book`. In a container, check the job's `container:` image.
 

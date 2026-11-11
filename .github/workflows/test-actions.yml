@@ -1675,6 +1675,149 @@ jobs:
           [ -z "$INVALID_BUILD_PATH" ] || { echo "::error::error-outputs: 'loud' set build-path [$INVALID_BUILD_PATH]: an invalid value must fail before the build"; exit 1; }
           echo "✅ warn passed with the error reported, ignore passed without checking, and an invalid value failed before building"
 
+  build-jupyter-warning-guard:
+    # #300: under -W --keep-going, jb build exits 0 from a jupyter build
+    # whatever it warned about. sphinx-tojupyter's finish() calls exit() with 0
+    # inside Sphinx's build, before Sphinx turns the warnings --keep-going
+    # counted into status 1. build-lectures reads the warnings from jb's stderr
+    # and fails the step itself.
+    #
+    # The fixture is mini-lectures with the jupyter builder added: this job's
+    # copy of the environment file lists sphinx-tojupyter, which
+    # setup-environment installs over env-seed's environment after the
+    # fallback restore, and its _config.yml loads the extension. Four builds
+    # on one _build:
+    # - a clean one passes, so the check finds no warning in a build's
+    #   ordinary stderr;
+    # - broken.md, whose cell raises and has one after it, fails the build
+    #   step. error-outputs is ignore, so nothing else can fail it;
+    # - with --keep-going and no -W the same warnings pass, as Sphinx passes
+    #   them (--all reads, and executes, broken.md again);
+    # - the error-output check reports broken.md's cell as one that raised.
+    name: 'build-lectures: a warning fails a jupyter build under -W --keep-going'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: env-seed
+    steps:
+      - uses: actions/checkout@v7
+
+      # Same salt as env-seed. The pip list is the environment file's last
+      # block, and sphinx: is _config.yml's. broken.md is build-fail-guard's
+      # broken page with a cell after the failing one, and joins the book's
+      # table of contents after the clean build.
+      - name: Recreate salted fixture with the jupyter builder and a broken page
+        run: |
+          cp -r .github/fixtures/mini-lectures harness
+          [ "$(grep -E '^  - ' harness/environment.yml | tail -n 1)" = "  - pip:" ] \
+            || { echo "::error::fixture setup failed — the pip list is no longer environment.yml's last block"; exit 1; }
+          [ "$(grep -E '^[^ #]' harness/lectures/_config.yml | tail -n 1)" = "sphinx:" ] \
+            || { echo "::error::fixture setup failed — sphinx: is no longer _config.yml's last block"; exit 1; }
+          printf '    - sphinx-tojupyter\n' >> harness/environment.yml
+          printf '\n# harness-salt: %s-book\n' "$SALT" >> harness/environment.yml
+          printf '%% harness salt: %s-book\n' "$SALT" > harness/lectures/salt.md
+          printf '  extra_extensions: [sphinx_tojupyter]\n' >> harness/lectures/_config.yml
+          sed -e 's/^# An Executed Lecture$/# A Deliberately Broken Lecture/' \
+              -e 's/^assert total == 285$/assert total == 0, "harness: deliberate build failure"/' \
+              harness/lectures/lecture1.md > harness/lectures/broken.md
+          cat >> harness/lectures/broken.md <<'EOF'
+
+          ```{code-cell} python3
+          print("harness: the cell after the failing one")
+          ```
+          EOF
+          grep -q 'assert total == 0' harness/lectures/broken.md \
+            || { echo "::error::fixture setup failed — broken.md has no failing cell"; exit 1; }
+
+      - name: Setup environment
+        uses: ./setup-environment
+        with:
+          environment: 'harness/environment.yml'
+
+      - name: Build notebooks from a book with no warning
+        id: clean
+        continue-on-error: true
+        uses: ./build-lectures
+        with:
+          builder: 'jupyter'
+          source-dir: 'harness/lectures'
+          output-dir: 'harness'
+
+      - name: Assert the clean build passed, and add the broken page
+        env:
+          OUTCOME: ${{ steps.clean.outcome }}
+        run: |
+          [ "$OUTCOME" = "success" ] || { echo "::error::a jupyter build that should log no warning reported [$OUTCOME]: the check must find nothing in a build's ordinary stderr (#300)"; exit 1; }
+          [ -f harness/_build/jupyter/lecture1.ipynb ] || { echo "::error::harness/_build/jupyter/lecture1.ipynb is missing: the clean build did not build notebooks"; exit 1; }
+          printf '  - file: broken\n' >> harness/lectures/_toc.yml
+          echo "✅ a jupyter build with no warning passed"
+
+      # Expect an ::error:: annotation from build-lectures in this job's log:
+      # it is the check working.
+      - name: Build notebooks with a cell that raises (expected to fail)
+        id: guard
+        continue-on-error: true
+        uses: ./build-lectures
+        with:
+          builder: 'jupyter'
+          source-dir: 'harness/lectures'
+          output-dir: 'harness'
+          error-outputs: 'ignore'
+
+      - name: Assert the warnings failed the build step
+        env:
+          OUTCOME: ${{ steps.guard.outcome }}
+          BUILD_PATH: ${{ steps.guard.outputs.build-path }}
+        run: |
+          [ "$OUTCOME" = "failure" ] || { echo "::error::build-lectures reported [$OUTCOME] for a jupyter build whose cell raised, under -W --keep-going: jb build exits 0 there, and the action must fail the step on the warnings (#300)"; exit 1; }
+          # Attribute the red. build-path is set by the build step, so a
+          # failure with it set is not the input check's, and with ignore the
+          # error-output check does not run. The report is myst-nb's, written
+          # with its warning, so the warnings were the staged failure's.
+          [ "$BUILD_PATH" = "harness/_build/jupyter" ] || { echo "::error::build-path: expected [harness/_build/jupyter], got [$BUILD_PATH]: the step failed before the build"; exit 1; }
+          REPORT=harness/_build/jupyter/reports/broken.err.log
+          grep -q 'harness: deliberate build failure' "$REPORT" \
+            || { echo "::error::$REPORT does not hold the staged failure: the red is not attributable to it"; ls -R harness/_build/jupyter/reports || true; exit 1; }
+          # Cleared, so the next build's report shows that it executed
+          # broken.md, and warned, again.
+          rm -rf harness/_build/jupyter/reports
+          echo "✅ the jupyter build's warnings failed the step, and they were the staged failure's ($REPORT)"
+
+      - name: Build notebooks with the same cell, without -W
+        id: no-w
+        continue-on-error: true
+        uses: ./build-lectures
+        with:
+          builder: 'jupyter'
+          source-dir: 'harness/lectures'
+          output-dir: 'harness'
+          extra-args: '--keep-going --all'
+          error-outputs: 'ignore'
+
+      - name: Assert the build without -W passed, having warned
+        env:
+          OUTCOME: ${{ steps.no-w.outcome }}
+        run: |
+          [ "$OUTCOME" = "success" ] || { echo "::error::a jupyter build without -W reported [$OUTCOME]: a warning must fail only a build under -W"; exit 1; }
+          [ -f harness/_build/jupyter/reports/broken.err.log ] \
+            || { echo "::error::harness/_build/jupyter/reports/broken.err.log was not written again: the build did not execute broken.md, so it proves nothing about its warnings"; exit 1; }
+          echo "✅ the same warnings passed a jupyter build without -W"
+
+      # A login shell, as build-lectures runs it, for the environment's Python.
+      - name: Assert the error-output check reports the cell as one that raised
+        shell: bash -l {0}
+        run: |
+          # Its output holds workflow commands, so it is printed only on failure.
+          out=$(python build-lectures/check-error-outputs.py warn harness/lectures harness)
+          line=$(printf '%s\n' "$out" | grep -F 'harness/lectures/broken.md, code cell 1' | head -n 1)
+          case "$line" in
+            *"The cell raised, and the notebook stopped there"*)
+              echo "✅ the error-output check reported broken.md's cell as one that raised" ;;
+            *)
+              printf '%s\n' "$out"
+              echo "::error::broken.md's first cell raised, and the cell after it never ran, but the error-output check did not report it as a cell that raised (#300)"
+              false ;;
+          esac
+
   build-html-copy:
     # #228: html-copy-pdf and html-copy-notebooks, which no other job here
     # turns on. build-jupyter-cache sets both, but runs build-lectures at @v0,
@@ -5705,6 +5848,7 @@ jobs:
       - env-pinned-edit
       - build-fail-guard
       - build-display-error-guard
+      - build-jupyter-warning-guard
       - build-html-copy
       - env-container-update
       - latex-seed

@@ -19,6 +19,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to `publish-gh-pages` to deploy, in `publish.yml`'s `pages` concurrency group. The next publish
   replaces the restored site. (#27)
 
+### Fixed
+- ⚠️ **BREAKING** **`build-lectures`**: a `jupyter` build under `-W --keep-going`, the default
+  `extra-args`, now fails on a warning, as the other builders do. It used to pass every warning.
+  sphinx-tojupyter's `JupyterBuilder.finish()` calls `exit()` with 0 inside Sphinx's build,
+  before Sphinx turns the warnings that `--keep-going` counted into exit status 1. So `jb build`
+  exited 0 whatever the build warned about, a cell that raised included. The release gate's
+  staged-failure self-test showed it: only the error-output check caught the raised cell. The
+  build step now keeps a copy of `jb build`'s stderr, Sphinx's warning stream. For the `jupyter`
+  builder, when `jb build` exits 0 with both `-W` and `--keep-going` in `extra-args`, it fails
+  the step on any warning in it, and lists each in a log group. The failure report then prints
+  the failed notebooks' tracebacks, as for any failed build. `-W` alone already failed at the
+  first warning, and without `-W` nothing changes. `build-jupyter-cache` gets the same through
+  `build-lectures@v0`; it builds `jupyter` first, so that build is the one that reads and
+  executes the pages. The error-output check now tells a cell that raised, after which no code
+  cell ran, from one whose output raised while it was displayed, after which one did. It says
+  which in its annotation and in a Cause column in the step summary, where it used to say "The
+  kernel reported this cell as successful" of both. The new harness job
+  `build-jupyter-warning-guard` shows a clean `jupyter` build passing, a cell that raises failing
+  the build step, the same warnings passing without `-W`, and the check's wording. The lecture
+  matrix found one warning, in three lecture repositories: a `tojupyter_static_file_path` entry
+  naming a directory the book does not have, which warns `tojupyter_static_path entry … does not
+  exist`. Their pull requests drop that entry, and no other QuantEcon caller's `jupyter` build
+  logs a warning. To migrate: fix each warning the build step lists, such as by dropping that
+  entry, or set `extra-args` without `-W` for the `jupyter` build while you do. (#300)
+
 ## [0.18.0] - 2026-11-10
 
 ### Added

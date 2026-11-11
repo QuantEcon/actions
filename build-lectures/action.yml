@@ -269,6 +269,8 @@ runs:
         OUTPUT_DIR: ${{ inputs.output-dir }}
         EXTRA_ARGS: ${{ inputs.extra-args }}
       run: |
+        # shellcheck source=scripts/workflow-command.sh
+        . "$GITHUB_ACTION_PATH/../scripts/workflow-command.sh"
         echo "Building with builder: $BUILDER"
 
         # Builder-specific flags as an array — no eval, and paths stay quoted.
@@ -287,11 +289,57 @@ runs:
         echo "jb build $SOURCE_DIR --path-output $OUTPUT_DIR ${builder_args[*]} ${EXTRA_ARGS//[$'\r\n']/ }"
         echo "::endgroup::"
 
-        # Execute build and capture exit code
+        # Execute build and capture exit code. Sphinx writes its warnings to
+        # jb's stderr, and a copy of it is kept for the check below: fd 3
+        # carries stdout past the pipe, and tee passes stderr on to stderr, so
+        # the log is as it was.
+        WARNINGS_LOG="${RUNNER_TEMP:-/tmp}/build-lectures-stderr.$$"
         set +e
-        jb build "$SOURCE_DIR" --path-output "$OUTPUT_DIR" "${builder_args[@]}" $EXTRA_ARGS
-        BUILD_EXIT_CODE=$?
+        { jb build "$SOURCE_DIR" --path-output "$OUTPUT_DIR" "${builder_args[@]}" $EXTRA_ARGS 2>&1 1>&3 3>&- \
+            | tee "$WARNINGS_LOG" 1>&2 3>&-; BUILD_EXIT_CODE=${PIPESTATUS[0]}; } 3>&1
         set -e
+
+        # #300. Under -W --keep-going, Sphinx only counts warnings, and fails
+        # the build at its very end. The jupyter builder never gets there:
+        # sphinx-tojupyter's finish() calls exit() with 0 first, so jb exits
+        # 0 whatever it warned about. (-W alone fails at the first warning,
+        # before finish().) So a jupyter build under both flags fails here on
+        # any warning in the copy of stderr, as Sphinx would have failed it.
+        if [ "$BUILDER" = jupyter ] && [ "$BUILD_EXIT_CODE" -eq 0 ]; then
+          warning_is_error=false keep_going=false
+          for arg in $EXTRA_ARGS; do
+            case "$arg" in
+              --warningiserror) warning_is_error=true ;;
+              --keep-going) keep_going=true ;;
+              --*) ;;
+              -*W*) warning_is_error=true ;;  # -W, or a cluster such as -nW
+            esac
+          done
+          if [ "$warning_is_error/$keep_going" = true/true ]; then
+            if [ ! -f "$WARNINGS_LOG" ]; then
+              annotate error "jb build exited 0, but its warnings could not be read back from $WARNINGS_LOG, so the jupyter build was not checked for the warnings that -W --keep-going must fail it on (#300)"
+              BUILD_EXIT_CODE=1
+            else
+              # A warning starts WARNING:, ERROR: or CRITICAL:, after its
+              # location if it has one. The colour codes are dropped first.
+              WARNINGS=$(sed -e $'s/\e\\[[0-9;]*m//g' "$WARNINGS_LOG" | grep -E '(^|: )(WARNING|ERROR|CRITICAL): ' || true)
+              if [ -n "$WARNINGS" ]; then
+                COUNT=$(printf '%s\n' "$WARNINGS" | wc -l | tr -d ' ')
+                annotate error "jb build exited 0, but the jupyter build logged $COUNT warning(s), and -W makes each one an error: sphinx-tojupyter ends the build before Sphinx can fail it under --keep-going (#300). The build step's log lists them."
+                # The warnings quote the book: stop-commands keeps them from
+                # being read as workflow commands.
+                TOKEN="warnings-$RANDOM$RANDOM$RANDOM"
+                echo "::group::The jupyter build's $COUNT warning(s)"
+                echo "::stop-commands::$TOKEN"
+                printf '%s\n' "$WARNINGS"
+                echo "::$TOKEN::"
+                echo "::endgroup::"
+                BUILD_EXIT_CODE=1
+              fi
+            fi
+          fi
+        fi
+        rm -f "$WARNINGS_LOG"
 
         # Set output path regardless of success/failure (compute once; write
         # with the heredoc delimiter form so it's robust to odd characters).
@@ -340,9 +388,10 @@ runs:
         OUTPUT_DIR: ${{ inputs.output-dir }}
       run: python "$GITHUB_ACTION_PATH/check-error-outputs.py" "$MODE" "$SOURCE_DIR" "$OUTPUT_DIR"
 
-    # Only for a failed jb build. After the check above fails, jb build has
-    # passed and the check has already named each notebook and cell; after an
-    # invalid error-outputs, nothing was built.
+    # Only for a failed build step: jb build failed, or the jupyter build
+    # logged warnings under -W --keep-going (#300). After the check above
+    # fails, jb build has passed and the check has already named each notebook
+    # and cell; after an invalid error-outputs, nothing was built.
     - name: Report build failure
       if: failure() && steps.build.outcome == 'failure'
       shell: bash
