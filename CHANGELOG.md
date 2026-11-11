@@ -37,12 +37,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which in its annotation and in a Cause column in the step summary, where it used to say "The
   kernel reported this cell as successful" of both. The new harness job
   `build-jupyter-warning-guard` shows a clean `jupyter` build passing, a cell that raises failing
-  the build step, the same warnings passing without `-W`, and the check's wording. No QuantEcon
-  caller's `jupyter` build logs a warning today. The lecture matrix found one in three lecture
-  repositories: a `tojupyter_static_file_path` entry naming a directory the book does not have,
-  which warns `tojupyter_static_path entry … does not exist`. To migrate: fix each warning the
-  build step lists, such as by dropping that entry, or set `extra-args` without `-W` for the
-  `jupyter` build while you do. (#300)
+  the build step, the same warnings passing without `-W`, and the check's wording. The lecture
+  matrix found one warning, in three lecture repositories: a `tojupyter_static_file_path` entry
+  naming a directory the book does not have, which warns `tojupyter_static_path entry … does not
+  exist`. Their pull requests drop that entry, and no other QuantEcon caller's `jupyter` build
+  logs a warning. To migrate: fix each warning the build step lists, such as by dropping that
+  entry, or set `extra-args` without `-W` for the `jupyter` build while you do. (#300)
 
 ## [0.18.0] - 2026-11-10
 
