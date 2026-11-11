@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-11-11
+
 ### Added
 - **`restore-gh-pages`** and **`templates/restore.yml`**: puts a GitHub Pages site back as one of
   the repository's releases holds it, without a build, from the archive, checksum and manifest
@@ -18,6 +20,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   given. The template, run by hand on the default branch with the release's tag, hands the site
   to `publish-gh-pages` to deploy, in `publish.yml`'s `pages` concurrency group. The next publish
   replaces the restored site. (#27)
+
+### Changed
+- **Container images**: `sphinx-exercise` moves from 1.2.1 to 1.2.2 in both images, which the
+  full image pins and the lean image takes as its floor. The patch release writes a captioned
+  figure inside an exercise or solution as `\begin{figure}[H]`, as Sphinx does inside its own
+  admonitions, so a PDF build no longer stops there with `Not in outer par mode`. HTML output is
+  unchanged. Both images were smoke-tested before `:latest` moved, and the lecture matrix then
+  passed on all eight legs. (#312)
 
 ### Fixed
 - ⚠️ **BREAKING** **`build-lectures`**: a `jupyter` build under `-W --keep-going`, the default
