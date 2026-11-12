@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-11-12
+
 ### Changed
 - ⚠️ **BREAKING** **`build-lectures`**: a new `nitpick` input, `'true'` by default, passes `-n`
   to `jb build` for every builder: Sphinx's nitpicky mode, which warns about every reference it
