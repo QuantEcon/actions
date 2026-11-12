@@ -1818,6 +1818,158 @@ jobs:
               false ;;
           esac
 
+  build-nitpick:
+    # #97: nitpick, 'true' by default, passes -n to jb build for every
+    # builder. pdflatex and jupyter always had -n, and html had none.
+    # badref.md names a Python function that no page documents, a reference
+    # that Sphinx reports only in nitpicky mode. Each build has an output-dir
+    # of its own, so each reads every page: a build over another's _build
+    # reads none, and repeats none of its warnings.
+    # - html with nitpick on, before badref.md joins the book, passes, so -n
+    #   finds nothing in the fixture itself;
+    # - html with badref.md fails under -W with nitpick on, and passes with
+    #   it off;
+    # - jupyter likewise: jb build exits 0 there, and #300's check fails the
+    #   step on the warning -n adds, so -n and that check work together;
+    # - an invalid nitpick fails before the build.
+    # The environment file is build-jupyter-warning-guard's, for
+    # sphinx-tojupyter, so the two jobs share a conda cache key.
+    name: 'build-lectures: nitpick passes -n for every builder, so an unresolved reference fails the build, and nitpick: false drops it'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: env-seed
+    steps:
+      - uses: actions/checkout@v7
+
+      # Same salt as env-seed, and the same environment file and _config.yml
+      # as build-jupyter-warning-guard. badref.md has no code cell, and joins
+      # the table of contents after the first build.
+      - name: Recreate salted fixture with the jupyter builder and an unresolved reference
+        run: |
+          cp -r .github/fixtures/mini-lectures harness
+          [ "$(grep -E '^  - ' harness/environment.yml | tail -n 1)" = "  - pip:" ] \
+            || { echo "::error::fixture setup failed — the pip list is no longer environment.yml's last block"; exit 1; }
+          [ "$(grep -E '^[^ #]' harness/lectures/_config.yml | tail -n 1)" = "sphinx:" ] \
+            || { echo "::error::fixture setup failed — sphinx: is no longer _config.yml's last block"; exit 1; }
+          printf '    - sphinx-tojupyter\n' >> harness/environment.yml
+          printf '\n# harness-salt: %s-book\n' "$SALT" >> harness/environment.yml
+          printf '%% harness salt: %s-book\n' "$SALT" > harness/lectures/salt.md
+          printf '  extra_extensions: [sphinx_tojupyter]\n' >> harness/lectures/_config.yml
+          cat > harness/lectures/badref.md <<'EOF'
+          # A Lecture With an Unresolved Reference
+
+          This names {py:func}`harness_no_such_function`, which no page documents.
+          EOF
+
+      - name: Setup environment
+        uses: ./setup-environment
+        with:
+          environment: 'harness/environment.yml'
+
+      - name: Build the website from the fixture, with nitpick on
+        id: clean
+        continue-on-error: true
+        uses: ./build-lectures
+        with:
+          builder: 'html'
+          source-dir: 'harness/lectures'
+          output-dir: 'harness/clean'
+
+      - name: Assert the fixture passed with nitpick on, and add the unresolved reference
+        env:
+          OUTCOME: ${{ steps.clean.outcome }}
+        run: |
+          [ "$OUTCOME" = "success" ] || { echo "::error::an html build of the fixture with nitpick on reported [$OUTCOME]: -n must find nothing in the fixture itself, or the failures below are not the reference's (#97)"; exit 1; }
+          printf '  - file: badref\n' >> harness/lectures/_toc.yml
+          echo "✅ the fixture builds with nitpick on"
+
+      # Expect a "reference target not found" warning in the log of each
+      # build with nitpick on, and an ::error:: annotation from build-lectures
+      # for the jupyter one: they are the input working.
+      - name: Build the website with nitpick on (expected to fail)
+        id: html-on
+        continue-on-error: true
+        uses: ./build-lectures
+        with:
+          builder: 'html'
+          source-dir: 'harness/lectures'
+          output-dir: 'harness/html-on'
+          error-outputs: 'ignore'
+
+      - name: Build the website with nitpick off
+        id: html-off
+        continue-on-error: true
+        uses: ./build-lectures
+        with:
+          builder: 'html'
+          source-dir: 'harness/lectures'
+          output-dir: 'harness/html-off'
+          nitpick: 'false'
+          error-outputs: 'ignore'
+
+      - name: Build notebooks with nitpick on (expected to fail)
+        id: jupyter-on
+        continue-on-error: true
+        uses: ./build-lectures
+        with:
+          builder: 'jupyter'
+          source-dir: 'harness/lectures'
+          output-dir: 'harness/jupyter-on'
+          error-outputs: 'ignore'
+
+      - name: Build notebooks with nitpick off
+        id: jupyter-off
+        continue-on-error: true
+        uses: ./build-lectures
+        with:
+          builder: 'jupyter'
+          source-dir: 'harness/lectures'
+          output-dir: 'harness/jupyter-off'
+          nitpick: 'false'
+          error-outputs: 'ignore'
+
+      # Fails before the build, in seconds.
+      - name: Build with an invalid nitpick (expected to fail)
+        id: invalid
+        continue-on-error: true
+        uses: ./build-lectures
+        with:
+          builder: 'html'
+          source-dir: 'harness/lectures'
+          output-dir: 'harness/invalid'
+          nitpick: 'yes'
+
+      # Each pair differs in nitpick alone. build-path is set by the build
+      # step, so a failure with it set is not the input check's, and with
+      # error-outputs ignore the error-output check does not run.
+      - name: Assert nitpick on failed each build on the reference, off passed it, and an invalid value built nothing
+        env:
+          HTML_ON: ${{ steps.html-on.outcome }}|${{ steps.html-on.outputs.build-path }}
+          HTML_OFF: ${{ steps.html-off.outcome }}|${{ steps.html-off.outputs.build-path }}
+          JUPYTER_ON: ${{ steps.jupyter-on.outcome }}|${{ steps.jupyter-on.outputs.build-path }}
+          JUPYTER_OFF: ${{ steps.jupyter-off.outcome }}|${{ steps.jupyter-off.outputs.build-path }}
+          INVALID: ${{ steps.invalid.outcome }}|${{ steps.invalid.outputs.build-path }}
+        run: |
+          fail=0
+          check() {  # label got want why
+            if [ "$2" = "$3" ]; then
+              echo "✓ $1"
+            else
+              echo "::error::$1: expected outcome|build-path [$3], got [$2]: $4"
+              fail=1
+            fi
+          }
+          check 'html, nitpick on' "$HTML_ON" 'failure|harness/html-on/_build/html' 'under -W, -n must make the unresolved reference fail the html build (#97)'
+          check 'html, nitpick off' "$HTML_OFF" 'success|harness/html-off/_build/html' "nitpick: 'false' must leave -n out, and Sphinx does not report this reference without it"
+          check 'jupyter, nitpick on' "$JUPYTER_ON" 'failure|harness/jupyter-on/_build/jupyter' "jb build exits 0 here, and #300's check must fail the step on the warning -n adds"
+          check 'jupyter, nitpick off' "$JUPYTER_OFF" 'success|harness/jupyter-off/_build/jupyter' "nitpick: 'false' must leave out the -n the jupyter builder always had"
+          check "nitpick 'yes'" "$INVALID" 'failure|' 'an invalid value must fail before the build'
+          for page in harness/html-off/_build/html/badref.html harness/jupyter-off/_build/jupyter/badref.ipynb; do
+            [ -f "$page" ] || { echo "::error::$page is missing: the build with nitpick off did not build badref.md, so its pass proves nothing"; fail=1; }
+          done
+          [ "$fail" -eq 0 ] || exit 1
+          echo "✅ nitpick on failed the html and jupyter builds on the unresolved reference, off passed both, and an invalid value failed before building"
+
   build-html-copy:
     # #228: html-copy-pdf and html-copy-notebooks, which no other job here
     # turns on. build-jupyter-cache sets both, but runs build-lectures at @v0,
@@ -3147,7 +3299,10 @@ jobs:
     # left out, empty = the parse aborted before anything ran. The two control
     # cases come first; they prove the setup above is really a no-op, so the
     # empty statuses of the rejected inputs cannot be a setup failure instead.
-    name: 'build-jupyter-cache: builders is parsed by exact token'
+    # #97: an invalid nitpick is refused in the same step, before setup, on
+    # the same terms. build-lectures@v0 would refuse it too, but in each
+    # build, after setup.
+    name: 'build-jupyter-cache: builders is parsed by exact token, and an invalid nitpick is refused before setup'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: gate
@@ -3228,8 +3383,20 @@ jobs:
           upload-artifact: 'false'
           upload-failure-reports: 'false'
 
-      # Same assertions as bjc-abort-guard's pre-setup abort, applied to both.
-      - name: Assert both aborted before setup, with no builder run
+      - name: Reject an invalid nitpick ('yes')
+        id: nitpick
+        continue-on-error: true
+        uses: ./build-jupyter-cache
+        with:
+          builders: 'html'
+          nitpick: 'yes'
+          source-dir: 'harness/no-such-lectures'
+          create-issue-on-failure: 'false'
+          upload-artifact: 'false'
+          upload-failure-reports: 'false'
+
+      # Same assertions as bjc-abort-guard's pre-setup abort, applied to each.
+      - name: Assert each aborted before setup, with no builder run
         env:
           PARTIAL_OUTCOME: ${{ steps.partial.outcome }}
           PARTIAL_SUCCESS: ${{ steps.partial.outputs.build-success }}
@@ -3237,18 +3404,22 @@ jobs:
           SUBSTRING_OUTCOME: ${{ steps.substring.outcome }}
           SUBSTRING_SUCCESS: ${{ steps.substring.outputs.build-success }}
           SUBSTRING_STATUSES: ${{ steps.substring.outputs.jupyter-status }}/${{ steps.substring.outputs.pdflatex-status }}/${{ steps.substring.outputs.html-status }}
+          NITPICK_OUTCOME: ${{ steps.nitpick.outcome }}
+          NITPICK_SUCCESS: ${{ steps.nitpick.outputs.build-success }}
+          NITPICK_STATUSES: ${{ steps.nitpick.outputs.jupyter-status }}/${{ steps.nitpick.outputs.pdflatex-status }}/${{ steps.nitpick.outputs.html-status }}
         run: |
           fail=0
           check() {  # label outcome build-success statuses
             if [ "$2" != "failure" ] || [ "$3" != "false" ] || [ "$4" != "//" ]; then
-              echo "::error::builders '$1': expected outcome=failure, build-success=false and no builder run (jupyter/pdflatex/html empty), got outcome=[$2] build-success=[$3] statuses=[$4]. A non-empty status means the parser accepted the input and built something."
+              echo "::error::$1: expected outcome=failure, build-success=false and no builder run (jupyter/pdflatex/html empty), got outcome=[$2] build-success=[$3] statuses=[$4]. A non-empty status means the action accepted the input and built something."
               fail=1
             else
-              echo "✅ builders '$1' was rejected before setup"
+              echo "✅ $1 was rejected before setup"
             fi
           }
-          check 'html,pdf' "$PARTIAL_OUTCOME" "$PARTIAL_SUCCESS" "$PARTIAL_STATUSES"
-          check 'nojupyter' "$SUBSTRING_OUTCOME" "$SUBSTRING_SUCCESS" "$SUBSTRING_STATUSES"
+          check "builders 'html,pdf'" "$PARTIAL_OUTCOME" "$PARTIAL_SUCCESS" "$PARTIAL_STATUSES"
+          check "builders 'nojupyter'" "$SUBSTRING_OUTCOME" "$SUBSTRING_SUCCESS" "$SUBSTRING_STATUSES"
+          check "nitpick 'yes'" "$NITPICK_OUTCOME" "$NITPICK_SUCCESS" "$NITPICK_STATUSES"
           exit "$fail"
 
   bjc-alert:
@@ -3261,7 +3432,9 @@ jobs:
     # called as actions/github-script calls it, as preview-comment does, and
     # the verification step as bash. It asserts that the issue gives each
     # failed builder's command with --path-output . and the given source-dir,
-    # so a local repro builds where the action did; that a later failure
+    # so a local repro builds where the action did, and with the flags each
+    # build was given, -n for nitpick and extra-args (#97), and that each
+    # build is given the two inputs the alert reads; that a later failure
     # comments on the open issue that carries the first label, and never on
     # a pull request that carries it; and that the verification step fails
     # on a pull request's URL. test.cjs lists the cases.
@@ -3281,25 +3454,36 @@ jobs:
           node-version: '24'
 
       # PyYAML, at the pin in scripts/requirements.txt, as the gate installs it.
-      # The verification step is found by its name, since it has no id.
+      # The verification step is found by its name, since it has no id, and
+      # the builds by the action they run. The flags they are given, and both
+      # actions' defaults for them, are what the alert's commands assume (#97).
       - name: Read the alert's steps
         run: |
           set -euo pipefail
           python3 -m venv "$RUNNER_TEMP/venv"
           "$RUNNER_TEMP/venv/bin/pip" install --disable-pip-version-check --quiet -r scripts/requirements.txt
-          "$RUNNER_TEMP/venv/bin/python" - build-jupyter-cache > "$RUNNER_TEMP/alert-steps.json" <<'PY'
+          "$RUNNER_TEMP/venv/bin/python" - build-jupyter-cache build-lectures > "$RUNNER_TEMP/alert-steps.json" <<'PY'
           import json, os, sys, yaml
-          d = sys.argv[1]
+          d, bl = sys.argv[1:3]
           with open(os.path.join(d, 'action.yml')) as f:
               action = yaml.safe_load(f)
+          with open(os.path.join(bl, 'action.yml')) as f:
+              lectures = yaml.safe_load(f)
           steps = action['runs']['steps']
           alert = next(s for s in steps if s.get('id') == 'create-failure-issue')
           verify = next(s for s in steps if s.get('name') == 'Verify the failure alert was filed')
+          builds = [s for s in steps if s.get('uses', '').startswith('quantecon/actions/build-lectures@')]
+          flags = ('nitpick', 'extra-args')
           json.dump({
               'dir': os.path.abspath(d),
               'output': action['outputs']['failure-issue-url']['value'],
               'alert': {'if': alert['if'], 'uses': alert['uses'], 'env': alert['env'], 'with': alert['with']},
               'verify': {'if': verify['if'], 'shell': verify['shell'], 'env': verify['env'], 'run': verify['run']},
+              'flags': {
+                  'builds': {s['with']['builder']: {k: s['with'].get(k) for k in flags} for s in builds},
+                  'defaults': {k: action['inputs'].get(k, {}).get('default') for k in flags},
+                  'build-lectures': {k: lectures['inputs'].get(k, {}).get('default') for k in flags},
+              },
           }, sys.stdout)
           PY
 
@@ -5849,6 +6033,7 @@ jobs:
       - build-fail-guard
       - build-display-error-guard
       - build-jupyter-warning-guard
+      - build-nitpick
       - build-html-copy
       - env-container-update
       - latex-seed

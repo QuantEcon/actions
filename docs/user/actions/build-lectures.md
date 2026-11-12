@@ -36,6 +36,7 @@ Use it in any job that builds lectures, after [`setup-environment`](setup-enviro
 | `source-dir` | no | `lectures` | The book to build: the directory that holds its `_config.yml` and `_toc.yml`, relative to the workspace. |
 | `output-dir` | no | `.` | The directory the build is written under, passed to `jb build` as `--path-output`, so the output lands in `<output-dir>/_build`. The cache actions read and write `_build` at the workspace root, so keep the default, `.`, in a job that uses them. |
 | `extra-args` | no | `-W --keep-going` | Further arguments for `jb build`. They are split on whitespace, so a quoted value that contains a space cannot be passed. Setting this replaces the default, so keep `-W` in it: without `-W`, a warning does not fail the build, and a notebook that raises an exception is only a warning. `error-outputs` still finds the traceback that the exception leaves on the page. |
+| `nitpick` | no | `true` | `'true'`, the default, passes `-n` to `jb build`, whatever the builder: Sphinx's nitpicky mode, which warns about every reference it cannot resolve, so that under `-W` one fails the build. Without it Sphinx warns only about the kinds of reference it always checks, such as `{ref}` and `{doc}`, and shows any other it cannot resolve as plain text. `'false'` leaves `-n` out. A `-n` in `extra-args` as well does no harm. |
 | `error-outputs` | no | `''` | What to do, after a build that passes, about an executed notebook that holds an error output: a traceback that the page shows. `-W` misses one whose exception was raised while IPython displayed output, such as a figure that failed to draw, because the kernel reports that cell as successful. `fail` fails the step, `warn` annotates each one and passes, and `ignore` skips the check. Empty, the default, means `fail`. Either way the log and the step summary name each notebook and cell, with its traceback. An error is allowed in a cell tagged `raises-exception`, in a notebook whose `mystnb` metadata sets `execution_allow_errors`, and anywhere in a book whose `_config.yml` sets `execute.allow_errors`. |
 | `html-copy-pdf` | no | `false` | With `builder: html`: `'true'` copies each PDF under `<output-dir>/_build/latex` into `<output-dir>/_build/html/_pdf/` before the build, so the site offers it for download. The PDF comes from a `pdflatex` build earlier in the job, or from a restored build cache; if that directory does not exist, a warning says so and the site is built without it. Ignored by the other builders. |
 | `html-copy-notebooks` | no | `false` | With `builder: html`: `'true'` copies each notebook under `<output-dir>/_build/jupyter` into `<output-dir>/_build/html/_notebooks/` before the build, at the same path, so the site offers them for download: `_build/jupyter/sub/page.ipynb` becomes `_build/html/_notebooks/sub/page.ipynb`. The notebooks come from a `jupyter` build earlier in the job, or from a restored build cache; if that directory does not exist, a warning says so and the site is built without them. Ignored by the other builders. |
@@ -139,7 +140,19 @@ Keep `-W --keep-going` in any value you set, because it replaces the default:
     extra-args: '-W --keep-going --all'   # rebuild every page, not only the changed ones
 ```
 
-`-v` makes the log more verbose, `-q` quieter, and `-n` turns on Sphinx's nitpicky mode, which warns about every reference it cannot resolve. The `pdflatex` and `jupyter` builders already pass `-n`, so with `-W` every reference they cannot resolve fails the build, even where the `html` build passes.
+`-v` makes the log more verbose, and `-q` quieter. `-n` needs no place in it: the `nitpick` input passes it, and a second `-n` does no harm.
+
+### Unresolved references
+
+`nitpick: 'true'`, the default, passes `-n` to `jb build` for every builder: Sphinx's nitpicky mode, which warns about every reference it cannot resolve, so that under `-W` one fails the build. Without it, Sphinx warns only about the kinds of reference it always checks, such as `{ref}` and `{doc}`; a `{py:func}` naming a function no page documents, say, shows as plain text. To build without `-n` while the references are fixed:
+
+```yaml
+- uses: quantecon/actions/build-lectures@v0
+  with:
+    nitpick: 'false'   # until the unresolved references are fixed
+```
+
+To keep `-n` but accept a target that no page documents, list it in `nitpick_ignore_regex`, under `sphinx:`, `config:` in `_config.yml`. Each entry is a pair of regular expressions, for the reference's type and its target, as in `[py:func, mymodule\..*]`. `nitpick_ignore` does not work there: YAML gives each entry as a list, and Sphinx looks for a tuple.
 
 ### In the templates
 
@@ -156,17 +169,17 @@ In `ci.yml` this action runs in the `build` job, which holds no secrets, and the
 3. **The build.** The action runs, in a login shell, so that on a standard runner the Conda environment from `setup-environment` is active:
 
    ```text
-   jb build <source-dir> --path-output <output-dir> <builder flags> <extra-args>
+   jb build <source-dir> --path-output <output-dir> <builder flags> -n <extra-args>
    ```
 
    | Builder | Builder flags | Output |
    |---|---|---|
    | `html` | none | `<output-dir>/_build/html` |
-   | `pdflatex` | `--builder pdflatex -n` | `<output-dir>/_build/latex` |
-   | `jupyter` | `--builder=custom --custom-builder=jupyter -n` | `<output-dir>/_build/jupyter` |
+   | `pdflatex` | `--builder pdflatex` | `<output-dir>/_build/latex` |
+   | `jupyter` | `--builder=custom --custom-builder=jupyter` | `<output-dir>/_build/jupyter` |
    | any other | `--builder <builder>` | a directory under `<output-dir>/_build`, which is what `build-path` gives |
 
-   The log shows the full command in its "Build Command" group.
+   The `-n` is there for every builder with `nitpick: 'true'`, the default, and left out with `'false'`. The log shows the full command in its "Build Command" group.
 
    For the `jupyter` builder, with both `-W` and `--keep-going` in `extra-args`, the step also fails when `jb build` exits 0 after logging a warning. sphinx-tojupyter, which provides the builder, ends `jb build` with status 0 before Sphinx can fail it, so the action reads the warnings from `jb build`'s stderr instead, and lists them in a log group. With `-W` alone, `jb build` fails at the first warning on its own.
 4. **Error outputs.** After a build that passes, unless `error-outputs` is `ignore`, the action reads every notebook that myst-nb wrote to `<output-dir>/_build/jupyter_execute`, outputs included, whether the build executed it or took it from the cache. It skips a notebook with no source under `source-dir`, since a restored build cache keeps the notebooks of lectures since removed. Each `error` output it finds gets an annotation on the source file, at the cell's `{code-cell}` line in a MyST Markdown source, and its traceback in a log group. The annotation says how the error got there, from the code cells after it: the cell raised if none of them ran, since execution stops at a cell that raises, and it raised while its output was displayed if one did. When no code cell after it was to run, because it is the last one or every later one is tagged `skip-execution`, there is nothing to tell by. The step summary lists them all, and `error-output-count` gives how many. With `fail` the step then fails, and with `warn` it passes. A notebook that cannot be read is reported the same way, and fails the step with `fail` too, since it went unchecked. An error output is allowed where nbclient and myst-nb allow a cell to raise:
@@ -178,7 +191,7 @@ In `ci.yml` this action runs in the `build` job, which holds no secrets, and the
 
 ### What fails the job
 
-A failed build. For every builder but `jupyter`, that is `jb build` exiting with an error, and with `-W`, which the default `extra-args` passes, every warning makes it one, so a notebook cell that raises an exception fails the build. For the `jupyter` builder under `-W --keep-going`, `jb build` exits 0 whatever it warned about, so the action fails the step on each warning itself: see [Behaviour](#behaviour), step 3. Under `-W` alone, `jb build` fails at the first warning for the `jupyter` builder too.
+A failed build. For every builder but `jupyter`, that is `jb build` exiting with an error, and with `-W`, which the default `extra-args` passes, every warning makes it one, so a notebook cell that raises an exception fails the build. So does a reference Sphinx cannot resolve, with `nitpick: 'true'`, the default: see [Unresolved references](#unresolved-references). For the `jupyter` builder under `-W --keep-going`, `jb build` exits 0 whatever it warned about, so the action fails the step on each warning itself: see [Behaviour](#behaviour), step 3. Under `-W` alone, `jb build` fails at the first warning for the `jupyter` builder too.
 
 After a build that passes, an executed notebook that holds an error output, with `error-outputs` at its default, `fail`. `-W` cannot see an exception raised while IPython displays output, such as a figure that fails to draw. The kernel reports that cell as successful, so myst-nb renders the traceback on the page without a warning, and `jb build` exits 0.
 
@@ -191,7 +204,7 @@ A build reads, and executes, only the pages that changed since Sphinx last saved
 
 ## Troubleshooting
 
-**`❌ BUILD FAILED - Jupyter Book build encountered errors`.** The groups below it hold each failed notebook's traceback. To reproduce the failure locally, run the command from the "Build Command" group, for example `jb build lectures -W --keep-going`.
+**`❌ BUILD FAILED - Jupyter Book build encountered errors`.** The groups below it hold each failed notebook's traceback. To reproduce the failure locally, run the command from the "Build Command" group, for example `jb build lectures --path-output . -n -W --keep-going`.
 
 **`jb build exited 0, but the jupyter build logged <n> warning(s), and -W makes each one an error`.** The `jupyter` build warned, under `-W --keep-going`. The log group "The jupyter build's <n> warning(s)" lists each warning: fix them as for any other builder. A `tojupyter_static_file_path` entry that names a directory the book does not have warns `tojupyter_static_path entry … does not exist`: drop the entry. The same `jb build` command, run locally, exits 0 too: look for `WARNING:` in its output, or run it with `-W` and without `--keep-going`, which fails at the first warning.
 
@@ -213,7 +226,7 @@ A build reads, and executes, only the pages that changed since Sphinx last saved
 
 **The failure-report upload fails because `an artifact with this name already exists`.** Another job in the run, or an earlier step in the same job, uploaded reports for the same builder. Give each build its own `failure-artifact-name`.
 
-**A `pdflatex` or `jupyter` build fails on a reference the `html` build accepts.** Those two builders run with `-n`, so every reference they cannot resolve is a warning, and `-W` makes it an error. Fix the reference.
+**`WARNING: py:func reference target not found: …`, or another `reference target not found`.** With `nitpick: 'true'`, the default, every builder runs with `-n`, so every reference Sphinx cannot resolve is a warning, and `-W` makes it an error. Fix the reference, or accept its target in `nitpick_ignore_regex`, or set `nitpick: 'false'` while you fix it: see [Unresolved references](#unresolved-references).
 
 **A rebuild passes after a failed build, with no warnings.** It read nothing: see [What fails the job](#what-fails-the-job). Rebuild with `--all`.
 

@@ -67,7 +67,7 @@ The lean image pins every package in its `environment.yml` that the `anaconda` m
 | Previews | #291 | A Cloudflare Pages preview never answers 404, since a build with no `404.html` makes Pages serve `index.html` for every unknown path. Low priority |
 | Preview speed | #92 (tracking), #147–#152, #154–#158 | HTML-only previews are decided (#146): #148 is unblocked, and the PDF check that goes with it is in `templates/ci.yml` |
 | Environment and reproducibility | #30, #129, #18, #2 | #30 is backlog item 12; #129 is parked as a discussion; #18, container-mode caching, is parked until a repository passes `environment-update`; #2 is exploratory |
-| Build strictness | #97, #98 | #97 needs an org-wide decision on HTML strictness; #98 needs a falsifiable repro |
+| Build strictness | #98 | #98 needs a falsifiable repro |
 | New actions and decisions | #96, #183, #184, #185, #186, #194, #195 | #96 waits on #195, whether the `.notebooks` repos go first. #183 tracks alternatives to the RunsOn GPU image. #184 and #185 propose shared actions for link checking and Colab checks, which #194 asks whether to build; #186 proposes build-time monitoring across the lecture repositories |
 | Docs | #29, #178, #179 | #29 is backlog item 11; #179 publishes the manual |
 | Work plan | #246 | The decisions of 2026-11-04 and the waves that carry them out |
@@ -86,17 +86,17 @@ Previews first ([meta#327](https://github.com/QuantEcon/meta/issues/327)), then 
 |---|---|---|---|
 | 1 | `lecture-python.myst` (previews) | GPU | Live, on `preview-netlify@v0` |
 | 2 | Remaining python repos (previews) | Container | `lecture-jax` is done (`@v0.12.0`); four repos are still on `nwtgck/actions-netlify` (meta#327, QuantEcon/workspace-lectures#2) |
-| 3 | `lecture-python-intro` (full chain) | Container | Planned; blocked on #97 and #98 |
-| 4 | `lecture-python-programming` (full chain) | Container | Planned; blocked on #97 and #98 |
+| 3 | `lecture-python-intro` (full chain) | Container | Planned; blocked on #98 |
+| 4 | `lecture-python-programming` (full chain) | Container | Planned; blocked on #98 |
 | 5 | `lecture-python-advanced.myst` (full chain) | Container | Planned |
 | 6 | `lecture-python.myst` (full chain) | RunsOn GPU | Blocked on the RunsOn checks below |
 
-`lecture-jax` is the suggested full-chain pilot: it is the smallest of the five, and #97 and #98 bite intro and programming only (QuantEcon/meta#348).
+`lecture-jax` is the suggested full-chain pilot: it is the smallest of the five, and #98 bites intro and programming only (QuantEcon/meta#348).
 
 Each repository follows the user manual's [Migrating an existing repository](../user/getting-started.md#migrating-an-existing-repository): cache first, then the pull-request workflow, then publishing. What differs by repository:
 
 - **`lecture-python.myst`** builds on RunsOn GPU runners (`runs-on: "runs-on=${{ github.run_id }}/family=g4dn.2xlarge/image=quantecon_ubuntu2404/disk=large"`), whose machine image carries the QuantEcon marker file, so `setup-environment` runs in container mode there. Its ML libraries (JAX, PyTorch, numpyro) come from the repository's own environment files, through `environment-update`. Its `collab.yml` runs in Google Colab's container and stays a standalone workflow.
-- **`lecture-python-intro`, `lecture-python-programming` and `lecture-python-advanced.myst`** build on CPU in a container, as the templates do, with LaTeX for the PDF and Netlify previews. Beyond #97 and #98 for intro and programming, they need nothing the templates lack.
+- **`lecture-python-intro`, `lecture-python-programming` and `lecture-python-advanced.myst`** build on CPU in a container, as the templates do, with LaTeX for the PDF and Netlify previews. Beyond #98 for intro and programming, they need nothing the templates lack.
 
 Before `lecture-python.myst`'s full chain, two things are unconfirmed on RunsOn's self-hosted GPU runners:
 

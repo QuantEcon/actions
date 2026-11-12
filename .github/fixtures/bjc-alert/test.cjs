@@ -7,7 +7,10 @@
 //
 //   - the issue gives a command for each failed builder, and only for those,
 //     that builds the given source-dir into ./_build as the action did, with
-//     build-lectures' own flags and --path-output . (#229);
+//     build-lectures' own flags and --path-output . (#229), then -n when
+//     nitpick is 'true' and extra-args as build-lectures splits it (#97);
+//   - each build is given the nitpick and extra-args the alert reads, and
+//     their defaults are build-lectures' own, which the cases take (#97);
 //   - a later failure comments on the newest open issue that carries the
 //     first of issue-labels, and never on a pull request that carries it,
 //     however many newer ones do: with only pull requests labelled, it files
@@ -18,8 +21,8 @@
 //     named pull or issues changes nothing.
 //
 // Usage: node test.cjs STEPS_JSON, where STEPS_JSON holds the alert step, the
-// verification step and the failure-issue-url output's value (the harness
-// job writes it with PyYAML).
+// verification step, the failure-issue-url output's value, and the flags the
+// builds are given (the harness job writes it with PyYAML).
 'use strict';
 
 const fs = require('node:fs');
@@ -41,14 +44,14 @@ const issueUrl = n => `${SERVER}/${CONTEXT.owner}/${CONTEXT.repo}/issues/${n}`;
 const pullUrl = n => `${SERVER}/${CONTEXT.owner}/${CONTEXT.repo}/pull/${n}`;
 
 // What build-lectures runs for each builder with build-jupyter-cache's
-// inputs: output-dir '.', its default, and extra-args '-W --keep-going', its
-// default (build-lectures/action.yml, the "Build Command" it prints). Written
-// out, not read from the script, since they are what a maintainer is told
-// to run.
+// inputs: output-dir '.', its default, and nitpick 'true' and extra-args
+// '-W --keep-going', their defaults (build-lectures/action.yml, the "Build
+// Command" it prints). Written out, not read from the script, since they are
+// what a maintainer is told to run.
 const REPRO = {
   jupyter: `jb build ${SOURCE_DIR} --path-output . --builder=custom --custom-builder=jupyter -n -W --keep-going`,
   pdflatex: `jb build ${SOURCE_DIR} --path-output . --builder pdflatex -n -W --keep-going`,
-  html: `jb build ${SOURCE_DIR} --path-output . -W --keep-going`,
+  html: `jb build ${SOURCE_DIR} --path-output . -n -W --keep-going`,
 };
 
 // The alert step's env for a run whose html build failed, as the steps
@@ -57,10 +60,13 @@ const FAILED = {
   SOURCE_DIR, ISSUE_LABELS: LABELS, ISSUE_ASSIGNEES: '',
   JUPYTER_STATUS: 'skipped', PDFLATEX_STATUS: 'skipped', HTML_STATUS: 'failure',
   FAILURE_PHASE: 'build', ARTIFACT_UPLOADED: 'true', UPLOAD_FAILURE_REPORTS: 'true',
+  NITPICK: 'true', EXTRA_ARGS: '-W --keep-going',
 };
 
 // Each case sets the three builders' statuses, and names the builders whose
-// commands the issue must give, in the order it gives them.
+// commands the issue must give, in the order it gives them. A case that sets
+// the flags gives those commands too, written out as above.
+const EVERY_BUILD_FAILED = { JUPYTER_STATUS: 'failure', PDFLATEX_STATUS: 'failure', HTML_STATUS: 'failure' };
 const REPRO_CASES = [
   { name: 'every builder failed: a command for each',
     status: { JUPYTER_STATUS: 'failure', PDFLATEX_STATUS: 'failure', HTML_STATUS: 'failure' }, want: ['jupyter', 'pdflatex', 'html'] },
@@ -68,6 +74,26 @@ const REPRO_CASES = [
     status: { JUPYTER_STATUS: 'success', PDFLATEX_STATUS: 'skipped', HTML_STATUS: 'failure' }, want: ['html'] },
   { name: 'pdflatex failed and html passed: its command alone',
     status: { JUPYTER_STATUS: 'skipped', PDFLATEX_STATUS: 'failure', HTML_STATUS: 'success' }, want: ['pdflatex'] },
+  { name: "nitpick 'false': no -n for any builder",
+    status: { ...EVERY_BUILD_FAILED, NITPICK: 'false' }, want: ['jupyter', 'pdflatex', 'html'],
+    repro: {
+      jupyter: `jb build ${SOURCE_DIR} --path-output . --builder=custom --custom-builder=jupyter -W --keep-going`,
+      pdflatex: `jb build ${SOURCE_DIR} --path-output . --builder pdflatex -W --keep-going`,
+      html: `jb build ${SOURCE_DIR} --path-output . -W --keep-going`,
+    } },
+  { name: 'extra-args over two lines, with runs of spaces: one argument after another, as build-lectures splits them',
+    status: { ...EVERY_BUILD_FAILED, PDFLATEX_STATUS: 'skipped', EXTRA_ARGS: '  -W   --keep-going\n--all ' }, want: ['jupyter', 'html'],
+    repro: {
+      jupyter: `jb build ${SOURCE_DIR} --path-output . --builder=custom --custom-builder=jupyter -n -W --keep-going --all`,
+      html: `jb build ${SOURCE_DIR} --path-output . -n -W --keep-going --all`,
+    } },
+  { name: "extra-args '' and nitpick 'false': the builder's own flags alone",
+    status: { ...EVERY_BUILD_FAILED, NITPICK: 'false', EXTRA_ARGS: '' }, want: ['jupyter', 'pdflatex', 'html'],
+    repro: {
+      jupyter: `jb build ${SOURCE_DIR} --path-output . --builder=custom --custom-builder=jupyter`,
+      pdflatex: `jb build ${SOURCE_DIR} --path-output . --builder pdflatex`,
+      html: `jb build ${SOURCE_DIR} --path-output .`,
+    } },
 ];
 
 // The repository's issues and pull requests, in the Issues API's shape, which
@@ -143,6 +169,8 @@ const WIRING = {
     FAILURE_PHASE: '${{ steps.status.outputs.phase }}',
     ARTIFACT_UPLOADED: "${{ steps.upload-artifact.outputs.artifact-id != '' }}",
     UPLOAD_FAILURE_REPORTS: '${{ inputs.upload-failure-reports }}',
+    NITPICK: '${{ inputs.nitpick }}',
+    EXTRA_ARGS: '${{ inputs.extra-args }}',
   },
   verify: {
     ALERT_OUTCOME: '${{ steps.create-failure-issue.outcome }}',
@@ -150,6 +178,10 @@ const WIRING = {
     FAILURE_PHASE: '${{ steps.status.outputs.phase }}',
   },
 };
+
+// What each build-lectures step must be given, which the alert's commands
+// take for granted (#97).
+const BUILD_FLAGS = { nitpick: '${{ inputs.nitpick }}', 'extra-args': '${{ inputs.extra-args }}' };
 
 // A stand-in for the Octokit client actions/github-script passes as `github`.
 // listForRepo filters by state and labels and serves one page, 30 items
@@ -308,13 +340,31 @@ async function main() {
     if (problems.length) throw new Error(problems.join('; '));
   });
 
+  await check("each build is given the nitpick and extra-args the alert reads, with build-lectures' defaults, which the cases take", async () => {
+    const problems = [];
+    const { builds, defaults } = steps.flags;
+    const names = Object.keys(builds).sort().join(',');
+    if (names !== 'html,jupyter,pdflatex') problems.push(`the steps that run build-lectures build [${names}], not [html,jupyter,pdflatex]`);
+    for (const [builder, given] of Object.entries(builds)) {
+      for (const [key, want] of Object.entries(BUILD_FLAGS)) {
+        if (given[key] !== want) problems.push(`the ${builder} build's ${key} is [${given[key]}], not [${want}]`);
+      }
+    }
+    for (const [key, env] of [['nitpick', 'NITPICK'], ['extra-args', 'EXTRA_ARGS']]) {
+      const theirs = steps.flags['build-lectures'][key];
+      if (defaults[key] !== theirs) problems.push(`${key} defaults to [${defaults[key]}], not to build-lectures' [${theirs}]`);
+      if (defaults[key] !== FAILED[env]) problems.push(`${key} defaults to [${defaults[key]}], not to the [${FAILED[env]}] the cases take`);
+    }
+    if (problems.length) throw new Error(problems.join('; '));
+  });
+
   for (const t of REPRO_CASES) {
     await check(`the issue's commands to reproduce, ${t.name}`, async () => {
       const w = oneWrite(await runAlert(steps, { ...FAILED, ...t.status }, []));
       const block = w.body.match(/^3\. Reproduce locally:\n\n {3}```bash\n([\s\S]*?)\n {3}```$/m);
       if (!block) throw new Error(`the issue has no "Reproduce locally" block; body: [${w.body}]`);
       const got = block[1].split('\n').map(l => l.replace(/^ {3}/, ''));
-      const want = t.want.map(b => REPRO[b]);
+      const want = t.want.map(b => (t.repro || REPRO)[b]);
       if (got.join('\n') !== want.join('\n')) {
         throw new Error(`expected [${want.join(' | ')}], got [${got.join(' | ')}]`);
       }
@@ -370,7 +420,7 @@ async function main() {
     });
   }
 
-  const want = 1 + REPRO_CASES.length + LOOKUP.length + 1 + VERIFY.length;
+  const want = 2 + REPRO_CASES.length + LOOKUP.length + 1 + VERIFY.length;
   if (n !== want) {
     console.log(`::error::expected ${want} cases, ran ${n}`);
     process.exit(1);

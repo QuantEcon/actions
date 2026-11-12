@@ -182,6 +182,7 @@ jobs:
           builder: 'html'
           source-dir: 'lectures'
           extra-args: '-W --keep-going'
+          # nitpick: 'false'                # Without -n, Sphinx's nitpicky mode
           upload-failure-reports: 'true'    # Upload execution logs on failure
           # html-copy-pdf: 'true'           # Stage PDFs for download (requires prior pdflatex build)
           # html-copy-notebooks: 'true'     # Stage notebooks for download (requires prior jupyter build)
@@ -345,13 +346,14 @@ jobs:
           path: _build/.jupyter_cache
 
       # The same arguments as the PDF build in cache.yml and publish.yml,
-      # so this fails where they would.
+      # so this fails where they would: a nitpick set there is set here.
       - name: Build lectures (PDF)
         uses: quantecon/actions/build-lectures@v0
         with:
           builder: 'pdflatex'
           source-dir: 'lectures'
           extra-args: '-W --keep-going'
+          # nitpick: 'false'
 
       # The build log above shows the LaTeX error; the .log file has the
       # context around it.
