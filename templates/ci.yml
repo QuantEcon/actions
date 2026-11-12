@@ -182,7 +182,7 @@ jobs:
           builder: 'html'
           source-dir: 'lectures'
           extra-args: '-W --keep-going'
-          # nitpick: 'false'                # Without -n, Sphinx's nitpicky mode
+          # nitpick: 'false'                # Build without Sphinx's nitpicky mode (-n)
           upload-failure-reports: 'true'    # Upload execution logs on failure
           # html-copy-pdf: 'true'           # Stage PDFs for download (requires prior pdflatex build)
           # html-copy-notebooks: 'true'     # Stage notebooks for download (requires prior jupyter build)

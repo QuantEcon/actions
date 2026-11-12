@@ -169,7 +169,7 @@ In `ci.yml` this action runs in the `build` job, which holds no secrets, and the
 3. **The build.** The action runs, in a login shell, so that on a standard runner the Conda environment from `setup-environment` is active:
 
    ```text
-   jb build <source-dir> --path-output <output-dir> <builder flags> -n <extra-args>
+   jb build <source-dir> --path-output <output-dir> <builder flags> [-n] <extra-args>
    ```
 
    | Builder | Builder flags | Output |
@@ -179,7 +179,7 @@ In `ci.yml` this action runs in the `build` job, which holds no secrets, and the
    | `jupyter` | `--builder=custom --custom-builder=jupyter` | `<output-dir>/_build/jupyter` |
    | any other | `--builder <builder>` | a directory under `<output-dir>/_build`, which is what `build-path` gives |
 
-   The `-n` is there for every builder with `nitpick: 'true'`, the default, and left out with `'false'`. The log shows the full command in its "Build Command" group.
+   `-n` is there for every builder with `nitpick: 'true'`, the default, and left out with `'false'`. The log shows the full command in its "Build Command" group.
 
    For the `jupyter` builder, with both `-W` and `--keep-going` in `extra-args`, the step also fails when `jb build` exits 0 after logging a warning. sphinx-tojupyter, which provides the builder, ends `jb build` with status 0 before Sphinx can fail it, so the action reads the warnings from `jb build`'s stderr instead, and lists them in a log group. With `-W` alone, `jb build` fails at the first warning on its own.
 4. **Error outputs.** After a build that passes, unless `error-outputs` is `ignore`, the action reads every notebook that myst-nb wrote to `<output-dir>/_build/jupyter_execute`, outputs included, whether the build executed it or took it from the cache. It skips a notebook with no source under `source-dir`, since a restored build cache keeps the notebooks of lectures since removed. Each `error` output it finds gets an annotation on the source file, at the cell's `{code-cell}` line in a MyST Markdown source, and its traceback in a log group. The annotation says how the error got there, from the code cells after it: the cell raised if none of them ran, since execution stops at a cell that raises, and it raised while its output was displayed if one did. When no code cell after it was to run, because it is the last one or every later one is tagged `skip-execution`, there is nothing to tell by. The step summary lists them all, and `error-output-count` gives how many. With `fail` the step then fails, and with `warn` it passes. A notebook that cannot be read is reported the same way, and fails the step with `fail` too, since it went unchecked. An error output is allowed where nbclient and myst-nb allow a cell to raise:
