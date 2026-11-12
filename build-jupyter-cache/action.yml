@@ -98,6 +98,25 @@ inputs:
       build that fails the check saves no cache, as any failed build does.
     required: false
     default: ''
+  nitpick:
+    description: >-
+      Passed to each build as the `build-lectures` input of the same name: `'true'`, the default,
+      passes `-n`, Sphinx's nitpicky mode, to `jb build`, so that under `-W` a reference Sphinx
+      cannot resolve fails the build; `'false'` leaves it out.
+    required: false
+    default: 'true'
+  # Not '': the runner passes an explicit '' through to build-lectures instead
+  # of applying its default, which would drop -W from every build, and with it
+  # the check of a jupyter build's warnings, which needs -W and --keep-going.
+  extra-args:
+    description: >-
+      Passed to each build as the `build-lectures` input of the same name: further arguments for
+      `jb build`, split on whitespace. The default is `build-lectures`' own, and setting this
+      replaces it, so keep `-W --keep-going` in it: without `-W` a warning fails no build, and
+      the check that fails a `jupyter` build on its warnings needs both. The failure issue's
+      commands to reproduce each build use it.
+    required: false
+    default: '-W --keep-going'
 
 outputs:
   cache-saved:
@@ -176,7 +195,10 @@ runs:
     # the line that prints it, and could start a workflow command (#267). The
     # step above prints only hashes. builders may span lines, and is shown on
     # one; issue-labels and issue-assignees are lists that the alert splits
-    # and trims, and no step prints them.
+    # and trims, and no step prints them. extra-args is split on whitespace,
+    # line breaks included, by build-lectures and by the alert alike.
+    # nitpick is checked here too, although each build checks it again, so
+    # that a typo fails before setup rather than after it, in three builds.
     - name: Check inputs and parse builders
       id: parse-builders
       shell: bash
@@ -191,13 +213,22 @@ runs:
         CREATE_ISSUE_ON_FAILURE: ${{ inputs.create-issue-on-failure }}
         UPLOAD_FAILURE_REPORTS: ${{ inputs.upload-failure-reports }}
         ERROR_OUTPUTS: ${{ inputs.error-outputs }}
+        NITPICK: ${{ inputs.nitpick }}
       run: |
         # shellcheck source=scripts/workflow-command.sh
         . "$GITHUB_ACTION_PATH/../scripts/workflow-command.sh"
         single_line "environment=$ENV_FILE" "environment-update=$ENV_UPDATE" "source-dir=$SOURCE_DIR" \
           "latex-requirements-file=$LATEX_REQUIREMENTS_FILE" "upload-artifact=$UPLOAD_ARTIFACT" \
           "artifact-retention-days=$ARTIFACT_RETENTION_DAYS" "create-issue-on-failure=$CREATE_ISSUE_ON_FAILURE" \
-          "upload-failure-reports=$UPLOAD_FAILURE_REPORTS" "error-outputs=$ERROR_OUTPUTS" || exit 1
+          "upload-failure-reports=$UPLOAD_FAILURE_REPORTS" "error-outputs=$ERROR_OUTPUTS" \
+          "nitpick=$NITPICK" || exit 1
+        case "$NITPICK" in
+          true|false) ;;
+          *)
+            annotate error "nitpick must be 'true' or 'false', got '$NITPICK'"
+            exit 1
+            ;;
+        esac
 
         # Tokens are separated by commas and/or any whitespace, newlines
         # included, so 'html, pdflatex', 'html pdflatex' and a YAML block value
@@ -273,6 +304,8 @@ runs:
         source-dir: ${{ inputs.source-dir }}
         upload-failure-reports: ${{ inputs.upload-failure-reports }}
         error-outputs: ${{ inputs.error-outputs }}
+        nitpick: ${{ inputs.nitpick }}
+        extra-args: ${{ inputs.extra-args }}
 
     - name: Build PDF (pdflatex)
       id: build-pdflatex
@@ -284,6 +317,8 @@ runs:
         source-dir: ${{ inputs.source-dir }}
         upload-failure-reports: ${{ inputs.upload-failure-reports }}
         error-outputs: ${{ inputs.error-outputs }}
+        nitpick: ${{ inputs.nitpick }}
+        extra-args: ${{ inputs.extra-args }}
 
     - name: Build HTML
       id: build-html
@@ -295,6 +330,8 @@ runs:
         source-dir: ${{ inputs.source-dir }}
         upload-failure-reports: ${{ inputs.upload-failure-reports }}
         error-outputs: ${{ inputs.error-outputs }}
+        nitpick: ${{ inputs.nitpick }}
+        extra-args: ${{ inputs.extra-args }}
         html-copy-pdf: ${{ steps.parse-builders.outputs.run-pdflatex }}
         html-copy-notebooks: ${{ steps.parse-builders.outputs.run-jupyter }}
 
@@ -517,6 +554,8 @@ runs:
         # empty for a skipped step too, which is the case that matters here.
         ARTIFACT_UPLOADED: ${{ steps.upload-artifact.outputs.artifact-id != '' }}
         UPLOAD_FAILURE_REPORTS: ${{ inputs.upload-failure-reports }}
+        NITPICK: ${{ inputs.nitpick }}
+        EXTRA_ARGS: ${{ inputs.extra-args }}
       with:
         github-token: ${{ github.token }}
         script: |
@@ -555,15 +594,23 @@ runs:
           const { owner, repo } = context.repo;
           const runUrl = `${process.env.GITHUB_SERVER_URL}/${owner}/${repo}/actions/runs/${context.runId}`;
 
-          // Reproduce commands must match build-lectures' own builder flags,
-          // and its output directory. The builds above give build-lectures no
-          // output-dir, so it passes --path-output . and builds ./_build, where
-          // the caches and the artifact come from. Without it jb build writes
-          // into the book's own directory, <source-dir>/_build (#229).
+          // Reproduce commands must match the command build-lectures prints:
+          // its builder flags, then -n with nitpick, then extra-args, split on
+          // whitespace as it splits them (#97). The builds above give
+          // build-lectures no output-dir, so it passes --path-output . and
+          // builds ./_build, where the caches and the artifact come from.
+          // Without it jb build writes into the book's own directory,
+          // <source-dir>/_build (#229).
+          const flags = [
+            ...(process.env.NITPICK === 'true' ? ['-n'] : []),
+            ...(process.env.EXTRA_ARGS || '').split(/\s+/).filter(Boolean),
+          ];
+          const jb = (...builderFlags) =>
+            ['jb', 'build', sourceDir, '--path-output', '.', ...builderFlags, ...flags].join(' ');
           const repro = {
-            html: `jb build ${sourceDir} --path-output . -W --keep-going`,
-            pdflatex: `jb build ${sourceDir} --path-output . --builder pdflatex -n -W --keep-going`,
-            jupyter: `jb build ${sourceDir} --path-output . --builder=custom --custom-builder=jupyter -n -W --keep-going`,
+            html: jb(),
+            pdflatex: jb('--builder', 'pdflatex'),
+            jupyter: jb('--builder=custom', '--custom-builder=jupyter'),
           };
           const failed = Object.keys(status).filter(k => status[k] === 'failure');
 

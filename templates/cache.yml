@@ -87,6 +87,12 @@ jobs:
 
           source-dir: 'lectures'
 
+          # ─── Strictness ────────────────────────────────────────
+          # Every build fails on a warning, and with nitpick on, on a
+          # reference Sphinx cannot resolve. Set nitpick here as in
+          # ci.yml and publish.yml.
+          # nitpick: 'false'                     # Build without Sphinx's nitpicky mode (-n)
+
           # ─── Environment (container builds) ────────────────────
           # Only needed if you require packages beyond the container base.
           # environment-update: 'environment.yml'

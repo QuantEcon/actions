@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- ⚠️ **BREAKING** **`build-lectures`**: a new `nitpick` input, `'true'` by default, passes `-n`
+  to `jb build` for every builder: Sphinx's nitpicky mode, which warns about every reference it
+  cannot resolve, so that under `-W` one fails the build. The `pdflatex` and `jupyter` builders
+  always passed `-n`, and now pass it through the input; `nitpick: 'false'` leaves it out. The
+  `html` builder passed none, and now does: a site whose pages hold a reference that only
+  nitpicky mode reports, such as a `{py:func}` naming a function no page documents, fails its
+  `html` build until the reference is fixed. A `-n` that a caller also passes in `extra-args` does
+  no harm: `jb build` takes it twice. #300's check of a `jupyter` build's warnings reads `-W` and
+  `--keep-going` from `extra-args`, as before. **`build-jupyter-cache`** gets `nitpick` and
+  `extra-args` too, with `build-lectures`' defaults, passes both to each of its builds, and
+  refuses a `nitpick` other than `'true'` or `'false'` before setup. Its failure issue's commands
+  to reproduce a build are built from them. It runs `build-lectures@v0`, so a caller pinned to an
+  earlier `build-jupyter-cache` gets `-n` on its `html` cache build too, with no input to drop
+  it, and moves to this release to set one. The new harness job `build-nitpick` shows an
+  unresolved reference failing an `html` and a `jupyter` build with `nitpick` on, and passing
+  both with it off; `bjc-alert` checks the commands and that each build is given both inputs. To
+  migrate: fix each reference the build lists, accept its target in `nitpick_ignore_regex` in
+  `_config.yml`, or set `nitpick: 'false'` on each `build-lectures` and `build-jupyter-cache` step
+  while you do. (#97)
+
 ## [0.19.0] - 2026-11-11
 
 ### Added

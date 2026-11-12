@@ -39,6 +39,15 @@ inputs:
       the page.
     required: false
     default: '-W --keep-going'
+  nitpick:
+    description: >-
+      `'true'`, the default, passes `-n` to `jb build`, whatever the builder: Sphinx's nitpicky
+      mode, which warns about every reference it cannot resolve, so that under `-W` one fails the
+      build. Without it Sphinx warns only about the kinds of reference it always checks, such as
+      `{ref}` and `{doc}`, and shows any other it cannot resolve as plain text. `'false'` leaves
+      `-n` out. A `-n` in `extra-args` as well does no harm.
+    required: false
+    default: 'true'
   error-outputs:
     description: >-
       What to do, after a build that passes, about an executed notebook that holds an error
@@ -121,6 +130,7 @@ runs:
         BUILDER: ${{ inputs.builder }}
         SOURCE_DIR: ${{ inputs.source-dir }}
         OUTPUT_DIR: ${{ inputs.output-dir }}
+        NITPICK: ${{ inputs.nitpick }}
         ERROR_OUTPUTS: ${{ inputs.error-outputs }}
         HTML_COPY_PDF: ${{ inputs.html-copy-pdf }}
         HTML_COPY_NOTEBOOKS: ${{ inputs.html-copy-notebooks }}
@@ -130,9 +140,16 @@ runs:
         # shellcheck source=scripts/workflow-command.sh
         . "$GITHUB_ACTION_PATH/../scripts/workflow-command.sh"
         single_line "builder=$BUILDER" "source-dir=$SOURCE_DIR" "output-dir=$OUTPUT_DIR" \
-          "error-outputs=$ERROR_OUTPUTS" "html-copy-pdf=$HTML_COPY_PDF" \
+          "nitpick=$NITPICK" "error-outputs=$ERROR_OUTPUTS" "html-copy-pdf=$HTML_COPY_PDF" \
           "html-copy-notebooks=$HTML_COPY_NOTEBOOKS" "upload-failure-reports=$UPLOAD_FAILURE_REPORTS" \
           "failure-artifact-name=$FAILURE_ARTIFACT_NAME" || exit 1
+        case "$NITPICK" in
+          true|false) ;;
+          *)
+            annotate error "nitpick must be 'true' or 'false', got '$NITPICK'"
+            exit 1
+            ;;
+        esac
         mode=${ERROR_OUTPUTS:-fail}
         case "$mode" in
           fail|warn|ignore) echo "mode=$mode" >> "$GITHUB_OUTPUT" ;;
@@ -268,6 +285,7 @@ runs:
         SOURCE_DIR: ${{ inputs.source-dir }}
         OUTPUT_DIR: ${{ inputs.output-dir }}
         EXTRA_ARGS: ${{ inputs.extra-args }}
+        NITPICK: ${{ inputs.nitpick }}
       run: |
         # shellcheck source=scripts/workflow-command.sh
         . "$GITHUB_ACTION_PATH/../scripts/workflow-command.sh"
@@ -276,10 +294,16 @@ runs:
         # Builder-specific flags as an array — no eval, and paths stay quoted.
         case "$BUILDER" in
           html)     builder_args=() ;;
-          pdflatex) builder_args=(--builder pdflatex -n) ;;
-          jupyter)  builder_args=(--builder=custom --custom-builder=jupyter -n) ;;
+          pdflatex) builder_args=(--builder pdflatex) ;;
+          jupyter)  builder_args=(--builder=custom --custom-builder=jupyter) ;;
           *)        builder_args=(--builder "$BUILDER") ;;
         esac
+        # -n for every builder, with nitpick (#97). jb build takes -n twice,
+        # so one in EXTRA_ARGS as well changes nothing. build-jupyter-cache's
+        # failure issue gives the same flags, in the same order.
+        if [ "$NITPICK" = true ]; then
+          builder_args+=(-n)
+        fi
 
         # EXTRA_ARGS is intentionally left unquoted so it word-splits into
         # separate flags (e.g. "-W --keep-going"); quoted args with embedded
