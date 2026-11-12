@@ -4,7 +4,7 @@ Current priorities for `QuantEcon/actions`, the repositories that use the action
 
 ## Current state
 
-- **Actions (11):** `setup-environment`, `setup-latex`, `build-lectures`, `build-jupyter-cache`, `restore-jupyter-cache`, `preview-netlify`, `preview-cloudflare`, `preview-workers`, `publish-gh-pages`, `restore-gh-pages`, `deploy-cloudflare`. Latest release **`v0.20.0`** (2026-11-12). `@v0` points to **`v0.19.0`**, and moves to `v0.20.0` once it has passed the release gate.
+- **Actions (11):** `setup-environment`, `setup-latex`, `build-lectures`, `build-jupyter-cache`, `restore-jupyter-cache`, `preview-netlify`, `preview-cloudflare`, `preview-workers`, `publish-gh-pages`, `restore-gh-pages`, `deploy-cloudflare`. Latest release **`v0.20.0`** (2026-11-12), and `@v0` points to it.
 - **Containers (2):** `quantecon` (full) and `quantecon-build` (lean), on the Anaconda 2026.07 baseline, with the Ubuntu base pinned by digest. See the Dependency policy below, and [CONTAINERS.md](CONTAINERS.md).
 - **Testing:** the action harness on every pull request, the container checks, and the canary repository; see [TESTING.md](TESTING.md). A release that changes what an action does passes the release gate, `gate.yml` in the canary, before `v0` moves, and anything the gate does not reach is staged there by hand ([CONTRIBUTING.md](../../CONTRIBUTING.md#staged-releases)).
 
@@ -15,6 +15,7 @@ Current priorities for `QuantEcon/actions`, the repositories that use the action
 | `lecture-dp` | Full chain: `restore-jupyter-cache`, `build-lectures`, `build-jupyter-cache`, `publish-gh-pages` | `@v0` |
 | `lecture-python.myst` | `preview-netlify` (ci.yml), `publish-gh-pages` | `@v0` |
 | `test-actions-lecture-intro` | Full chain, `preview-netlify` and `preview-cloudflare` (`qe-preview-canary`): the canary | `@v0` |
+| `test-lecture-theme-sphinx` | `build-lectures` (`ci.yml`, `publish.yml`), `build-jupyter-cache` (`cache.yml`, weekly on Sunday at 03:00 UTC), `preview-netlify`, `publish-gh-pages`: a test corpus for the lecture theme | `@v0` |
 | `lecture-jax` | `preview-netlify`, `publish-gh-pages` | **`@v0.12.0`** (2 call sites) |
 | `lecture-python-intro` | `publish-gh-pages` | **`@v0.12.0`** |
 | `lecture-python-advanced.myst` | `publish-gh-pages` | **`@v0.12.0`** |
