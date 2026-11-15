@@ -154,8 +154,9 @@ jobs:
           # preview-decide and preview-comment run on their own, the wrangler
           # config writer, which dc-wrangler-config and preview-workers-config run,
           # publish-gh-pages' packing script, which publish-release-packaging runs,
-          # and the workflow-command helper that every action sources.
-          MUST_RUN=".github/workflows/test-actions.yml .github/fixtures/mini-lectures/environment.yml preview-cloudflare/package-lock.json preview-netlify/package-lock.json preview-workers/package-lock.json scripts/detect-changed-lectures.sh scripts/preview-decide.sh scripts/preview-comment.cjs scripts/write-wrangler-config.js scripts/package-release-assets.sh scripts/workflow-command.sh"
+          # the workflow-command helper that every action sources, and the
+          # canary watcher's script, which canary-watch self-tests.
+          MUST_RUN=".github/workflows/test-actions.yml .github/fixtures/mini-lectures/environment.yml preview-cloudflare/package-lock.json preview-netlify/package-lock.json preview-workers/package-lock.json scripts/detect-changed-lectures.sh scripts/preview-decide.sh scripts/preview-comment.cjs scripts/write-wrangler-config.js scripts/package-release-assets.sh scripts/workflow-command.sh scripts/canary-watch.sh"
           for d in $DIRS; do MUST_RUN="$MUST_RUN $d/action.yml"; done
           # The container-images job decides for itself which images to build,
           # but runs only when this gate says relevant: an IGNORED that matched
@@ -3570,6 +3571,33 @@ jobs:
           echo "✅ execution cache round-trip: build-jupyter-cache → restore-jupyter-cache"
 
   # ==========================================================================
+  # The canary watcher (#302) — a script of this repository's, not an action
+  # ==========================================================================
+
+  canary-watch:
+    # canary-watch.yml runs scripts/canary-watch.sh daily against the
+    # canary's API, and files what it finds, as build-jupyter-cache's alert
+    # does for a consumer. Its self-test runs the check against a stand-in gh
+    # for each state a workflow can be in: enabled or disabled, and its newest
+    # scheduled run green, red, older than the limit, missing or unreadable.
+    # It runs the report against stand-in issues: one issue opened with the
+    # label and the assignees, a comment only when the red findings change,
+    # and a warning for a login that cannot be assigned. The real API calls
+    # are the scheduled watcher's.
+    name: 'canary-watch.sh: each state of a canary workflow gets its verdict, and one that persists is reported once'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Self-test the watcher's script
+        run: scripts/canary-watch.sh --self-test
+
+  # ==========================================================================
   # deploy-cloudflare (#163) — no Cloudflare account, no secrets
   # ==========================================================================
   #
@@ -6063,6 +6091,7 @@ jobs:
       - bjc-alert
       - bjc-restore-build
       - bjc-restore-exec
+      - canary-watch
       - dc-gate-probe
       - dc-refuses-ungated
       - dc-inputs

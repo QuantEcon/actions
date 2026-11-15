@@ -10,6 +10,7 @@ How a change to this repository is tested: the action harness on every pull requ
 | [`test-containers-lectures.yml`](../../.github/workflows/test-containers-lectures.yml) | Four lecture repositories built in both images | After each promotion to `:latest`, weekly on Monday at 02:00 UTC, and by hand |
 | [QuantEcon/test-actions-lecture-intro](https://github.com/QuantEcon/test-actions-lecture-intro), the canary | A release, in a real lecture repository, with real deploys | On its own pull requests and weekly cache build, and for what the release gate does not reach |
 | [`gate.yml`](https://github.com/QuantEcon/test-actions-lecture-intro/blob/main/.github/workflows/gate.yml) in the canary, the release gate | A release candidate, checked out and run on a frozen fixture: the cache build, both restores, both previews and a GitHub Pages deploy | By hand, on the canary's `main`, before `v0` moves |
+| [`canary-watch.yml`](../../.github/workflows/canary-watch.yml), the canary's watcher | That each of the canary's scheduled workflows is enabled, and that its newest scheduled run succeeded and is at most eight days old, read through the API; a red verdict on the schedule opens or comments on a `canary` issue here | Daily at 06:30 UTC, and by hand |
 
 ## The action harness
 
@@ -51,7 +52,7 @@ The container smoke fixture in `containers/quantecon/tests/` is separate: it tes
 | `restore-gh-pages` | `restore-round-trip`, `restore-refuses`, and a case in `inputs-line-break` | Against releases packed by `publish-gh-pages`' own packing script and served by a stand-in `gh`: each restored exactly, hidden files included, whether the archive is found by its tag or named by `asset-name`, with `commit` from the manifest or empty without one (#27); a bad tag or `asset-name` failing before `gh` is called; and no release, no archive, two archives, no checksum, a checksum naming another file, an archive changed after its checksum, and an archive holding a symlink or a path through `..`, each failing with no site left behind. The real releases API, and the hand-off to `publish-gh-pages`, are the canary's |
 | `deploy-cloudflare` | `dc-*` | The Access gate probe telling every response apart, gated and public; the action refusing an ungated Worker, or one that contradicts `visibility`, before it installs anything; every invalid input failing in validation, a missing `visibility` and any `require-access` among them; and the pinned wrangler accepting the generated configuration |
 
-The templates have jobs of their own: `pdf-check-*` runs `ci.yml`'s PDF check hand-off and its `PDF_CHECK: 'false'` switch, and `preview-site-handoff` and `preview-deploy-job` its build-to-deploy hand-off, with change detection fetching no stored credentials. `container-images` is the call to `validate-containers.yml`.
+The templates have jobs of their own: `pdf-check-*` runs `ci.yml`'s PDF check hand-off and its `PDF_CHECK: 'false'` switch, and `preview-site-handoff` and `preview-deploy-job` its build-to-deploy hand-off, with change detection fetching no stored credentials. `container-images` is the call to `validate-containers.yml`. `canary-watch` self-tests `scripts/canary-watch.sh`, the canary watcher's script, against a stand-in `gh`.
 
 `build-jupyter-cache` runs `setup-environment` and `build-lectures` at `@v0`, because GitHub does not allow an expression in `uses:`. So in the harness, as for consumers, those two run as the latest release, not as the pull request has them.
 
@@ -74,6 +75,8 @@ A pull request that changes an image builds and smoke-tests it before it can mer
 - `publish.yml`, on a `publish*` tag: `publish-gh-pages`.
 
 In a staged release, a branch of the canary points these at the candidate tag only for what the release gate does not reach: see [Staged Releases](../../CONTRIBUTING.md#staged-releases).
+
+Nobody watches the canary's scheduled runs, and GitHub disables a public repository's schedules after 60 days with no activity in it, which leaves nothing to report. So [`canary-watch.yml`](../../.github/workflows/canary-watch.yml), here, reads the canary's scheduled workflows through the API every day. A workflow that is disabled, whose newest scheduled run on `main` did not succeed, or that has not run for eight days, turns it red. On the schedule it then opens an issue labelled `canary`, assigned to the logins in the `CANARY_ASSIGNEES` repository variable, or comments on the open one when the findings have changed. For a disabled workflow, the issue gives the `gh workflow enable` command.
 
 ### The release gate
 
@@ -98,7 +101,7 @@ In a staged release, a branch of the canary points these at the candidate tag on
 ## What is not covered
 
 - **Real deploys.** No harness job deploys anywhere: that needs real sites and secrets. The release gate deploys both previews and GitHub Pages for each candidate, and the canary's pull requests and tag runs deploy them too; a `deploy-cloudflare` deploy is proven only by the first consumer run after a release.
-- **A filed failure issue.** The harness checks the issue's text and the guards that lead to it, but filing one needs `issues: write` and would open real issues on every run, so only an unattended consumer or canary run files one.
+- **A filed failure issue.** The harness checks the issue's text and the guards that lead to it, but filing one needs `issues: write` and would open real issues on every run, so only an unattended consumer or canary run files one, or the canary watcher's schedule.
 - **`build-jupyter-cache` exactly as shipped, at the candidate.** In the harness its siblings run at `@v0`. The release gate runs them at the candidate, but in a copy of the action with its nested calls rewritten.
 - **How consumers fetch a release.** The release gate runs the actions from a checkout, so the download a consumer's `uses: …@v0` makes is first exercised after `v0` moves. And the gate runs when a releaser dispatches it, not on a schedule.
 - **`setup-environment` outside a container, `setup-latex`, `deploy-cloudflare` and `preview-workers` at the candidate.** The gate builds in a container and deploys to no Worker; a release that changes them stages them by hand.
