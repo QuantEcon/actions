@@ -393,15 +393,17 @@ runs:
     # is printed as an error output, but the kernel's reply says the cell
     # succeeded, so nbclient does not raise, myst-nb renders the traceback
     # without a warning, and -W has nothing to fail on. myst-nb writes every
-    # notebook it renders, outputs included, to <outdir>/../jupyter_execute
-    # whether it executed it or took it from the cache, so the check reads
-    # those, for any builder. The implicit success() is deliberate: a failed
-    # build has already failed the step and printed its tracebacks.
+    # notebook it renders to <outdir>/../jupyter_execute, so the check reads
+    # those, for any builder. One it executed is written with its outputs. For
+    # one it took from the execution cache, it renders the cache's copy but
+    # writes the notebook without them, so the check reads that copy from the
+    # cache, as myst-nb found it (#322). The implicit success() is deliberate:
+    # a failed build has already failed the step and printed its tracebacks.
     #
     # A login shell, as for the build, so this is the Python that ran jb (and
-    # has PyYAML, for _config.yml). The script's status is the step's: it is the
-    # last command, and the exit builtin is avoided here for the reason given at
-    # the end of the build step.
+    # has PyYAML, for _config.yml, and jupyter-cache, for the cache's copies).
+    # The script's status is the step's: it is the last command, and the exit
+    # builtin is avoided here for the reason given at the end of the build step.
     - name: Check executed notebooks for error outputs
       id: error-outputs
       if: steps.error-outputs-mode.outputs.mode != 'ignore'
