@@ -116,6 +116,6 @@ A lecture repository with its own build steps moves onto the actions one workflo
 
 **Drop any interim prune of the restored `_build/html`** as you replace each workflow, such as a `jb clean . --html` step after the cache restore. The templates restore only the execution cache, and `restore-jupyter-cache` removes the HTML from a restored build cache itself, so a page or file deleted from the source is not published again.
 
-**Drop any `rm -r _build/.doctrees` before the HTML build** too, with nothing in its place: the builders share `_build/.doctrees` safely, and an `html` build that follows `jupyter` and `pdflatex` renders the same pages as one after a clear ([#98](https://github.com/QuantEcon/actions/issues/98)).
+**Drop any `rm -r _build/.doctrees` before the HTML build** too, with nothing in its place. myst-nb keeps every format of an output in `_build/.doctrees` and chooses one for each builder as it writes a page, so an `html` build that follows `jupyter` and `pdflatex` renders the same pages as one after a clear: [#98](https://github.com/QuantEcon/actions/issues/98) has the repro.
 
 **To roll back,** revert the pull request that changed the workflow: the repository's previous workflow comes back unchanged. If the publish move changed the Pages source, set it back to **Deploy from a branch** as well, which works only while the `gh-pages` branch still exists, so keep that branch until the new publish has run for a while.

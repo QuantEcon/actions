@@ -96,7 +96,7 @@ Previews first ([meta#327](https://github.com/QuantEcon/meta/issues/327)), then 
 Each repository follows the user manual's [Migrating an existing repository](../user/getting-started.md#migrating-an-existing-repository): cache first, then the pull-request workflow, then publishing. What differs by repository:
 
 - **`lecture-python.myst`** builds on RunsOn GPU runners (`runs-on: "runs-on=${{ github.run_id }}/family=g4dn.2xlarge/image=quantecon_ubuntu2404/disk=large"`), whose machine image carries the QuantEcon marker file, so `setup-environment` runs in container mode there. Its ML libraries (JAX, PyTorch, numpyro) come from the repository's own environment files, through `environment-update`. Its `collab.yml` runs in Google Colab's container and stays a standalone workflow.
-- **`lecture-python-intro`, `lecture-python-programming` and `lecture-python-advanced.myst`** build on CPU in a container, as the templates do, with LaTeX for the PDF and Netlify previews. They need nothing the templates lack, and nothing here blocks any of them: the `rm -r _build/.doctrees` that intro's and advanced's pipelines run before `html` needs no counterpart (#98).
+- **`lecture-python-intro`, `lecture-python-programming` and `lecture-python-advanced.myst`** build on CPU in a container, as the templates do, with LaTeX for the PDF and Netlify previews. They need nothing the templates lack, and nothing here blocks any of them. The templates need no step in place of the `rm -r _build/.doctrees` that intro's and advanced's pipelines run before `html` (#98).
 
 Before `lecture-python.myst`'s full chain, two things are unconfirmed on RunsOn's self-hosted GPU runners:
 
