@@ -10,7 +10,8 @@
 #
 #   scripts/canary-watch.sh                  one markdown list item per
 #                                            workflow; exits 1 if any is red
-#   scripts/canary-watch.sh --report FILE    file FILE's findings as an issue
+#   scripts/canary-watch.sh --report FILE    record FILE's findings on the
+#                                            canary issue
 #   scripts/canary-watch.sh --self-test
 #
 # A workflow is red when it is not `active`, when its newest completed
@@ -18,10 +19,15 @@
 # that run did not succeed. One the API does not answer for is red too:
 # the watcher cannot tell.
 #
-# --report opens one issue with the `canary` label, or comments on the open
-# one, and assigns it to ASSIGNEES. The watcher runs daily, so a comment is
-# added only when the red findings differ from the last ones the issue
-# records, in a hidden marker: a state that persists is reported once.
+# --report keeps one open issue with the `canary` label. A red verdict
+# opens it, or comments on it, and assigns it to ASSIGNEES; a green one
+# comments that the canary is green again. Each body and comment ends in a
+# hidden marker of the state it records: the red findings' hash, or
+# `green`. The watcher runs daily, so a state the issue's last marker
+# already records adds nothing: a red that persists is reported once, and
+# the same red after a green run is reported again. Only markers the
+# workflow's own token wrote count, since anyone can comment on a public
+# repository's issue.
 #
 # The check's environment:
 #   CANARY_REPO       the canary, as owner/name
@@ -34,6 +40,8 @@
 #   GH_REPO           where the issue goes, as owner/name
 #   GH_TOKEN          a token with issues: write there
 #   RUN_URL           the watcher's run
+#   WATCH_RESULT      the watch job's result: `success` is a green verdict,
+#                     anything else a red one
 #   ASSIGNEES         optional: the logins to assign, separated by commas
 #                     or spaces
 set -euo pipefail
@@ -44,6 +52,13 @@ set -euo pipefail
 fail() { annotate error "$*" >&2; exit 2; }
 
 LABEL=canary
+# The author of what canary-watch.yml's GITHUB_TOKEN writes, as the REST API
+# names it.
+BOT='github-actions[bot]'
+# A watcher that stopped before its verdict. The text is fixed, so a watcher
+# that stays broken is reported once; the run's link is in the comment's
+# first line, outside the hash.
+STOPPED="- 🔴 The watcher stopped before it reached a verdict: see the run's log."
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/canary-watch.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT
 
@@ -87,8 +102,9 @@ check() {
     esac
 
     : > "$err"
-    # Five lines for the newest run, or none when there is no run; anything
-    # else is an answer this cannot read.
+    # Five lines for the newest completed run, or none when there is no
+    # such run; anything else is an answer this cannot read. A run that is
+    # queued or in progress is not listed.
     if ! json=$(gh api "repos/$CANARY_REPO/actions/workflows/$wf/runs?event=schedule&branch=main&status=completed&per_page=1" 2> "$err") \
       || ! fields=$(jq -r '
           if (.workflow_runs | type) != "array" then error("no workflow_runs")
@@ -112,12 +128,12 @@ check() {
     when="${created:0:10} ${created:11:5} UTC"
     age=$(( (${NOW:-$(date +%s)} - epoch) / 3600 ))
     stale=''
-    [ "$age" -le "$MAX_AGE_HOURS" ] || stale=" is more than $MAX_AGE_HOURS hours old"
+    [ "$age" -le "$MAX_AGE_HOURS" ] || stale=" more than $MAX_AGE_HOURS hours ago, and no scheduled run has completed since. The workflow is enabled, so check its \`on.schedule\`, and the canary's Actions tab for a run that is queued or stuck."
     if [ -n "$stale" ] && [ "$conclusion" = success ]; then
-      echo "- 🔴 \`$wf\`: its newest scheduled run on \`main\`, [$id]($url) on $when,$stale. The workflow is enabled, so its schedule has not run since: check its \`on.schedule\`, and the canary's Actions tab."
+      echo "- 🔴 \`$wf\`: its newest completed scheduled run on \`main\`, [$id]($url), succeeded on $when,$stale"
       red=1
     elif [ -n "$stale" ]; then
-      echo "- 🔴 \`$wf\`: its newest scheduled run on \`main\`, [$id]($url) on $when,$stale, and concluded \`$conclusion\`. The workflow is enabled, so its schedule has not run since: check its \`on.schedule\`, and the canary's Actions tab."
+      echo "- 🔴 \`$wf\`: its newest completed scheduled run on \`main\`, [$id]($url), concluded \`$conclusion\` on $when,$stale"
       red=1
     elif [ "$conclusion" != success ]; then
       echo "- 🔴 \`$wf\`: its newest scheduled run on \`main\`, [$id]($url) on $when, concluded \`$conclusion\`."
@@ -147,39 +163,76 @@ assign() {
   done
 }
 
+# The markers BOT wrote on the issue, in its body and its comments, oldest
+# first, one a line. A marker anyone else wrote is not read.
+markers() {
+  {
+    gh api "repos/$GH_REPO/issues/$1" | jq -c '[.]'
+    gh api --paginate "repos/$GH_REPO/issues/$1/comments?per_page=100"
+  } | jq -rs --arg bot "$BOT" '
+      add | map(select(.user.login == $bot) | (.body // "")
+        | scan("<!-- canary-watch: ([0-9a-f]{64}|green) -->")[0]) | .[]'
+}
+
 report() {
-  local file=$1 red hash title issue last body url
+  local file=$1 red state title issue last body url
   [ -f "$file" ] || fail "no findings file [$file]"
   [[ ${CANARY_REPO:-} =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || fail "CANARY_REPO [${CANARY_REPO:-}] is not owner/name"
-  : "${GH_REPO:?GH_REPO is required, as owner/name}" "${RUN_URL:?RUN_URL is required}"
+  : "${GH_REPO:?GH_REPO is required, as owner/name}" "${RUN_URL:?RUN_URL is required}" \
+    "${WATCH_RESULT:?WATCH_RESULT is required: the result of the watch job}"
   red=$(grep '^- 🔴' "$file" || true)
-  if [ -z "$red" ]; then
-    # A watch job that timed out, or failed before its verdict.
-    red="- 🔴 The watcher stopped before it reached a verdict: see [its run]($RUN_URL)."
-    printf '%s\n' "$red" >> "$file"
+  if [ "$WATCH_RESULT" = success ] && [ -z "$red" ]; then
+    state=green
+  else
+    if [ -z "$red" ]; then
+      # A watch job that timed out, or failed before its verdict.
+      red=$STOPPED
+      printf '%s\n' "$red" >> "$file"
+    fi
+    state=$(printf '%s\n' "$red" | sha256sum | cut -d' ' -f1)
   fi
-  hash=$(printf '%s\n' "$red" | sha256sum | cut -d' ' -f1)
   title="🔴 Canary watch: $CANARY_REPO"
   body=$WORK/body
 
-  gh label create "$LABEL" --color B60205 --force \
+  [ "$state" = green ] || gh label create "$LABEL" --color B60205 --force \
     --description "The canary's scheduled runs are red, missing or disabled (canary-watch.yml)" > /dev/null
   issue=$(gh issue list --state open --label "$LABEL" --limit 100 --json number,title \
     | jq -r --arg title "$title" 'map(select(.title == $title)) | .[0].number // empty')
 
+  if [ -z "$issue" ] && [ "$state" = green ]; then
+    echo "Green, with no open issue: nothing to record"
+    return 0
+  fi
   if [ -n "$issue" ]; then
-    last=$(gh issue view "$issue" --json body,comments \
-      | jq -r '[.body, .comments[].body] | map(scan("<!-- canary-watch: ([0-9a-f]{64}) -->")[0]) | last // empty')
-    if [ "$last" = "$hash" ]; then
-      echo "#$issue already reports these findings, so nothing was added"
+    last=$(markers "$issue" | tail -n 1)
+    if [ "$last" = "$state" ]; then
+      echo "#$issue already records this state, so nothing was added"
+      return 0
+    fi
+    if [ "$state" = green ]; then
+      {
+        echo "The canary's scheduled runs are green again, in [this run]($RUN_URL):"
+        echo
+        cat "$file"
+        echo
+        echo "Close this issue once nothing more is needed. A later red finding comments here, or opens a fresh issue if this one is closed."
+        echo
+        echo "<!-- canary-watch: green -->"
+      } > "$body"
+      echo "Recording on #$issue that the canary is green again"
+      gh issue comment "$issue" --body-file "$body" > /dev/null
       return 0
     fi
     {
-      echo "The findings changed, in [this run]($RUN_URL):"
+      if [ "$last" = green ]; then
+        echo "The canary's scheduled runs are red again, in [this run]($RUN_URL):"
+      else
+        echo "The findings changed, in [this run]($RUN_URL):"
+      fi
       echo
       cat "$file"
       echo
-      echo "<!-- canary-watch: $hash -->"
+      echo "<!-- canary-watch: $state -->"
     } > "$body"
     echo "Commenting on the open issue, #$issue"
     gh issue comment "$issue" --body-file "$body" > /dev/null
@@ -191,9 +244,9 @@ report() {
       echo
       echo "The canary, [$CANARY_REPO](https://github.com/$CANARY_REPO), runs the released actions through \`@v0\` on a schedule. A red run there can be a regression in a release, or in something the actions call that changes without one: a floating major version, a deploy service, a token. A disabled or missing run means the canary has stopped testing anything."
       echo
-      echo "The watcher runs daily, and comments here only when its findings change. Close this issue once it is green again: the next red finding opens a fresh one."
+      echo "The watcher runs daily. It comments here when its findings change, and once when the canary is green again. Close this issue once nothing more is needed: the next red finding then opens a fresh one."
       echo
-      echo "<!-- canary-watch: $hash -->"
+      echo "<!-- canary-watch: $state -->"
     } > "$body"
     echo "No open issue: opening one"
     url=$(gh issue create --title "$title" --label "$LABEL" --body-file "$body")
@@ -204,34 +257,41 @@ report() {
 }
 
 self_test() {
-  local out got H
+  local out got H failures=0
   local LOG=$WORK/log SENT=$WORK/sent
   CANARY_REPO=o/r
   MAX_AGE_HOURS=192
   NOW=$(jq -n '"2026-11-16T06:30:00Z" | fromdate')
   mkdir "$WORK/api"
+  # A failed case is reported, and the rest still run.
+  bad() { annotate error "$*" >&2; failures=$((failures + 1)); }
   # answer PATH VALUE: what the stand-in gh prints for `gh api PATH`.
   answer() { printf '%s\n' "$2" > "$WORK/api/${1//[^A-Za-z0-9._-]/_}"; }
 
   # A run's list, as the API answers: an id, a conclusion and a time.
   runs_json() { printf '{"workflow_runs":[{"id":%s,"conclusion":"%s","created_at":"%s","html_url":"https://github.com/o/r/actions/runs/%s"}]}' "$1" "$2" "$3" "$1"; }
-  # A stand-in for gh. `api` prints what `answer` gave it, and fails
+  # A stand-in for gh. `api` prints what `answer` gave its path, and fails
   # as gh does for `fail`. Every other call is logged, with BODY for the
   # file given as --body-file, which is kept in SENT; the issue commands
-  # answer from ISSUES and VIEW. A call it does not expect fails the
-  # self-test.
+  # answer from ISSUES. A call it does not expect fails the self-test.
   gh() {
-    local key arg prev='' logged=()
-    case "$1 ${2:-}" in
-      'api '*)
-        [[ $2 != *'?'* || $2 == *'/runs?event=schedule&branch=main&status=completed&per_page=1' ]] \
-          || fail "self-test: gh called as [gh $*]"
-        key=$WORK/api/${2//[^A-Za-z0-9._-]/_}
-        [ -f "$key" ] || fail "self-test: no answer for [gh $*]"
-        if [ "$(cat "$key")" = fail ]; then echo 'gh: Not Found (HTTP 404)' >&2; return 1; fi
-        cat "$key"
-        return 0 ;;
-    esac
+    local key arg prev='' logged=() path=''
+    if [ "$1" = api ]; then
+      for arg in "${@:2}"; do
+        [[ $arg == --* ]] || { path=$arg; break; }
+      done
+      case $path in
+        *'?'*)
+          [[ $path == *'/runs?event=schedule&branch=main&status=completed&per_page=1' \
+            || ( $path == */comments'?per_page=100' && $2 == --paginate ) ]] \
+            || fail "self-test: gh called as [gh $*]" ;;
+      esac
+      key=$WORK/api/${path//[^A-Za-z0-9._-]/_}
+      [ -f "$key" ] || fail "self-test: no answer for [gh $*]"
+      if [ "$(cat "$key")" = fail ]; then echo 'gh: Not Found (HTTP 404)' >&2; return 1; fi
+      cat "$key"
+      return 0
+    fi
     for arg in "$@"; do
       if [ "$prev" = --body-file ]; then cp "$arg" "$SENT"; logged+=(BODY); else logged+=("$arg"); fi
       prev=$arg
@@ -240,7 +300,6 @@ self_test() {
     case "$1 $2" in
       'label create' | 'issue comment') ;;
       'issue list') printf '%s\n' "$ISSUES" ;;
-      'issue view') printf '%s\n' "$VIEW" ;;
       'issue create') echo 'https://github.com/o/actions/issues/9' ;;
       'issue edit') [ "$5" != ghost ] ;;
       *) fail "self-test: gh called as [gh $*]" ;;
@@ -253,15 +312,19 @@ self_test() {
     local name=$1 want=$2 status=0
     shift 2
     out=$(check) || status=$?
-    [ "$status" = "$want" ] || fail "self-test: check [$name] exited $status, expected $want; it printed [$out]"
     got=$(printf '%s\n' "$@")
-    [ "$out" = "$got" ] || fail "self-test: check [$name] printed [$out], expected [$got]"
+    if [ "$status" != "$want" ]; then
+      bad "self-test: check [$name] exited $status, expected $want; it printed [$out]"
+    elif [ "$out" != "$got" ]; then
+      bad "self-test: check [$name] printed [$out], expected [$got]"
+    fi
   }
 
   CANARY_WORKFLOWS=a.yml
   local wf=repos/o/r/actions/workflows/a.yml
   local rk='repos/o/r/actions/workflows/a.yml/runs?event=schedule&branch=main&status=completed&per_page=1'
   local link='[7](https://github.com/o/r/actions/runs/7) on 2026-11-15 03:07 UTC'
+  local since=" more than 192 hours ago, and no scheduled run has completed since. The workflow is enabled, so check its \`on.schedule\`, and the canary's Actions tab for a run that is queued or stuck."
   answer "$wf" '{"state":"active"}'
 
   answer "$rk" "$(runs_json 7 success 2026-11-15T03:07:35Z)"
@@ -274,9 +337,9 @@ self_test() {
   answer "$rk" "$(runs_json 7 success 2026-11-08T06:30:00Z)"
   check_case 'at the limit' 0 "- ✅ \`a.yml\`: its newest scheduled run on \`main\`, [7](https://github.com/o/r/actions/runs/7) on 2026-11-08 06:30 UTC, succeeded."
   answer "$rk" "$(runs_json 7 success 2026-11-08T05:30:00Z)"
-  check_case stale 1 "- 🔴 \`a.yml\`: its newest scheduled run on \`main\`, [7](https://github.com/o/r/actions/runs/7) on 2026-11-08 05:30 UTC, is more than 192 hours old. The workflow is enabled, so its schedule has not run since: check its \`on.schedule\`, and the canary's Actions tab."
+  check_case stale 1 "- 🔴 \`a.yml\`: its newest completed scheduled run on \`main\`, [7](https://github.com/o/r/actions/runs/7), succeeded on 2026-11-08 05:30 UTC,$since"
   answer "$rk" "$(runs_json 7 failure 2026-11-08T05:30:00Z)"
-  check_case 'stale and red' 1 "- 🔴 \`a.yml\`: its newest scheduled run on \`main\`, [7](https://github.com/o/r/actions/runs/7) on 2026-11-08 05:30 UTC, is more than 192 hours old, and concluded \`failure\`. The workflow is enabled, so its schedule has not run since: check its \`on.schedule\`, and the canary's Actions tab."
+  check_case 'stale and red' 1 "- 🔴 \`a.yml\`: its newest completed scheduled run on \`main\`, [7](https://github.com/o/r/actions/runs/7), concluded \`failure\` on 2026-11-08 05:30 UTC,$since"
   answer "$rk" '{"total_count":0,"workflow_runs":[]}'
   check_case never 1 "- 🔴 \`a.yml\` has never completed a scheduled run on \`main\`."
   answer "$rk" fail
@@ -313,77 +376,138 @@ self_test() {
   # A bad setting is refused before any call.
   for bad in '../a.yml' 'a.txt' ' '; do
     CANARY_WORKFLOWS=$bad
-    if (check > /dev/null 2>&1); then fail "self-test: check accepted CANARY_WORKFLOWS [$bad]"; fi
+    if (check > /dev/null 2>&1); then bad "self-test: check accepted CANARY_WORKFLOWS [$bad]"; fi
   done
   CANARY_WORKFLOWS=a.yml
   for bad in 0 x 1.5; do
-    if (MAX_AGE_HOURS=$bad check > /dev/null 2>&1); then fail "self-test: check accepted MAX_AGE_HOURS [$bad]"; fi
+    if (MAX_AGE_HOURS=$bad check > /dev/null 2>&1); then bad "self-test: check accepted MAX_AGE_HOURS [$bad]"; fi
   done
-  echo "canary-watch self-test: check passed"
+  echo "canary-watch self-test: check done"
 
-  # The report. A case is a name, ASSIGNEES, the open issues and the open
-  # issue's body and comments as gh returns them; it checks the calls made.
+  # The report. A case reports FINDINGS with the watch job's WATCH_RESULT,
+  # ASSIGNEES, and the open issues in ISSUES, whose body and comments
+  # on_issue sets; it compares the calls made with those given.
   GH_REPO=o/actions
   RUN_URL=https://github.com/o/actions/actions/runs/1
-  local findings title label
-  findings=$WORK/findings
-  title="🔴 Canary watch: o/r"
-  label="label create canary --color B60205 --force --description The canary's scheduled runs are red, missing or disabled (canary-watch.yml)"
+  local findings=$WORK/findings title="🔴 Canary watch: o/r" bot=$BOT
+  local label="label create canary --color B60205 --force --description The canary's scheduled runs are red, missing or disabled (canary-watch.yml)"
+  local list="issue list --state open --label canary --limit 100 --json number,title"
+  local create="issue create --title $title --label canary --body-file BODY"
+  local RED GREEN Z A
+  RED=$(printf '%s\n' "- ✅ \`a.yml\`: fine." "- 🔴 \`b.yml\`: red.")
+  GREEN=$(printf '%s\n' "- ✅ \`a.yml\`: fine." "- ✅ \`b.yml\`: fine.")
+  H=$(printf '%s\n' "- 🔴 \`b.yml\`: red." | sha256sum | cut -d' ' -f1)
+  Z=$(printf '0%.0s' {1..64})
+  A=$(printf 'a%.0s' {1..64})
+  m() { printf '<!-- canary-watch: %s -->' "$1"; }
+  # on_issue BODY [LOGIN:COMMENT]...: issue 5 is open, with BODY by BOT, or
+  # by BODY_BY, and each comment by its login.
+  on_issue() {
+    local c json='[]'
+    ISSUES='[{"number":5,"title":"'"$title"'"}]'
+    answer repos/o/actions/issues/5 "$(jq -nc --arg by "${BODY_BY:-$bot}" --arg b "$1" '{user: {login: $by}, body: $b}')"
+    shift
+    for c in "$@"; do
+      json=$(jq -c --arg by "${c%%:*}" --arg b "${c#*:}" '. + [{user: {login: $by}, body: $b}]' <<< "$json")
+    done
+    answer 'repos/o/actions/issues/5/comments?per_page=100' "$json"
+  }
   report_case() {
     local name=$1 want
-    ASSIGNEES=$2 ISSUES=$3 VIEW=$4
-    shift 4
+    shift
     : > "$LOG"; : > "$SENT"
-    printf '%s\n' "- ✅ \`a.yml\`: fine." "- 🔴 \`b.yml\`: red." > "$findings"
-    out=$(report "$findings") || fail "self-test: report [$name] failed: [$out]"
+    printf '%s\n' "$FINDINGS" > "$findings"
+    if ! out=$(report "$findings" 2>&1); then
+      bad "self-test: report [$name] failed: [$out]"
+      return
+    fi
     want=$(printf '%s\n' "$@")
-    [ "$(cat "$LOG")" = "$want" ] || fail "self-test: report [$name] called [$(cat "$LOG")], expected [$want]"
+    [ "$(cat "$LOG")" = "$want" ] || bad "self-test: report [$name] called [$(cat "$LOG")], expected [$want]"
   }
-  H=$(printf '%s\n' "- 🔴 \`b.yml\`: red." | sha256sum | cut -d' ' -f1)
-  local list="issue list --state open --label canary --limit 100 --json number,title"
+  sent() { grep -qF -- "$2" "$SENT" || bad "self-test: report [$1] sent no [$2]: [$(cat "$SENT")]"; }
+  said() { [[ $out == *"$2"* ]] || bad "self-test: report [$1] said [$out], with no [$2]"; }
 
-  report_case 'new issue' 'mmcky' '[]' '' \
-    "$label" "$list" "issue create --title $title --label canary --body-file BODY" "issue edit 9 --add-assignee mmcky"
-  grep -qF -- "- 🔴 \`b.yml\`: red." "$SENT" || fail "self-test: the new issue's body has no finding"
-  grep -qF -- "- ✅ \`a.yml\`: fine." "$SENT" || fail "self-test: the new issue's body leaves out the green workflow"
-  grep -qF "<!-- canary-watch: $H -->" "$SENT" || fail "self-test: the new issue's body has no marker for its findings"
-  grep -qF "($RUN_URL)" "$SENT" || fail "self-test: the new issue's body has no link to the run"
+  WATCH_RESULT=failure FINDINGS=$RED ASSIGNEES=mmcky ISSUES='[]' BODY_BY=''
+  report_case 'new issue' "$label" "$list" "$create" "issue edit 9 --add-assignee mmcky"
+  sent 'new issue' "- 🔴 \`b.yml\`: red."
+  sent 'new issue' "- ✅ \`a.yml\`: fine."
+  sent 'new issue' "$(m "$H")"
+  sent 'new issue' "($RUN_URL)"
 
-  report_case 'same findings' 'mmcky' '[{"number":5,"title":"'"$title"'"}]' \
-    '{"body":"old <!-- canary-watch: '"$(printf '0%.0s' {1..64})"' -->","comments":[{"body":"<!-- canary-watch: '"$H"' -->"}]}' \
-    "$label" "$list" "issue view 5 --json body,comments"
-  [[ $out == *'#5 already reports these findings'* ]] || fail "self-test: an unchanged finding said [$out]"
+  on_issue "old $(m "$Z")" "$bot:$(m "$H")"
+  report_case 'same findings' "$label" "$list"
+  said 'same findings' '#5 already re'
 
-  report_case 'changed findings' 'mmcky,other' '[{"number":5,"title":"'"$title"'"}]' \
-    '{"body":"<!-- canary-watch: '"$H"' -->","comments":[{"body":"<!-- canary-watch: '"$(printf 'a%.0s' {1..64})"' -->"}]}' \
-    "$label" "$list" "issue view 5 --json body,comments" "issue comment 5 --body-file BODY" \
+  ASSIGNEES='mmcky,other'
+  on_issue "$(m "$H")" "$bot:$(m "$A")"
+  report_case 'changed findings' "$label" "$list" "issue comment 5 --body-file BODY" \
     "issue edit 5 --add-assignee mmcky" "issue edit 5 --add-assignee other"
-  grep -qF "<!-- canary-watch: $H -->" "$SENT" || fail "self-test: the comment has no marker for its findings"
-  grep -qF "The findings changed" "$SENT" || fail "self-test: the comment does not say the findings changed"
+  sent 'changed findings' "$(m "$H")"
+  sent 'changed findings' 'The findings changed'
 
-  report_case 'another title' '' '[{"number":5,"title":"something else"}]' '' \
-    "$label" "$list" "issue create --title $title --label canary --body-file BODY"
-  [[ $out == *'::warning::CANARY_ASSIGNEES is not set'* ]] || fail "self-test: no warning for an empty CANARY_ASSIGNEES: [$out]"
+  # A red, a green run, then the same red: reported again.
+  ASSIGNEES=mmcky
+  on_issue "$(m "$H")" "$bot:$(m green)"
+  report_case 'the same red after a green run' "$label" "$list" "issue comment 5 --body-file BODY" "issue edit 5 --add-assignee mmcky"
+  sent 'the same red after a green run' "$(m "$H")"
+  sent 'the same red after a green run' 'red again'
+
+  # A green run records itself once on the open issue, and opens none.
+  WATCH_RESULT=success FINDINGS=$GREEN
+  on_issue "$(m "$H")"
+  report_case 'green on an open issue' "$list" "issue comment 5 --body-file BODY"
+  sent 'green on an open issue' "$(m green)"
+  sent 'green on an open issue' 'green again'
+  on_issue "$(m "$H")" "$bot:$(m green)"
+  report_case 'green, already recorded' "$list"
+  ISSUES='[]'
+  report_case 'green, no open issue' "$list"
+  said 'green, no open issue' 'nothing to record'
+  # A success with a red line in it is not green.
+  FINDINGS=$RED
+  on_issue "$(m "$H")"
+  report_case 'success with a red finding' "$label" "$list"
+
+  # Only BOT's markers count: anyone can comment on a public issue.
+  WATCH_RESULT=failure FINDINGS=$RED
+  on_issue "$(m "$Z")" "someone:$(m "$H")"
+  report_case 'a marker in another account'"'"'s comment' "$label" "$list" "issue comment 5 --body-file BODY" "issue edit 5 --add-assignee mmcky"
+  BODY_BY=someone
+  on_issue "$(m "$H")"
+  report_case 'a marker in another account'"'"'s issue body' "$label" "$list" "issue comment 5 --body-file BODY" "issue edit 5 --add-assignee mmcky"
+  BODY_BY=''
+
+  ISSUES='[{"number":5,"title":"something else"}]' ASSIGNEES=''
+  report_case 'another title' "$label" "$list" "$create"
+  said 'another title' '::warning::CANARY_ASSIGNEES is not set'
 
   # Unset, as when the script runs outside canary-watch.yml: still a warning.
-  : > "$LOG"
   unset ASSIGNEES
-  ISSUES='[]' VIEW=''
-  out=$(report "$findings") || fail "self-test: report with ASSIGNEES unset failed: [$out]"
-  [[ $out == *'::warning::CANARY_ASSIGNEES is not set'* ]] || fail "self-test: no warning for an unset ASSIGNEES: [$out]"
+  ISSUES='[]'
+  report_case 'ASSIGNEES unset' "$label" "$list" "$create"
+  said 'ASSIGNEES unset' '::warning::CANARY_ASSIGNEES is not set'
 
-  report_case 'bad logins' 'bad!login, ghost mmcky' '[]' '' \
-    "$label" "$list" "issue create --title $title --label canary --body-file BODY" \
+  ASSIGNEES='bad!login, ghost mmcky'
+  report_case 'bad logins' "$label" "$list" "$create" \
     "issue edit 9 --add-assignee ghost" "issue edit 9 --add-assignee mmcky"
-  [[ $out == *'[bad!login] is not a GitHub login'* ]] || fail "self-test: no warning for a bad login: [$out]"
-  [[ $out == *'#9 could not be assigned to ghost'* ]] || fail "self-test: no warning for a login that cannot be assigned: [$out]"
+  said 'bad logins' '[bad!login] is not a GitHub login'
+  said 'bad logins' '#9 could not be assigned to ghost'
 
-  : > "$LOG"
-  printf '%s\n' "- ✅ \`a.yml\`: fine." > "$findings"
-  ASSIGNEES=mmcky ISSUES='[]' VIEW=''
-  report "$findings" > /dev/null || fail "self-test: report with no red finding failed"
-  grep -qF "The watcher stopped before it reached a verdict" "$SENT" || fail "self-test: a report with no red finding does not say the watcher stopped"
-  echo "canary-watch self-test: report passed"
+  # A watcher that stopped: reported once, whichever run finds it.
+  ASSIGNEES=mmcky WATCH_RESULT=cancelled FINDINGS='' ISSUES='[]'
+  report_case 'the watcher stopped' "$label" "$list" "$create" "issue edit 9 --add-assignee mmcky"
+  sent 'the watcher stopped' "$STOPPED"
+  sent 'the watcher stopped' "$(m "$(printf '%s\n' "$STOPPED" | sha256sum | cut -d' ' -f1)")"
+  sent 'the watcher stopped' "($RUN_URL)"
+  local first
+  first=$(grep -o '<!-- canary-watch: [0-9a-f]* -->' "$SENT" || true)
+  RUN_URL=https://github.com/o/actions/actions/runs/2
+  on_issue "$first"
+  report_case 'the watcher stopped, the next day' "$label" "$list"
+  RUN_URL=https://github.com/o/actions/actions/runs/1
+
+  [ "$failures" -eq 0 ] || fail "canary-watch self-test: $failures case(s) failed"
+  echo "canary-watch self-test passed"
 }
 
 case "${1:-}" in

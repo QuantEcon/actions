@@ -11,7 +11,9 @@ name: Canary Watch
 #   schedule           daily. A red verdict opens the `canary` issue, or
 #                      comments on the open one when the findings change,
 #                      and assigns it to the logins in the CANARY_ASSIGNEES
-#                      repository variable.
+#                      repository variable. A green one notes once, on the
+#                      open issue, that the canary is green again, so the
+#                      same red later is reported afresh.
 #   workflow_dispatch  the same verdict, in the run only: someone is
 #                      watching it.
 on:
@@ -83,10 +85,12 @@ jobs:
           exit 1
 
   # The schedule runs unattended, and a dispatch has someone watching it.
+  # Every scheduled run reports, green or red: the issue records each change
+  # of state.
   report:
-    name: Report to the assignees
+    name: Report on the canary issue
     needs: watch
-    if: ${{ always() && github.event_name == 'schedule' && (needs.watch.result == 'failure' || needs.watch.result == 'cancelled') }}
+    if: ${{ always() && github.event_name == 'schedule' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -98,12 +102,13 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Open or update the canary issue
+      - name: Record the verdict on the canary issue
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           ASSIGNEES: ${{ vars.CANARY_ASSIGNEES }}
           FINDINGS: ${{ needs.watch.outputs.findings }}
+          WATCH_RESULT: ${{ needs.watch.result }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail

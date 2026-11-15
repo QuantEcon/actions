@@ -3582,8 +3582,11 @@ jobs:
     # scheduled run green, red, older than the limit, missing or unreadable.
     # It runs the report against stand-in issues: one issue opened with the
     # label and the assignees, a comment only when the red findings change,
-    # and a warning for a login that cannot be assigned. The real API calls
-    # are the scheduled watcher's.
+    # a green run noted once, so the same red after it is reported again,
+    # markers read only from the workflow token's own comments, a stopped
+    # watcher reported once whichever run finds it, and a warning for a
+    # login that cannot be assigned. The real API calls are the scheduled
+    # watcher's.
     name: 'canary-watch.sh: each state of a canary workflow gets its verdict, and one that persists is reported once'
     runs-on: ubuntu-latest
     timeout-minutes: 5
