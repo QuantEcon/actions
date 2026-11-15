@@ -11,6 +11,12 @@
 //     nitpick is 'true' and extra-args as build-lectures splits it (#97);
 //   - each build is given the nitpick and extra-args the alert reads, and
 //     their defaults are build-lectures' own, which the cases take (#97);
+//   - under the commands, the issue says where an error output shows (#247),
+//     and, only when the jupyter build failed with -W and --keep-going in
+//     extra-args, that its command exits 0 when the build fails on warnings
+//     and stops at the first one without --keep-going (#311). It reads the
+//     two flags as build-lectures' check of a jupyter build's warnings does
+//     (#300), and each case runs that check's own loop on its extra-args;
 //   - a later failure comments on the newest open issue that carries the
 //     first of issue-labels, and never on a pull request that carries it,
 //     however many newer ones do: with only pull requests labelled, it files
@@ -21,8 +27,9 @@
 //     named pull or issues changes nothing.
 //
 // Usage: node test.cjs STEPS_JSON, where STEPS_JSON holds the alert step, the
-// verification step, the failure-issue-url output's value, and the flags the
-// builds are given (the harness job writes it with PyYAML).
+// verification step, the failure-issue-url output's value, the flags the
+// builds are given, and build-lectures' build step's script (the harness job
+// writes it with PyYAML).
 'use strict';
 
 const fs = require('node:fs');
@@ -63,37 +70,57 @@ const FAILED = {
   NITPICK: 'true', EXTRA_ARGS: '-W --keep-going',
 };
 
-// Each case sets the three builders' statuses, and names the builders whose
-// commands the issue must give, in the order it gives them. A case that sets
-// the flags gives those commands too, written out as above.
+// The notes under the commands, written out as the commands are: the first
+// for every failed build, the second for a jupyter build under -W and
+// --keep-going (#311).
+const ERROR_OUTPUT_NOTE = 'A build that failed only on error outputs passes `jb build`: its log names each notebook and cell whose traceback the page shows.';
+const JUPYTER_NOTE = 'The `jupyter` command also exits 0 when its build fails on warnings: with these flags, sphinx-tojupyter ends the build before Sphinx can fail it. `build-lectures` fails it instead, on the `WARNING:`, `ERROR:` and `CRITICAL:` lines it prints, and lists them in the run\'s log. Without `--keep-going`, the build stops at the first warning and exits 1.';
+
+// Each case sets the three builders' statuses, names the builders whose
+// commands the issue must give, in the order it gives them, and says whether
+// the jupyter note follows them. A case that sets the flags gives those
+// commands too, written out as above.
 const EVERY_BUILD_FAILED = { JUPYTER_STATUS: 'failure', PDFLATEX_STATUS: 'failure', HTML_STATUS: 'failure' };
+const JUPYTER_FAILED = { JUPYTER_STATUS: 'failure', PDFLATEX_STATUS: 'skipped', HTML_STATUS: 'success' };
 const REPRO_CASES = [
-  { name: 'every builder failed: a command for each',
-    status: { JUPYTER_STATUS: 'failure', PDFLATEX_STATUS: 'failure', HTML_STATUS: 'failure' }, want: ['jupyter', 'pdflatex', 'html'] },
-  { name: 'html failed, jupyter passed and pdflatex was not asked for: its command alone',
-    status: { JUPYTER_STATUS: 'success', PDFLATEX_STATUS: 'skipped', HTML_STATUS: 'failure' }, want: ['html'] },
+  { name: 'every builder failed: a command for each, and the jupyter note',
+    status: { JUPYTER_STATUS: 'failure', PDFLATEX_STATUS: 'failure', HTML_STATUS: 'failure' }, want: ['jupyter', 'pdflatex', 'html'], note: true },
+  { name: 'html failed, jupyter passed and pdflatex was not asked for: its command alone, and no jupyter note',
+    status: { JUPYTER_STATUS: 'success', PDFLATEX_STATUS: 'skipped', HTML_STATUS: 'failure' }, want: ['html'], note: false },
   { name: 'pdflatex failed and html passed: its command alone',
-    status: { JUPYTER_STATUS: 'skipped', PDFLATEX_STATUS: 'failure', HTML_STATUS: 'success' }, want: ['pdflatex'] },
+    status: { JUPYTER_STATUS: 'skipped', PDFLATEX_STATUS: 'failure', HTML_STATUS: 'success' }, want: ['pdflatex'], note: false },
   { name: "nitpick 'false': no -n for any builder",
-    status: { ...EVERY_BUILD_FAILED, NITPICK: 'false' }, want: ['jupyter', 'pdflatex', 'html'],
+    status: { ...EVERY_BUILD_FAILED, NITPICK: 'false' }, want: ['jupyter', 'pdflatex', 'html'], note: true,
     repro: {
       jupyter: `jb build ${SOURCE_DIR} --path-output . --builder=custom --custom-builder=jupyter -W --keep-going`,
       pdflatex: `jb build ${SOURCE_DIR} --path-output . --builder pdflatex -W --keep-going`,
       html: `jb build ${SOURCE_DIR} --path-output . -W --keep-going`,
     } },
   { name: 'extra-args over two lines, with runs of spaces: one argument after another, as build-lectures splits them',
-    status: { ...EVERY_BUILD_FAILED, PDFLATEX_STATUS: 'skipped', EXTRA_ARGS: '  -W   --keep-going\n--all ' }, want: ['jupyter', 'html'],
+    status: { ...EVERY_BUILD_FAILED, PDFLATEX_STATUS: 'skipped', EXTRA_ARGS: '  -W   --keep-going\n--all ' }, want: ['jupyter', 'html'], note: true,
     repro: {
       jupyter: `jb build ${SOURCE_DIR} --path-output . --builder=custom --custom-builder=jupyter -n -W --keep-going --all`,
       html: `jb build ${SOURCE_DIR} --path-output . -n -W --keep-going --all`,
     } },
-  { name: "extra-args '' and nitpick 'false': the builder's own flags alone",
-    status: { ...EVERY_BUILD_FAILED, NITPICK: 'false', EXTRA_ARGS: '' }, want: ['jupyter', 'pdflatex', 'html'],
+  { name: "extra-args '' and nitpick 'false': the builder's own flags alone, and no jupyter note",
+    status: { ...EVERY_BUILD_FAILED, NITPICK: 'false', EXTRA_ARGS: '' }, want: ['jupyter', 'pdflatex', 'html'], note: false,
     repro: {
       jupyter: `jb build ${SOURCE_DIR} --path-output . --builder=custom --custom-builder=jupyter`,
       pdflatex: `jb build ${SOURCE_DIR} --path-output . --builder pdflatex`,
       html: `jb build ${SOURCE_DIR} --path-output .`,
     } },
+  { name: 'jupyter failed, with --keep-going and -W in a cluster, -nW: the jupyter note',
+    status: { ...JUPYTER_FAILED, NITPICK: 'false', EXTRA_ARGS: '--keep-going -nW' }, want: ['jupyter'], note: true,
+    repro: { jupyter: `jb build ${SOURCE_DIR} --path-output . --builder=custom --custom-builder=jupyter --keep-going -nW` } },
+  { name: 'jupyter failed, with --warningiserror and --keep-going: the jupyter note',
+    status: { ...JUPYTER_FAILED, EXTRA_ARGS: '--warningiserror --keep-going' }, want: ['jupyter'], note: true,
+    repro: { jupyter: `jb build ${SOURCE_DIR} --path-output . --builder=custom --custom-builder=jupyter -n --warningiserror --keep-going` } },
+  { name: 'jupyter failed, with --keep-going and no -W: no jupyter note, since a warning fails nothing',
+    status: { ...JUPYTER_FAILED, EXTRA_ARGS: '--keep-going' }, want: ['jupyter'], note: false,
+    repro: { jupyter: `jb build ${SOURCE_DIR} --path-output . --builder=custom --custom-builder=jupyter -n --keep-going` } },
+  { name: 'jupyter failed, with -W and no --keep-going: no jupyter note, since -W stops the build at the first warning',
+    status: { ...JUPYTER_FAILED, EXTRA_ARGS: '-W' }, want: ['jupyter'], note: false,
+    repro: { jupyter: `jb build ${SOURCE_DIR} --path-output . --builder=custom --custom-builder=jupyter -n -W` } },
 ];
 
 // The repository's issues and pull requests, in the Issues API's shape, which
@@ -306,6 +333,26 @@ function runVerify(steps, env) {
   }
 }
 
+// Run the loop in build-lectures' build step that reads -W and --keep-going
+// from extra-args, for its check of a jupyter build's warnings (#300), on
+// `extraArgs`; return what it found, as warning_is_error/keep_going.
+function guardReads(steps, extraArgs) {
+  const loop = steps.guard.match(/^( *)warning_is_error=false keep_going=false\n[\s\S]*?\n\1done$/m);
+  if (!loop) throw new Error("build-lectures' build step has no loop that reads -W and --keep-going from EXTRA_ARGS");
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bjc-alert-'));
+  try {
+    const script = path.join(tmp, 'guard.sh');
+    fs.writeFileSync(script, `${loop[0]}\necho "$warning_is_error/$keep_going"\n`);
+    const r = spawnSync('bash', ['--noprofile', '--norc', '-eu', script], {
+      cwd: tmp, env: { PATH: process.env.PATH, EXTRA_ARGS: extraArgs }, encoding: 'utf8',
+    });
+    if (r.status !== 0) throw new Error(`build-lectures' loop exited ${r.status}: [${r.stdout}${r.stderr}]`);
+    return r.stdout.trim();
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
 const describe = writes => `[${writes.map(w => `${w.op} ${w.number}`).join(', ')}]`;
 
 async function main() {
@@ -360,14 +407,23 @@ async function main() {
 
   for (const t of REPRO_CASES) {
     await check(`the issue's commands to reproduce, ${t.name}`, async () => {
-      const w = oneWrite(await runAlert(steps, { ...FAILED, ...t.status }, []));
-      const block = w.body.match(/^3\. Reproduce locally:\n\n {3}```bash\n([\s\S]*?)\n {3}```$/m);
+      const env = { ...FAILED, ...t.status };
+      // The note follows build-lectures' check: the case must agree with it.
+      const reads = guardReads(steps, env.EXTRA_ARGS);
+      if ((env.JUPYTER_STATUS === 'failure' && reads === 'true/true') !== t.note) {
+        throw new Error(`the case expects ${t.note ? 'the' : 'no'} jupyter note, but the jupyter build is [${env.JUPYTER_STATUS}] and build-lectures' check reads -W/--keep-going as [${reads}] from extra-args [${env.EXTRA_ARGS}]`);
+      }
+      const w = oneWrite(await runAlert(steps, env, []));
+      const block = w.body.match(/^3\. Reproduce locally:\n\n {3}```bash\n([\s\S]*?)\n {3}```\n\n([\s\S]*?)\n\n---$/m);
       if (!block) throw new Error(`the issue has no "Reproduce locally" block; body: [${w.body}]`);
       const got = block[1].split('\n').map(l => l.replace(/^ {3}/, ''));
       const want = t.want.map(b => (t.repro || REPRO)[b]);
       if (got.join('\n') !== want.join('\n')) {
         throw new Error(`expected [${want.join(' | ')}], got [${got.join(' | ')}]`);
       }
+      // Each note is a paragraph of the list item, indented as the block is.
+      const notes = [ERROR_OUTPUT_NOTE, ...(t.note ? [JUPYTER_NOTE] : [])].map(n => `   ${n}`).join('\n\n');
+      if (block[2] !== notes) throw new Error(`expected the notes [${notes}], got [${block[2]}]`);
     });
   }
 
@@ -426,7 +482,7 @@ async function main() {
     process.exit(1);
   }
   if (bad) process.exit(1);
-  console.log(`✅ build-jupyter-cache's failure alert gives a command for each failed build that builds where the action does, comments on an open issue and never on a pull request, and its verification step refuses a pull request's URL (${n} cases)`);
+  console.log(`✅ build-jupyter-cache's failure alert gives a command for each failed build that builds where the action does, says when the jupyter one exits 0 on warnings, comments on an open issue and never on a pull request, and its verification step refuses a pull request's URL (${n} cases)`);
 }
 
 main().catch(e => {
