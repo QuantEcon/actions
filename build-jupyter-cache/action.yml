@@ -601,9 +601,10 @@ runs:
           // builds ./_build, where the caches and the artifact come from.
           // Without it jb build writes into the book's own directory,
           // <source-dir>/_build (#229).
+          const extraArgs = (process.env.EXTRA_ARGS || '').split(/\s+/).filter(Boolean);
           const flags = [
             ...(process.env.NITPICK === 'true' ? ['-n'] : []),
-            ...(process.env.EXTRA_ARGS || '').split(/\s+/).filter(Boolean),
+            ...extraArgs,
           ];
           const jb = (...builderFlags) =>
             ['jb', 'build', sourceDir, '--path-output', '.', ...builderFlags, ...flags].join(' ');
@@ -613,6 +614,29 @@ runs:
             jupyter: jb('--builder=custom', '--custom-builder=jupyter'),
           };
           const failed = Object.keys(status).filter(k => status[k] === 'failure');
+
+          // Under -W and --keep-going, jb build exits 0 from a jupyter build
+          // whatever it warned about: sphinx-tojupyter's finish() calls exit()
+          // with 0 before Sphinx can fail the build, so build-lectures fails
+          // it on the warnings instead (#300). The jupyter command, run
+          // locally, exits 0 too, and the issue says so (#311). Both flags are
+          // read from extra-args as build-lectures' check reads them, and
+          // bjc-alert runs that check's own loop on each case to keep the two
+          // in step. Without -W a warning fails nothing, and -W alone stops
+          // at the first one.
+          let warningIsError = false, keepGoing = false;
+          for (const arg of extraArgs) {
+            if (arg === '--warningiserror') warningIsError = true;
+            else if (arg === '--keep-going') keepGoing = true;
+            else if (!arg.startsWith('--') && /^-.*W/.test(arg)) warningIsError = true;  // -W, or a cluster such as -nW
+          }
+          const notes = [
+            // An error-output failure (#247) passes jb build: say where to look.
+            'A build that failed only on error outputs passes `jb build`: its log names each notebook and cell whose traceback the page shows.',
+            ...(failed.includes('jupyter') && warningIsError && keepGoing
+              ? ['The `jupyter` command also exits 0 when its build fails on warnings: with these flags, sphinx-tojupyter ends the build before Sphinx can fail it. `build-lectures` fails it instead, on the `WARNING:`, `ERROR:` and `CRITICAL:` lines it prints, and lists them in the run\'s log. Without `--keep-going`, the build stops at the first warning and exits 1.']
+              : []),
+          ];
 
           // Name the artifacts rather than saying "download the build artifact".
           // Both lists are gated on something that PRODUCED an artifact, not on
@@ -654,9 +678,8 @@ runs:
             artifacts.length
               ? `2. Artifacts on that run:\n${artifacts.map(a => `   - ${a}`).join('\n')}`
               : '2. No artifacts were uploaded — either nothing was built, or `upload-artifact` and `upload-failure-reports` are both off.',
-            // An error-output failure (#247) passes jb build: say where to look.
             failed.length
-              ? `3. Reproduce locally:\n\n   \`\`\`bash\n${failed.map(b => `   ${repro[b]}`).join('\n')}\n   \`\`\`\n\n   A build that failed only on error outputs passes \`jb build\`: its log names each notebook and cell whose traceback the page shows.`
+              ? `3. Reproduce locally:\n\n   \`\`\`bash\n${failed.map(b => `   ${repro[b]}`).join('\n')}\n   \`\`\`\n\n${notes.map(n => `   ${n}`).join('\n\n')}`
               : phase === 'build'
                 ? '3. No builder reported failure — the run failed after the builds, in cache save, artifact upload, or alerting.'
                 : '3. Nothing to reproduce locally: no lecture was built. Start from the failing step in the run logs — this is an environment or configuration failure, not a lecture failure.',

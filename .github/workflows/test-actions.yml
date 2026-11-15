@@ -3434,10 +3434,14 @@ jobs:
     # failed builder's command with --path-output . and the given source-dir,
     # so a local repro builds where the action did, and with the flags each
     # build was given, -n for nitpick and extra-args (#97), and that each
-    # build is given the two inputs the alert reads; that a later failure
-    # comments on the open issue that carries the first label, and never on
-    # a pull request that carries it; and that the verification step fails
-    # on a pull request's URL. test.cjs lists the cases.
+    # build is given the two inputs the alert reads; that it says the
+    # jupyter command exits 0 on warnings when the jupyter build failed
+    # under -W and --keep-going, and only then, reading the two flags as
+    # build-lectures' own loop does, which it runs on each case (#311);
+    # that a later failure comments on the open issue that carries the first
+    # label, and never on a pull request that carries it; and that the
+    # verification step fails on a pull request's URL. test.cjs lists the
+    # cases.
     name: 'build-jupyter-cache: the failure alert lands on an issue, never a pull request, and its commands build where the action does'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -3474,6 +3478,7 @@ jobs:
           verify = next(s for s in steps if s.get('name') == 'Verify the failure alert was filed')
           builds = [s for s in steps if s.get('uses', '').startswith('quantecon/actions/build-lectures@')]
           flags = ('nitpick', 'extra-args')
+          build = next(s for s in lectures['runs']['steps'] if s.get('id') == 'build')
           json.dump({
               'dir': os.path.abspath(d),
               'output': action['outputs']['failure-issue-url']['value'],
@@ -3484,6 +3489,7 @@ jobs:
                   'defaults': {k: action['inputs'].get(k, {}).get('default') for k in flags},
                   'build-lectures': {k: lectures['inputs'].get(k, {}).get('default') for k in flags},
               },
+              'guard': build['run'],
           }, sys.stdout)
           PY
 

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **`build-jupyter-cache`**: when the `jupyter` build fails under `-W --keep-going`, the default
+  `extra-args`, the failure issue now says that its command to reproduce the build exits 0 even
+  when the build fails on warnings. sphinx-tojupyter ends the build with `exit()` and status 0
+  before Sphinx can fail it, so a local run of that command reported success, and only
+  `build-lectures`' check of the warnings (#300) failed it in CI. The issue names the `WARNING:`,
+  `ERROR:` and `CRITICAL:` lines that check counts, and says that without `--keep-going` the
+  build stops at the first warning and exits 1, which a local run with jupyter-book 1.0.4post1
+  and sphinx-tojupyter 0.6.0 confirmed. The commands keep the flags the build had. The note
+  appears only when the `jupyter` build failed and `extra-args` holds both flags, read as
+  `build-lectures`' check reads them; without `-W` a warning fails nothing. `bjc-alert` checks
+  the note for each set of flags, and runs `build-lectures`' own loop on them to check that the
+  two agree. (#311)
+
 ## [0.20.0] - 2026-11-12
 
 ### Changed
