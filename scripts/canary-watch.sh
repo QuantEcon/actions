@@ -132,8 +132,8 @@ check() {
 # The logins in ASSIGNEES, each added to the issue. One that cannot be
 # assigned is warned about, and the rest are still added.
 assign() {
-  local issue=$1 login logins
-  read -ra logins <<< "${ASSIGNEES//,/ }"
+  local issue=$1 login logins list=${ASSIGNEES:-}
+  read -ra logins <<< "${list//,/ }"
   if [ "${#logins[@]}" -eq 0 ]; then
     annotate warning "CANARY_ASSIGNEES is not set, so #$issue is assigned to nobody: it reaches only those watching this repository"
     return 0
@@ -364,6 +364,13 @@ self_test() {
   report_case 'another title' '' '[{"number":5,"title":"something else"}]' '' \
     "$label" "$list" "issue create --title $title --label canary --body-file BODY"
   [[ $out == *'::warning::CANARY_ASSIGNEES is not set'* ]] || fail "self-test: no warning for an empty CANARY_ASSIGNEES: [$out]"
+
+  # Unset, as when the script runs outside canary-watch.yml: still a warning.
+  : > "$LOG"
+  unset ASSIGNEES
+  ISSUES='[]' VIEW=''
+  out=$(report "$findings") || fail "self-test: report with ASSIGNEES unset failed: [$out]"
+  [[ $out == *'::warning::CANARY_ASSIGNEES is not set'* ]] || fail "self-test: no warning for an unset ASSIGNEES: [$out]"
 
   report_case 'bad logins' 'bad!login, ghost mmcky' '[]' '' \
     "$label" "$list" "issue create --title $title --label canary --body-file BODY" \
