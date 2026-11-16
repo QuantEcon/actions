@@ -15,13 +15,14 @@ name: Canary Watch
 #
 # The harness's canary-watch job self-tests both scripts.
 #
-#   schedule           daily. Each check's red verdict opens its issue, `🔴
-#                      Canary watch: …` or `🔴 Canary drift: …`, labelled
-#                      `canary`, or comments on the open one when the
-#                      findings change, and assigns it to the logins in the
-#                      CANARY_ASSIGNEES repository variable. A green one
-#                      notes once, on the open issue, that the canary is
-#                      green again, so the same red later is reported afresh.
+#   schedule           daily. A red verdict opens the canary issue, `🔴
+#                      Canary watch: …`, labelled `canary`, or comments on
+#                      the open one when that check's findings change, and
+#                      assigns it to the logins in the CANARY_ASSIGNEES
+#                      repository variable. A green one notes once, on the
+#                      open issue, that the check is green again, so the
+#                      same red later is reported afresh. Each check keeps
+#                      its own record on the issue.
 #   workflow_dispatch  the same verdicts, in the run only: someone is
 #                      watching it.
 on:
@@ -84,12 +85,14 @@ jobs:
           echo "::error::the canary needs attention: see this run's summary"
           exit 1
 
-  # Runs with every scheduled run of the watch. To run it weekly instead,
-  # add a weekly cron under `on.schedule`, such as '45 6 * * 1', and name it
-  # here in place of the daily one.
+  # Runs on every run of the workflow. To run it weekly instead, add a
+  # weekly cron under `on.schedule`, such as '45 6 * * 1', and give this job
+  # `if: github.event.schedule != '30 6 * * *'`: a filter that skips a cron,
+  # so a cron edited later runs the job more often, never less. The drift
+  # check's self-test fails on a filter that names a cron this workflow
+  # does not have, or that runs a job on one cron only.
   drift:
     name: Compare the canary's workflows with templates/ at v0
-    if: github.event_name != 'schedule' || github.event.schedule == '30 6 * * *'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -160,9 +163,11 @@ jobs:
           printf '%s\n' "$FINDINGS" > "$RUNNER_TEMP/findings.md"
           scripts/canary-watch.sh --report "$RUNNER_TEMP/findings.md"
 
+  # The same issue as the report's, so it runs after it: two jobs that
+  # each found no open issue would open two.
   drift-report:
-    name: Report on the drift issue
-    needs: drift
+    name: Report drift on the canary issue
+    needs: [drift, report]
     if: ${{ always() && github.event_name == 'schedule' && needs.drift.result != 'skipped' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -175,7 +180,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Record the verdict on the drift issue
+      - name: Record the drift verdict on the canary issue
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

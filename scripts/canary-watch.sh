@@ -10,14 +10,12 @@
 #
 #   scripts/canary-watch.sh                  one markdown list item per
 #                                            workflow; exits 1 if any is red
-#   scripts/canary-watch.sh --report FILE    record FILE's findings on the
-#                                            open issue for TOPIC
+#   scripts/canary-watch.sh --report FILE    record FILE's findings, for
+#                                            TOPIC, on the open issue
 #   scripts/canary-watch.sh --verdict FILE STATUS HEADING
 #                                            a job's verdict, from its
 #                                            findings and their exit status,
 #                                            as its summary and outputs
-#   scripts/canary-watch.sh --stopped        the finding for a watcher that
-#                                            stopped before its verdict
 #   scripts/canary-watch.sh --self-test
 #
 # A workflow is red when it is not `active`, when its newest completed
@@ -25,16 +23,16 @@
 # that run did not succeed. One the API does not answer for is red too:
 # the watcher cannot tell.
 #
-# --report keeps one open issue with the `canary` label for each TOPIC:
-# `runs`, these findings, or `drift`, scripts/canary-drift.py's. A red
-# verdict opens it, or comments on it, and assigns it to ASSIGNEES; a green
-# one comments that the canary is green again. Each body and comment ends in
-# a hidden marker of the state it records: the red findings' hash, or
-# `green`. The watcher runs daily, so a state the issue's last marker
-# already records adds nothing: a red that persists is reported once, and
-# the same red after a green run is reported again. Only markers that
-# MARKER_AUTHOR wrote count, since anyone can comment on a public
-# repository's issue.
+# --report keeps one open issue with the `canary` label, on which each TOPIC
+# keeps its own record: `runs`, these findings, and `drift`,
+# scripts/canary-drift.py's. A red verdict opens the issue, or comments on
+# it, and assigns it to ASSIGNEES; a green one comments that the topic is
+# green again. Each body and comment ends in a hidden marker of the state it
+# records for its topic: the red findings' hash, or `green`. The watcher
+# runs daily, so a state the topic's last marker already records adds
+# nothing: a red that persists is reported once, and the same red after a
+# green run is reported again. Only markers that MARKER_AUTHOR wrote count,
+# since anyone can comment on a public repository's issue.
 #
 # The check's environment:
 #   CANARY_REPO       the canary, as owner/name
@@ -171,41 +169,44 @@ assign() {
   done
 }
 
-# The markers MARKER_AUTHOR wrote on the issue, in its body and its
-# comments, oldest first, one a line. A marker anyone else wrote is not
-# read. It fails when the issue or its comments cannot be read: run inside
+# markers ISSUE TAG: the markers MARKER_AUTHOR wrote on the issue for a
+# topic, in its body and its comments, oldest first, one a line. TAG is
+# empty for `runs`, whose markers are `<!-- canary-watch: … -->`, and
+# ` drift` for `drift`'s, `<!-- canary-watch drift: … -->`. A marker anyone
+# else wrote is not read. It fails when the issue or its comments cannot be read: run inside
 # $(...), where set -e does not stop it, a failed read would otherwise give
 # no markers, and a duplicate comment.
 markers() {
   gh api "repos/$GH_REPO/issues/$1" > "$WORK/issue.json" || return 1
   gh api --paginate "repos/$GH_REPO/issues/$1/comments?per_page=100" > "$WORK/comments.json" || return 1
   { jq -c '[.]' "$WORK/issue.json" && cat "$WORK/comments.json"; } \
-    | jq -rs --arg author "$MARKER_AUTHOR" '
+    | jq -rs --arg author "$MARKER_AUTHOR" --arg tag "$2" '
         add | map(select(.user.login == $author) | (.body // "")
-          | scan("<!-- canary-watch: ([0-9a-f]{64}|green) -->")[0]) | .[]'
+          | scan("<!-- canary-watch" + $tag + ": ([0-9a-f]{64}|green) -->")[0]) | .[]'
 }
 
 report() {
-  local file=$1 red state title issue last body url what again green about
+  local file=$1 red state title issue last body url what again green about tag
   [ -f "$file" ] || fail "no findings file [$file]"
   [[ ${CANARY_REPO:-} =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || fail "CANARY_REPO [${CANARY_REPO:-}] is not owner/name"
   : "${GH_REPO:?GH_REPO is required, as owner/name}" "${RUN_URL:?RUN_URL is required}" \
     "${WATCH_RESULT:?WATCH_RESULT is required: the result of the job that gave the findings}"
   MARKER_AUTHOR=${MARKER_AUTHOR:-github-actions[bot]}
   [[ $MARKER_AUTHOR =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,38})(\[bot\])?$ ]] || fail "MARKER_AUTHOR [$MARKER_AUTHOR] is not a GitHub login"
+  title="🔴 Canary watch: $CANARY_REPO"
   case ${TOPIC:-runs} in
     runs)
-      title="🔴 Canary watch: $CANARY_REPO"
+      tag=''
       what="The canary's scheduled runs need attention"
       again="The canary's scheduled runs are red again"
       green="The canary's scheduled runs are green again"
       about="The canary, [$CANARY_REPO](https://github.com/$CANARY_REPO), runs the released actions through \`@v0\` on a schedule. A red run there can be a regression in a release, or in something the actions call that changes without one: a floating major version, a deploy service, a token. A disabled or missing run means the canary has stopped testing anything." ;;
     drift)
-      title="🔴 Canary drift: $CANARY_REPO"
+      tag=' drift'
       what="The canary's workflows have drifted from \`templates/\` at \`v0\`"
       again="The canary's workflows have drifted again"
       green="The canary's workflows match \`templates/\` at \`v0\` again"
-      about="The canary, [$CANARY_REPO](https://github.com/$CANARY_REPO), runs \`templates/\` as they are at \`v0\`, so that a real lecture repository runs what consumers copy, with the differences \`.github/canary-drift.yml\` declares. A release that changes a template turns this red until a canary pull request realigns its copy. A difference the canary keeps on purpose goes in that file instead, with its reason." ;;
+      about="The canary, [$CANARY_REPO](https://github.com/$CANARY_REPO), runs \`templates/\` as they are at \`v0\`, so that a real lecture repository runs what consumers copy, with the differences \`.github/canary-drift.yml\` declares. A release that changes a template turns this red until a canary pull request realigns its copy, unless the change is to a third-party action's version, or under a path that file declares. A difference the canary keeps on purpose goes in that file instead, with its reason." ;;
     *) fail "TOPIC [$TOPIC] is not runs or drift" ;;
   esac
   red=$(grep '^- 🔴' "$file" || true)
@@ -233,10 +234,14 @@ report() {
     return 0
   fi
   if [ -n "$issue" ]; then
-    markers "$issue" > "$WORK/markers" || fail "#$issue or its comments could not be read, so nothing was recorded"
+    markers "$issue" "$tag" > "$WORK/markers" || fail "#$issue or its comments could not be read, so nothing was recorded"
     last=$(tail -n 1 "$WORK/markers")
     if [ "$last" = "$state" ]; then
       echo "#$issue already records this state, so nothing was added"
+      return 0
+    fi
+    if [ "$state" = green ] && [ -z "$last" ]; then
+      echo "#$issue records nothing red for this topic, so nothing was added"
       return 0
     fi
     if [ "$state" = green ]; then
@@ -247,22 +252,28 @@ report() {
         echo
         echo "Close this issue once nothing more is needed. A later red finding comments here, or opens a fresh issue if this one is closed."
         echo
-        echo "<!-- canary-watch: green -->"
+        echo "<!-- canary-watch$tag: green -->"
       } > "$body"
-      echo "Recording on #$issue that the canary is green again"
+      echo "Recording on #$issue that the topic is green again"
       gh issue comment "$issue" --body-file "$body" > /dev/null
       return 0
     fi
     {
-      if [ "$last" = green ]; then
+      if [ -z "$last" ]; then
+        echo "$what, as [this run]($RUN_URL) found:"
+      elif [ "$last" = green ]; then
         echo "$again, in [this run]($RUN_URL):"
       else
         echo "The findings changed, in [this run]($RUN_URL):"
       fi
       echo
       cat "$file"
+      if [ -z "$last" ]; then
+        echo
+        echo "$about"
+      fi
       echo
-      echo "<!-- canary-watch: $state -->"
+      echo "<!-- canary-watch$tag: $state -->"
     } > "$body"
     echo "Commenting on the open issue, #$issue"
     gh issue comment "$issue" --body-file "$body" > /dev/null
@@ -274,9 +285,9 @@ report() {
       echo
       echo "$about"
       echo
-      echo "The watcher runs daily. It comments here when its findings change, and once when the canary is green again. Close this issue once nothing more is needed: the next red finding then opens a fresh one."
+      echo "The watcher runs daily, and both of its checks, the scheduled runs and drift, report here. It comments when a check's findings change, and once when a check is green again. Close this issue once nothing more is needed: the next red finding then opens a fresh one."
       echo
-      echo "<!-- canary-watch: $state -->"
+      echo "<!-- canary-watch$tag: $state -->"
     } > "$body"
     echo "No open issue: opening one"
     url=$(gh issue create --title "$title" --label "$LABEL" --body-file "$body")
@@ -592,19 +603,38 @@ self_test() {
     bad "self-test: report went on when the comments could not be read: [$out]"
   fi
 
-  # The drift topic: an issue of its own, with its own words.
-  local dtitle="🔴 Canary drift: o/r"
-  TOPIC=drift ISSUES='[{"number":5,"title":"'"$title"'"}]'
-  report_case 'drift, beside an open runs issue' "$label" "$list" \
-    "issue create --title $dtitle --label canary --body-file BODY" "issue edit 9 --add-assignee mmcky"
-  sent 'drift, beside an open runs issue' "drifted from \`templates/\` at \`v0\`"
-  sent 'drift, beside an open runs issue' '.github/canary-drift.yml'
-  ISSUES='[{"number":5,"title":"'"$dtitle"'"}]'
-  answer repos/o/actions/issues/5 "$(jq -nc --arg by "$bot" --arg b "$(m "$H")" '{user: {login: $by}, body: $b}')"
-  answer 'repos/o/actions/issues/5/comments?per_page=100' '[]'
+  # The drift topic: the same issue, with its own record and its own words.
+  # A runs marker of the same hash does not stand for drift's, nor a drift
+  # marker for the runs'.
+  d() { printf '<!-- canary-watch drift: %s -->' "$1"; }
+  TOPIC=drift
+  on_issue "$(m "$H")"
+  report_case 'drift, on the open runs issue' "$label" "$list" "issue comment 5 --body-file BODY" "issue edit 5 --add-assignee mmcky"
+  sent 'drift, on the open runs issue' "drifted from \`templates/\` at \`v0\`, as [this run]"
+  sent 'drift, on the open runs issue' '.github/canary-drift.yml'
+  sent 'drift, on the open runs issue' "$(d "$H")"
+  on_issue "$(m "$Z")" "$bot:$(d "$H")"
+  report_case 'drift, same findings' "$label" "$list"
+  said 'drift, same findings' '#5 already re'
+  on_issue "$(m "$Z")" "$bot:$(d "$A")"
+  report_case 'drift, changed findings' "$label" "$list" "issue comment 5 --body-file BODY" "issue edit 5 --add-assignee mmcky"
+  sent 'drift, changed findings' 'The findings changed'
+  sent 'drift, changed findings' "$(d "$H")"
+  ISSUES='[]'
+  report_case 'drift, no open issue' "$label" "$list" "$create" "issue edit 9 --add-assignee mmcky"
+  sent 'drift, no open issue' "$(d "$H")"
   WATCH_RESULT=success FINDINGS=$GREEN
+  on_issue "$(m "$H")"
+  report_case 'drift green, on an issue with no drift record' "$list"
+  said 'drift green, on an issue with no drift record' 'records nothing red for this topic'
+  on_issue "$(m "$H")" "$bot:$(d "$H")"
   report_case 'drift, green again' "$list" "issue comment 5 --body-file BODY"
   sent 'drift, green again' "match \`templates/\` at \`v0\` again"
+  sent 'drift, green again' "$(d green)"
+  TOPIC=runs WATCH_RESULT=failure FINDINGS=$RED
+  on_issue "$(m "$Z")" "$bot:$(d "$H")"
+  report_case 'runs, beside a drift record of the same hash' "$label" "$list" "issue comment 5 --body-file BODY" "issue edit 5 --add-assignee mmcky"
+  sent 'runs, beside a drift record of the same hash' "$(m "$H")"
   TOPIC=other
   if out=$(report "$findings" 2>&1); then bad "self-test: report accepted TOPIC [$TOPIC]"; fi
   unset TOPIC
@@ -636,10 +666,6 @@ self_test() {
     bad "self-test: verdict accepted the status [x]"
   fi
 
-  # --stopped prints the one text, which the workflow uses too.
-  out=$(bash "${BASH_SOURCE[0]}" --stopped) || bad "self-test: --stopped failed"
-  [ "$out" = "$STOPPED" ] || bad "self-test: --stopped printed [$out], expected [$STOPPED]"
-
   [ "$failures" -eq 0 ] || fail "canary-watch self-test: $failures case(s) failed"
   echo "canary-watch self-test passed"
 }
@@ -654,7 +680,6 @@ case "${1:-}" in
     [ "$#" -eq 4 ] || fail "usage: scripts/canary-watch.sh --verdict <findings file> <exit status> <heading>"
     verdict "$2" "$3" "$4"
     ;;
-  --stopped) printf '%s\n' "$STOPPED" ;;
   '') check ;;
-  *) fail "usage: scripts/canary-watch.sh [--report <findings file> | --verdict <findings file> <exit status> <heading> | --stopped | --self-test]" ;;
+  *) fail "usage: scripts/canary-watch.sh [--report <findings file> | --verdict <findings file> <exit status> <heading> | --self-test]" ;;
 esac

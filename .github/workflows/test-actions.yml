@@ -155,9 +155,10 @@ jobs:
           # config writer, which dc-wrangler-config and preview-workers-config run,
           # publish-gh-pages' packing script, which publish-release-packaging runs,
           # the workflow-command helper that every action sources, and the
-          # canary watcher's scripts, and the drift check's declarations,
-          # which canary-watch self-tests.
-          MUST_RUN=".github/workflows/test-actions.yml .github/fixtures/mini-lectures/environment.yml preview-cloudflare/package-lock.json preview-netlify/package-lock.json preview-workers/package-lock.json scripts/detect-changed-lectures.sh scripts/preview-decide.sh scripts/preview-comment.cjs scripts/write-wrangler-config.js scripts/package-release-assets.sh scripts/workflow-command.sh scripts/canary-watch.sh scripts/canary-drift.py .github/canary-drift.yml"
+          # canary watcher's scripts, the drift check's declarations, and the
+          # watcher's workflow, whose schedule filters the drift check's
+          # self-test reads: canary-watch self-tests them.
+          MUST_RUN=".github/workflows/test-actions.yml .github/fixtures/mini-lectures/environment.yml preview-cloudflare/package-lock.json preview-netlify/package-lock.json preview-workers/package-lock.json scripts/detect-changed-lectures.sh scripts/preview-decide.sh scripts/preview-comment.cjs scripts/write-wrangler-config.js scripts/package-release-assets.sh scripts/workflow-command.sh scripts/canary-watch.sh scripts/canary-drift.py .github/canary-drift.yml .github/workflows/canary-watch.yml"
           for d in $DIRS; do MUST_RUN="$MUST_RUN $d/action.yml"; done
           # The container-images job decides for itself which images to build,
           # but runs only when this gate says relevant: an IGNORED that matched
@@ -3585,13 +3586,15 @@ jobs:
     # label and the assignees, a comment only when the red findings change,
     # a green run noted once, so the same red after it is reported again,
     # markers read only from MARKER_AUTHOR's comments, an issue that cannot
-    # be read stopping the report, the drift topic's issue of its own, a
-    # stopped watcher reported once whichever run finds it, and a warning
-    # for a login that cannot be assigned; and --verdict's outputs.
+    # be read stopping the report, the drift topic's own record on the same
+    # issue, a stopped watcher reported once whichever run finds it, and a
+    # warning for a login that cannot be assigned; and --verdict's outputs.
     # scripts/canary-drift.py's self-test compares small workflows as YAML,
-    # with and without declared differences, and loads
-    # .github/canary-drift.yml. The real API calls are the scheduled
-    # watcher's.
+    # with and without declared differences: step order, @v0 on every
+    # quantecon/actions step, the keys a declaration covers only by name,
+    # typed values, and escaped step names. It loads .github/canary-drift.yml,
+    # and checks canary-watch.yml's schedule filters. The real API calls are
+    # the scheduled watcher's.
     name: 'canary-watch.sh and canary-drift.py: each state gets its verdict, and one that persists is reported once'
     runs-on: ubuntu-latest
     timeout-minutes: 5
