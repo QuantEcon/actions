@@ -1678,6 +1678,171 @@ jobs:
           [ -z "$INVALID_BUILD_PATH" ] || { echo "::error::error-outputs: 'loud' set build-path [$INVALID_BUILD_PATH]: an invalid value must fail before the build"; exit 1; }
           echo "✅ warn passed with the error reported, ignore passed without checking, and an invalid value failed before building"
 
+  build-cache-error-guard:
+    # #322: build-display-error-guard's error, on a page taken from the
+    # execution cache. myst-nb renders such a page from jupyter-cache's copy,
+    # outputs and all, but writes the notebook it read to jupyter_execute,
+    # without them, so a check that read only jupyter_execute saw nothing on
+    # it. build-lectures' check reads the cache's copy instead.
+    #
+    # One fixture, build-display-error-guard's, and three builds. The first
+    # executes the pages into the cache, with warn so that it passes. The
+    # other two take every page from the cache, with fail:
+    # - with --all over the same _build: a later build in the job that
+    #   rereads the pages, as html does after pdflatex in a book with parts,
+    #   and as the lecture matrix's retry does;
+    # - over nothing but _build/.jupyter_cache: a pull request's build over a
+    #   restored cache-type: 'execution' cache.
+    # raises.md is the control again: its tagged cell's error output comes
+    # from the cache too, and must still be allowed.
+    name: 'build-lectures: an error output on a page taken from the execution cache fails the step'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: env-seed
+    steps:
+      # Full history, as in build-fail-guard.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # build-display-error-guard's fixture, with the same salt as env-seed.
+      - name: Recreate salted fixture with a display-time error and an allowed one
+        run: |
+          cp -r .github/fixtures/mini-lectures harness
+          printf '\n# harness-salt: %s-book\n' "$SALT" >> harness/environment.yml
+          printf '%% harness salt: %s-book\n' "$SALT" > harness/lectures/salt.md
+          sed -e 's/^# An Executed Lecture$/# A Lecture Whose Display Fails/' \
+              harness/lectures/lecture1.md > harness/lectures/display_error.md
+          cat >> harness/lectures/display_error.md <<'EOF'
+
+          The cell below runs without error. IPython then raises while it
+          displays the object, which it prints as a traceback.
+
+          ```{code-cell} python3
+          from IPython.display import display
+
+          class DisplayFails:
+              def _repr_html_(self):
+                  raise ValueError("harness: deliberate display-time error")
+
+          display(DisplayFails())
+          ```
+
+          ```{code-cell} python3
+          print("harness: the next cell ran")
+          ```
+          EOF
+          sed -e 's/^# An Executed Lecture$/# A Lecture That Raises on Purpose/' \
+              harness/lectures/lecture1.md > harness/lectures/raises.md
+          cat >> harness/lectures/raises.md <<'EOF'
+
+          ```{code-cell} python3
+          :tags: [raises-exception]
+          raise RuntimeError("harness: an error the lecture means to show")
+          ```
+          EOF
+          printf '  - file: display_error\n  - file: raises\n' >> harness/lectures/_toc.yml
+          grep -q 'def _repr_html_' harness/lectures/display_error.md \
+            || { echo "::error::fixture setup failed — display_error.md has no failing display"; exit 1; }
+          grep -q 'raises-exception' harness/lectures/raises.md \
+            || { echo "::error::fixture setup failed — raises.md has no tagged cell"; exit 1; }
+
+      - name: Setup environment
+        uses: ./setup-environment
+        with:
+          environment: 'harness/environment.yml'
+
+      # Expect a ::warning:: annotation for display_error.md: warn reporting it.
+      - name: Build lectures, executing the pages into the cache, with error-outputs warn
+        id: execute
+        continue-on-error: true
+        uses: ./build-lectures
+        with:
+          builder: 'html'
+          source-dir: 'harness/lectures'
+          output-dir: 'harness'
+          error-outputs: 'warn'
+
+      - name: Assert the build executed the pages and cached them
+        env:
+          OUTCOME: ${{ steps.execute.outcome }}
+          COUNT: ${{ steps.execute.outputs.error-output-count }}
+        run: |
+          [ "$OUTCOME" = "success" ] || { echo "::error::the executing build reported [$OUTCOME]: with error-outputs: warn it must pass"; exit 1; }
+          [ "$COUNT" = "1" ] || { echo "::error::error-output-count: expected [1] from the build that executed display_error.md, got [$COUNT]"; exit 1; }
+          # Executed here, so written with its outputs.
+          grep -q '"output_type": "error"' harness/_build/jupyter_execute/display_error.ipynb \
+            || { echo "::error::harness/_build/jupyter_execute/display_error.ipynb holds no error output after the build that executed it"; exit 1; }
+          [ -d harness/_build/.jupyter_cache ] || { echo "::error::harness/_build/.jupyter_cache is missing: the pages were not cached"; exit 1; }
+          echo "✅ the pages executed, display_error.md's error was reported with warn, and the cache holds them"
+
+      # Expect an ::error:: annotation for display_error.md: the check working.
+      - name: Build lectures again with --all and error-outputs fail (expected to fail)
+        id: reread
+        continue-on-error: true
+        uses: ./build-lectures
+        with:
+          builder: 'html'
+          source-dir: 'harness/lectures'
+          output-dir: 'harness'
+          extra-args: '-W --keep-going --all'
+          error-outputs: 'fail'
+
+      - name: Assert the error output on the reread page failed the step
+        env:
+          OUTCOME: ${{ steps.reread.outcome }}
+          COUNT: ${{ steps.reread.outputs.error-output-count }}
+        run: |
+          [ "$OUTCOME" = "failure" ] || { echo "::error::build-lectures reported [$OUTCOME] for a page taken from the execution cache whose display raised — error-outputs: fail must fail the step (#322)"; exit 1; }
+          [ "$COUNT" = "1" ] || { echo "::error::error-output-count: expected [1], the display_error cell alone (raises.md's tagged cell is allowed), got [$COUNT]"; exit 1; }
+          # The premise: this build took the page from the cache, which leaves
+          # the notebook in jupyter_execute without outputs, while the page
+          # shows the cache's traceback.
+          if grep -q '"output_type": "error"' harness/_build/jupyter_execute/display_error.ipynb; then
+            echo "::error::harness/_build/jupyter_execute/display_error.ipynb holds an error output after a build that took it from the cache: myst-nb now writes the cached outputs, or executed the page again, so this job no longer stages #322's case"
+            exit 1
+          fi
+          grep -q 'output traceback' harness/_build/html/display_error.html \
+            || { echo "::error::display_error.html does not show a traceback, so the page taken from the cache does not carry the display-time error"; exit 1; }
+          echo "✅ error-outputs: fail failed the step on the error output of a page reread from the cache"
+
+      # As a pull request's build finds _build after restore-jupyter-cache
+      # with cache-type: 'execution'.
+      - name: Keep only the execution cache
+        run: |
+          find harness/_build -mindepth 1 -maxdepth 1 ! -name .jupyter_cache -exec rm -rf {} +
+          left=$(find harness/_build -mindepth 1 -maxdepth 1 -printf '%f\n')
+          [ "$left" = ".jupyter_cache" ] \
+            || { echo "::error::harness/_build holds more than .jupyter_cache: ${left//$'\n'/ }"; exit 1; }
+
+      # Expect an ::error:: annotation for display_error.md: the check working.
+      - name: Build lectures over the execution cache alone with error-outputs fail (expected to fail)
+        id: restored
+        continue-on-error: true
+        uses: ./build-lectures
+        with:
+          builder: 'html'
+          source-dir: 'harness/lectures'
+          output-dir: 'harness'
+          error-outputs: 'fail'
+
+      - name: Assert the error output on the page from the restored cache failed the step
+        env:
+          OUTCOME: ${{ steps.restored.outcome }}
+          COUNT: ${{ steps.restored.outputs.error-output-count }}
+        run: |
+          [ "$OUTCOME" = "failure" ] || { echo "::error::build-lectures reported [$OUTCOME] over a restored execution cache whose display_error page shows a traceback — error-outputs: fail must fail the step (#322)"; exit 1; }
+          [ "$COUNT" = "1" ] || { echo "::error::error-output-count: expected [1], the display_error cell alone (raises.md's tagged cell is allowed), got [$COUNT]"; exit 1; }
+          if grep -q '"output_type": "error"' harness/_build/jupyter_execute/display_error.ipynb; then
+            echo "::error::harness/_build/jupyter_execute/display_error.ipynb holds an error output after a build over the execution cache alone: myst-nb now writes the cached outputs, or executed the page again, so this job no longer stages #322's case"
+            exit 1
+          fi
+          grep -q 'output traceback' harness/_build/html/display_error.html \
+            || { echo "::error::display_error.html does not show a traceback, so the page taken from the cache does not carry the display-time error"; exit 1; }
+          [ ! -e harness/_build/html/reports/display_error.err.log ] \
+            || { echo "::error::harness/_build/html/reports/display_error.err.log exists: myst-nb reported a failure itself, so the page did not come from the cache"; exit 1; }
+          echo "✅ error-outputs: fail failed the step on the error output of a page from the restored execution cache"
+
   build-jupyter-warning-guard:
     # #300: under -W --keep-going, jb build exits 0 from a jupyter build
     # whatever it warned about. sphinx-tojupyter's finish() calls exit() with 0
@@ -6085,6 +6250,7 @@ jobs:
       - env-pinned-edit
       - build-fail-guard
       - build-display-error-guard
+      - build-cache-error-guard
       - build-jupyter-warning-guard
       - build-nitpick
       - build-html-copy

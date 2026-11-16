@@ -20,6 +20,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   compares the canary's workflows with `templates/` at `v0`, apart from the differences
   `.github/canary-drift.yml` declares. (#302, #310)
 
+### Fixed
+- ⚠️ **BREAKING** **`build-lectures`**: the `error-outputs` check now checks a page taken from
+  the execution cache. myst-nb 1.4.0 renders such a page from jupyter-cache's executed copy, but
+  writes the notebook to `_build/jupyter_execute` without its outputs, and the check read only
+  those. So it found no error output on a page the build did not execute itself: in a pull
+  request's build over a restored execution cache, as `templates/ci.yml` sets up, and in a later
+  build that rereads the pages, as `html` does after `pdflatex` in a book with parts. Wherever
+  myst-nb looks in the cache for a page (a book that sets `execute_notebooks: cache`, for a page
+  that no exclude pattern or `mystnb` setting keeps out of it), the check now finds the page's
+  copy in the cache as myst-nb does, and checks its outputs. A page the cache has no copy of was
+  executed by the build, and is checked as written. A cache that cannot be read leaves its pages
+  unchecked, and is reported as an unreadable notebook is, failing the step with `fail`. The
+  inputs, the output and the annotations are unchanged; the log's summary line now says how many
+  notebooks came from the cache. The new harness job `build-cache-error-guard` executes a
+  display-time error into the cache, then builds again with `fail`, once with `--all` over the
+  same `_build` and once over the execution cache alone: both used to pass. A site whose cached
+  pages carry such a traceback now fails its build: fix the cell, tag a deliberate one
+  `raises-exception`, or set `error-outputs: 'warn'` while it does. (#322)
+
 ## [0.20.1] - 2026-11-15
 
 ### Fixed
