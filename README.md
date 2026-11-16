@@ -22,7 +22,7 @@ The lecture repositories that use these actions are tracked in [QuantEcon/meta#3
 
 ## Standalone actions
 
-QuantEcon's actions outside the lecture pipeline each live in a repository of their own, as [ARCHITECTURE.md](docs/dev/ARCHITECTURE.md#which-actions-live-here) describes. This table is the place to find QuantEcon's actions, and each repository's README is the reference for its inputs.
+QuantEcon's actions outside the lecture pipeline each live in a repository of their own, as [ARCHITECTURE.md](docs/dev/ARCHITECTURE.md#which-actions-live-here) describes. This table lists them, and each repository's README is the reference for its inputs.
 
 | Action | What it does | Ref consumers use | Maintainer | Test consumer | Main consumers |
 |---|---|---|---|---|---|

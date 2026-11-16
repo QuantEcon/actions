@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   GitHub Pages site cannot pass. It describes the canary watcher's new drift check too, which
   compares the canary's workflows with `templates/` at `v0`, apart from the differences
   `.github/canary-drift.yml` declares. (#302, #310)
+- **Which actions live here** (ARCHITECTURE, README): this repository holds the lecture pipeline,
+  released together at `v0`; any other action lives in its own `action-<name>` repository, which
+  the README's new "Standalone actions" table lists. (#332)
 
 ## [0.20.1] - 2026-11-15
 

@@ -27,12 +27,12 @@ One consequence: `build-jupyter-cache` runs `setup-environment` and `build-lectu
 
 ### Which actions live here
 
-This repository holds the lecture pipeline: an action that a template calls, or one whose own inputs and outputs are tied to another QuantEcon action's, through the image, a cache key, `build-path` or the `_build` tree. The coupling is tested on the action's own interface, not on a caller's workflow: an action that reads a release tarball is not coupled just because a lecture repository feeds it one. These actions are released together at `v0`, and pass the canary's release gate.
+This repository holds the lecture pipeline: an action that a template calls, or one whose own inputs and outputs are tied to another QuantEcon action's, through the image, a cache key, `build-path` or the `_build` tree. The coupling is tested on the action's own interface, not on a caller's workflow. These actions are released together at `v0`, and a release that changes what one does passes the canary's release gate before `v0` moves.
 
 - **Any other action called with `uses:`** lives in its own public `action-<name>` repository, the type [QEP-3](https://github.com/QuantEcon/qeps/blob/main/qeps/qep-0003-repository-naming-and-types.md) defines, with semver tags and one floating major tag. When in doubt, an action starts standalone. The [README](../../README.md#standalone-actions) lists them.
 - **No action here calls a standalone action at a floating tag.** That tag can move with no release here, and the canary would not see it.
-- **A reusable workflow** (`workflow_call`) belongs where its job's purpose belongs, by the same test.
-- **An action that moves** between this repository and its own is a succession, since every consumer's `uses:` path changes. It keeps a deprecation window in the old place.
+- **A reusable workflow** (`workflow_call`) belongs where its job's purpose belongs.
+- **An action that moves** between this repository and its own is a QEP-3 succession, since every consumer's `uses:` path changes. It keeps a deprecation window in the old place.
 
 ### The environment is an image
 
