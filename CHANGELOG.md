@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-11-16
+
 ### Documentation
 - **Releases** (CONTRIBUTING, Staged Releases): a release that changes what a build reports
   dispatches the lecture matrix at the candidate before `v0` moves, and explains each red leg in
