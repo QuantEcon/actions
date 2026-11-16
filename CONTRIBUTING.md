@@ -99,11 +99,35 @@ canary's `gate/README.md` gives the fixture's rules.
    gh run list --repo QuantEcon/test-actions-lecture-intro --workflow gate.yml --limit 1 --json databaseId --jq '.[0].databaseId'
    ```
    A red run from `main` also opens or comments on a `release-gate` issue in the canary, assigned
-   to whoever dispatched it.
-3. If the release changes something the gate does not reach (below), stage that by hand on the
+   to whoever dispatched it. Dispatch it outside Sunday 00:00 to 03:00 UTC, while the canary's
+   own schedules run: the gate's deploy and the canary's `publish.yml` share the `pages`
+   concurrency group, so one waits on the other, and a third run that joins the group cancels
+   whichever is waiting.
+3. If the release changes what a build reports, such as a check that can fail a build or a warning
+   it raises, dispatch the lecture matrix at the candidate as well. It builds four lecture
+   repositories with the actions from the candidate's checkout, and takes about four to five
+   hours:
+   ```bash
+   gh workflow run test-containers-lectures.yml --repo QuantEcon/actions --ref vX.Y.Z
+   gh run watch <run id> --repo QuantEcon/actions --exit-status
+   ```
+   A dispatched run files no issue, and a leg can be red for its lecture repository's own reasons.
+   Read each red leg's log, and say in the release PR why it is not the candidate's, or hold the
+   release.
+4. If the release changes something the gate does not reach (below), stage that by hand on the
    canary too, and say which in the release PR.
-4. Move `v0` (step 3 above) only when the gate, and anything staged by hand, is green. Link the
-   gate's run in the release PR.
+5. Move `v0` (step 3 above) only when the gate, the lecture matrix if it ran, and anything staged
+   by hand are green, or each red matrix leg is explained. Link their runs in the release PR.
+6. Once `v0` has moved, dispatch the canary's `cache.yml` on its `main`, and when it is green, its
+   `ci.yml` and `publish.yml`, which restore the cache it builds. They fetch the actions through
+   `@v0` as a consumer does, which the gate does not, and the canary watcher reads only their
+   scheduled runs, on Sunday. Link the runs in the release PR. A red one may be the release's:
+   read it, and roll back as below if it is.
+   ```bash
+   gh workflow run cache.yml --repo QuantEcon/test-actions-lecture-intro --ref main
+   gh workflow run ci.yml --repo QuantEcon/test-actions-lecture-intro --ref main
+   gh workflow run publish.yml --repo QuantEcon/test-actions-lecture-intro --ref main
+   ```
 
 The gate does not reach:
 
@@ -116,7 +140,8 @@ The gate does not reach:
 - a scenario of the release's own, such as a cache restored across several pushes;
 - how consumers fetch the actions by tag. The gate runs them from a checkout, and rewrites
   `build-jupyter-cache`'s four nested `@v0` calls to that checkout, so its siblings run at the
-  candidate, but not in the action exactly as shipped.
+  candidate, but not in the action exactly as shipped. Step 6 runs both, once `v0` has moved,
+  when only a rollback undoes them.
 
 Known limits:
 
