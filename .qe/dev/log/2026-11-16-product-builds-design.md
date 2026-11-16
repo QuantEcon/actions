@@ -85,11 +85,17 @@ Each gap was checked against `d65e694`.
    finds its comment by a marker per provider, `<!-- quantecon-preview:<provider> -->`, so a
    second product's preview replaces the first's. Its links to changed lectures are
    `<deploy url>/<path>.html`, which is Jupyter Book 1's layout; mystmd serves `/<slug>`. And
-   `scripts/detect-changed-lectures.sh` finds changed lectures under a `lectures-dir` holding a
-   `_toc.yml`; the pool has none, so it cannot say which changed pool lectures a product lists.
-   **Proposal:** on both preview actions, a `preview-key` input added to the marker and the
-   heading (empty by default: today's marker), a `link-style` input (`html` by default, or
-   `slug`), and a `toc` input naming the `_toc.yml` whose files count as the product's lectures.
+   `scripts/detect-changed-lectures.sh` lists every added or modified `.md` directly under
+   `lectures-dir` (skipping `_*` files and `intro.md`), whatever a toc lists; a `_toc.yml` in
+   that folder only decides whether the folder's name is stripped from the links. With
+   `lectures-dir` set to the pool, it would list every changed pool lecture, including those a
+   product does not publish, and, since the pool holds no `_toc.yml`, keep `lectures/` in each
+   link, where a product's site serves the lecture at its root.
+   **Proposal:** on all three preview actions (`preview-netlify`, `preview-cloudflare` and
+   `preview-workers`, which share both scripts), a `preview-key` input added to the marker and
+   the heading (empty by default: today's marker), a `link-style` input (`html` by default, or
+   `slug`), and a `toc` input naming the `_toc.yml` whose files count as the product's lectures,
+   which also strips the pool folder from the links.
 5. **Runner class and time limit** are the caller's job settings (`runs-on`, `timeout-minutes`),
    which a composite action cannot set and does not need to. Nothing here.
 
