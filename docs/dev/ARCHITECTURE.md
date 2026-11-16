@@ -25,6 +25,15 @@ Each action is a composite action that does one thing: set up the environment, b
 
 One consequence: `build-jupyter-cache` runs `setup-environment` and `build-lectures` as steps of its own, at `@v0`, because GitHub does not allow an expression in `uses:`. Those two therefore run as the latest release inside it, whatever version a workflow names for `build-jupyter-cache` and however the harness calls it.
 
+### Which actions live here
+
+This repository holds the lecture pipeline: an action that a template calls, or one whose own inputs and outputs are tied to another QuantEcon action's, through the image, a cache key, `build-path` or the `_build` tree. The coupling is tested on the action's own interface, not on a caller's workflow: an action that reads a release tarball is not coupled just because a lecture repository feeds it one. These actions are released together at `v0`, and pass the canary's release gate.
+
+- **Any other action called with `uses:`** lives in its own public `action-<name>` repository, the type [QEP-3](https://github.com/QuantEcon/qeps/blob/main/qeps/qep-0003-repository-naming-and-types.md) defines, with semver tags and one floating major tag. When in doubt, an action starts standalone. The [README](../../README.md#standalone-actions) lists them.
+- **No action here calls a standalone action at a floating tag.** That tag can move with no release here, and the canary would not see it.
+- **A reusable workflow** (`workflow_call`) belongs where its job's purpose belongs, by the same test.
+- **An action that moves** between this repository and its own is a succession, since every consumer's `uses:` path changes. It keeps a deprecation window in the old place.
+
 ### The environment is an image
 
 LaTeX and the scientific stack take minutes to install, and installing them on every run is also where a build meets a package that moved. So most builds run in a container image that already holds Python, the Anaconda baseline, Jupyter Book with its extensions, TeX Live and Node, and `setup-environment` adds only each repository's extra packages, from its `environment-update` file.
