@@ -1,0 +1,195 @@
+name: Canary Watch
+
+# Watches the canary, QuantEcon/test-actions-lecture-intro, whose scheduled
+# workflows run the released actions through @v0 between releases (#302),
+# and whose workflows are templates/ at v0 (#310). Nobody watches a
+# scheduled run, and a disabled schedule runs nothing at all, so a check
+# inside the canary cannot report that. This one runs here, in a repository
+# that is never idle, and reads the canary through the API.
+#
+#   watch  the canary's scheduled workflows: enabled, and their newest
+#          scheduled run on main green and recent (scripts/canary-watch.sh).
+#   drift  the canary's workflows against templates/ at v0, apart from the
+#          differences .github/canary-drift.yml declares
+#          (scripts/canary-drift.py).
+#
+# The harness's canary-watch job self-tests both scripts.
+#
+#   schedule           daily. A red verdict opens the canary issue, `🔴
+#                      Canary watch: …`, labelled `canary`, or comments on
+#                      the open one when that check's findings change, and
+#                      assigns it to the logins in the CANARY_ASSIGNEES
+#                      repository variable. A green one notes once, on the
+#                      open issue, that the check is green again, so the
+#                      same red later is reported afresh. Each check keeps
+#                      its own record on the issue.
+#   workflow_dispatch  the same verdicts, in the run only: someone is
+#                      watching it.
+on:
+  schedule:
+    - cron: '30 6 * * *'   # daily; on Sunday, after the canary's runs and before Monday's consumer builds
+  workflow_dispatch:
+
+concurrency:
+  group: canary-watch
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  CANARY_REPO: QuantEcon/test-actions-lecture-intro
+  # The canary's scheduled workflows, each weekly. ci.yml and publish.yml
+  # join once they have run on their schedule (#302).
+  CANARY_WORKFLOWS: cache.yml
+  # A week and a day. While a weekly schedule runs, its newest run is never
+  # more than 168 hours old, and the day allows for GitHub's delays and for
+  # this watcher's time of day. A run due on Sunday that never comes turns
+  # the watcher red on Monday.
+  MAX_AGE_HOURS: '192'
+  # 'true' compares third-party actions' versions too. The canary's
+  # Dependabot moves those pins, and the templates' move only with a
+  # release, so by default they are not compared.
+  DRIFT_COMPARE_VERSIONS: 'false'
+  # The author of what GITHUB_TOKEN writes. A token of another kind needs
+  # its own login here.
+  MARKER_AUTHOR: 'github-actions[bot]'
+
+jobs:
+  watch:
+    name: Watch the canary's scheduled runs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read   # checkout; the canary is public, so reading it needs no grant
+    outputs:
+      findings: ${{ steps.verdict.outputs.findings }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Read the canary's workflows and their newest scheduled runs
+        id: verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          status=0
+          scripts/canary-watch.sh > "$RUNNER_TEMP/findings.md" || status=$?
+          scripts/canary-watch.sh --verdict "$RUNNER_TEMP/findings.md" "$status" "The canary's scheduled workflows"
+
+      - name: Fail when the canary needs attention
+        if: steps.verdict.outputs.red != 'false'
+        run: |
+          echo "::error::the canary needs attention: see this run's summary"
+          exit 1
+
+  # Runs on every run of the workflow. To run it weekly instead, add a
+  # weekly cron under `on.schedule`, such as '45 6 * * 1', and give this job
+  # `if: github.event.schedule != '30 6 * * *'`: a filter that skips a cron,
+  # so a cron edited later runs the job more often, never less. The drift
+  # check's self-test fails on a filter that names a cron this workflow
+  # does not have, or that runs a job on one cron only.
+  drift:
+    name: Compare the canary's workflows with templates/ at v0
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read   # checkout and templates/; the canary is public
+    outputs:
+      findings: ${{ steps.verdict.outputs.findings }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # PyYAML, at the pin in scripts/requirements.txt, as the harness installs it.
+      - name: Install PyYAML
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --disable-pip-version-check --quiet -r scripts/requirements.txt
+
+      - name: Compare each with templates/ at v0
+        id: verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TEMPLATES_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          args=()
+          [ "$DRIFT_COMPARE_VERSIONS" != true ] || args+=(--compare-versions)
+          status=0
+          "$RUNNER_TEMP/venv/bin/python" scripts/canary-drift.py "${args[@]}" > "$RUNNER_TEMP/findings.md" || status=$?
+          scripts/canary-watch.sh --verdict "$RUNNER_TEMP/findings.md" "$status" "The canary's workflows against templates/ at v0"
+
+      - name: Fail when the canary has drifted
+        if: steps.verdict.outputs.red != 'false'
+        run: |
+          echo "::error::the canary's workflows have drifted from templates/ at v0: see this run's summary"
+          exit 1
+
+  # The schedule runs unattended, and a dispatch has someone watching it.
+  # Every scheduled run reports, green or red: each issue records each change
+  # of its state.
+  report:
+    name: Report on the canary issue
+    needs: watch
+    if: ${{ always() && github.event_name == 'schedule' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write   # the issue, its comments and its label
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Record the verdict on the canary issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ASSIGNEES: ${{ vars.CANARY_ASSIGNEES }}
+          FINDINGS: ${{ needs.watch.outputs.findings }}
+          WATCH_RESULT: ${{ needs.watch.result }}
+          TOPIC: runs
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$FINDINGS" > "$RUNNER_TEMP/findings.md"
+          scripts/canary-watch.sh --report "$RUNNER_TEMP/findings.md"
+
+  # The same issue as the report's, so it runs after it: two jobs that
+  # each found no open issue would open two.
+  drift-report:
+    name: Report drift on the canary issue
+    needs: [drift, report]
+    if: ${{ always() && github.event_name == 'schedule' && needs.drift.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write   # the issue, its comments and its label
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Record the drift verdict on the canary issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ASSIGNEES: ${{ vars.CANARY_ASSIGNEES }}
+          FINDINGS: ${{ needs.drift.outputs.findings }}
+          WATCH_RESULT: ${{ needs.drift.result }}
+          TOPIC: drift
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$FINDINGS" > "$RUNNER_TEMP/findings.md"
+          scripts/canary-watch.sh --report "$RUNNER_TEMP/findings.md"

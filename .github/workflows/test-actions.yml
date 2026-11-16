@@ -154,8 +154,11 @@ jobs:
           # preview-decide and preview-comment run on their own, the wrangler
           # config writer, which dc-wrangler-config and preview-workers-config run,
           # publish-gh-pages' packing script, which publish-release-packaging runs,
-          # and the workflow-command helper that every action sources.
-          MUST_RUN=".github/workflows/test-actions.yml .github/fixtures/mini-lectures/environment.yml preview-cloudflare/package-lock.json preview-netlify/package-lock.json preview-workers/package-lock.json scripts/detect-changed-lectures.sh scripts/preview-decide.sh scripts/preview-comment.cjs scripts/write-wrangler-config.js scripts/package-release-assets.sh scripts/workflow-command.sh"
+          # the workflow-command helper that every action sources, and the
+          # canary watcher's scripts, the drift check's declarations, and the
+          # watcher's workflow, whose schedule filters the drift check's
+          # self-test reads: canary-watch self-tests them.
+          MUST_RUN=".github/workflows/test-actions.yml .github/fixtures/mini-lectures/environment.yml preview-cloudflare/package-lock.json preview-netlify/package-lock.json preview-workers/package-lock.json scripts/detect-changed-lectures.sh scripts/preview-decide.sh scripts/preview-comment.cjs scripts/write-wrangler-config.js scripts/package-release-assets.sh scripts/workflow-command.sh scripts/canary-watch.sh scripts/canary-drift.py .github/canary-drift.yml .github/workflows/canary-watch.yml"
           for d in $DIRS; do MUST_RUN="$MUST_RUN $d/action.yml"; done
           # The container-images job decides for itself which images to build,
           # but runs only when this gate says relevant: an IGNORED that matched
@@ -3735,6 +3738,50 @@ jobs:
           echo "✅ execution cache round-trip: build-jupyter-cache → restore-jupyter-cache"
 
   # ==========================================================================
+  # The canary watcher (#302) — a script of this repository's, not an action
+  # ==========================================================================
+
+  canary-watch:
+    # canary-watch.yml runs scripts/canary-watch.sh daily against the
+    # canary's API, and files what it finds, as build-jupyter-cache's alert
+    # does for a consumer. Its self-test runs the check against a stand-in gh
+    # for each state a workflow can be in: enabled or disabled, and its newest
+    # scheduled run green, red, older than the limit, missing or unreadable.
+    # It runs the report against stand-in issues: one issue opened with the
+    # label and the assignees, a comment only when the red findings change,
+    # a green run noted once, so the same red after it is reported again,
+    # markers read only from MARKER_AUTHOR's comments, an issue that cannot
+    # be read stopping the report, the drift topic's own record on the same
+    # issue, a stopped watcher reported once whichever run finds it, and a
+    # warning for a login that cannot be assigned; and --verdict's outputs.
+    # scripts/canary-drift.py's self-test compares small workflows as YAML,
+    # with and without declared differences: step order, @v0 on every
+    # quantecon/actions step, the keys a declaration covers only by name,
+    # typed values, and escaped step names. It loads .github/canary-drift.yml,
+    # and checks canary-watch.yml's schedule filters. The real API calls are
+    # the scheduled watcher's.
+    name: 'canary-watch.sh and canary-drift.py: each state gets its verdict, and one that persists is reported once'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Self-test the watcher's script
+        run: scripts/canary-watch.sh --self-test
+
+      # PyYAML, at the pin in scripts/requirements.txt, as the gate installs it.
+      - name: Self-test the drift check
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --disable-pip-version-check --quiet -r scripts/requirements.txt
+          "$RUNNER_TEMP/venv/bin/python" scripts/canary-drift.py --self-test
+
+  # ==========================================================================
   # deploy-cloudflare (#163) — no Cloudflare account, no secrets
   # ==========================================================================
   #
@@ -6229,6 +6276,7 @@ jobs:
       - bjc-alert
       - bjc-restore-build
       - bjc-restore-exec
+      - canary-watch
       - dc-gate-probe
       - dc-refuses-ungated
       - dc-inputs

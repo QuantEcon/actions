@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+- **Releases** (CONTRIBUTING, Staged Releases): a release that changes what a build reports
+  dispatches the lecture matrix at the candidate before `v0` moves, and explains each red leg in
+  the release PR. Once `v0` has moved, the release dispatches the canary's `cache.yml`, `ci.yml`
+  and `publish.yml` on its `main`, which fetch the actions through `@v0` as a consumer does. The
+  gate is dispatched outside the canary's Sunday schedules, with whose `publish.yml` it shares the
+  `pages` concurrency group. `TESTING.md` describes the canary as
+  QuantEcon/test-actions-lecture-intro#94 left it: `templates/` at `v0` on a Sunday schedule, with
+  each deploy checked for its own build's marker file, which the release gate's deploy to the same
+  GitHub Pages site cannot pass. It describes the canary watcher's new drift check too, which
+  compares the canary's workflows with `templates/` at `v0`, apart from the differences
+  `.github/canary-drift.yml` declares. (#302, #310)
+
 ### Fixed
 - ⚠️ **BREAKING** **`build-lectures`**: the `error-outputs` check now checks a page taken from
   the execution cache. myst-nb 1.4.0 renders such a page from jupyter-cache's executed copy, but

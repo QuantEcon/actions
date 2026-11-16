@@ -1,0 +1,115 @@
+# The canary's differences from templates/ at v0 that it keeps on purpose
+# (#310). The canary, QuantEcon/test-actions-lecture-intro, runs these four
+# workflows as the templates ship them, so that a real lecture repository
+# runs what consumers copy. canary-watch.yml's drift job compares each with
+# the template of the same name (scripts/canary-drift.py), as YAML: comments,
+# key order and third-party actions' versions are not compared, and the
+# steps both have must run in the same order. A difference not listed here
+# turns it red, and so does an entry that no longer differs, or whose value
+# the canary no longer holds. Every quantecon/actions action must run at
+# @v0, listed or not. Each workflow's header in the canary gives the same
+# reasons.
+#
+# An entry is a path, why, and maybe the value the canary holds there, a
+# mapping or list included. A path joins keys with dots, and names a step or
+# another list item in brackets, by its name, its id or its uses, or else
+# its index. It covers everything under it except an `if`,
+# `continue-on-error` or `permissions` key, which needs an entry of its own,
+# with its value, unless the entry's own value holds it.
+
+ci.yml:
+  - path: on.pull_request
+    why: Pull requests to any branch, so that a staged release's pull request into a staged-* branch runs.
+  - path: on.workflow_dispatch
+    why: By hand, as the release procedure dispatches it after a v0 move (#302).
+  - path: on.schedule[0].cron
+    value: '0 1 * * 0'
+    why: Weekly, so the released actions run between releases through @v0 (#302); an hour after cache.yml.
+  - path: concurrency.group
+    value: 'ci-${{ github.event.pull_request.number || github.ref }}'
+    why: The template's key is empty off a pull request, so a scheduled run and a dispatch would cancel each other.
+  - path: concurrency.cancel-in-progress
+    value: "${{ github.event_name == 'pull_request' }}"
+    why: Only a pull request's newer push cancels; a dispatch on main must not cancel the scheduled run.
+  - path: env.DISPATCH_ALIAS
+    value: dispatch-canary
+    why: Where a scheduled or dispatched run deploys, apart from the release gate's dispatch-release-gate.
+  - path: jobs.placeholder.steps[Post the preview comment].with.netlify-site-name
+    value: jade-tarsier-d98a19
+    why: The canary's Netlify site.
+  - path: jobs.placeholder.steps[Post the preview comment (Cloudflare Pages)]
+    why: Both previews, since the canary is the only real preview-cloudflare consumer.
+  - path: jobs.build.container.image
+    value: ghcr.io/quantecon/quantecon-build:latest
+    why: The lean image, as the release gate and lecture-dp use (the maintainer's ruling, "Keep lean").
+  - path: jobs.build.steps[Restore execution cache].with.save-cache
+    value: "${{ github.event_name == 'pull_request' && 'true' || 'false' }}"
+    why: A pull request saves its cache, a run on main does not (the maintainer's ruling, "keep save-on-PR").
+  - path: jobs.build.steps[Write this build's marker]
+    why: The marker that the deploy job's check reads back from each preview.
+  - path: jobs.deploy.steps[Deploy PR preview].id
+    value: netlify
+    why: The id the check reads the Netlify step's outputs by.
+  - path: jobs.deploy.steps[Deploy PR preview].with.dispatch-alias
+    value: '${{ env.DISPATCH_ALIAS }}'
+    why: Off a pull request, the Netlify preview deploys to dispatch-canary.
+  - path: jobs.deploy.steps[Deploy PR preview (Cloudflare Pages)]
+    why: Both previews, with the canary's project and secret names and its own id.
+  - path: jobs.deploy.steps[Check both previews serve this build]
+    why: Off a pull request, each preview must report deployed and serve the build's marker, by content.
+  - path: jobs.deploy.steps[Check both previews serve this build].if
+    value: "github.event_name != 'pull_request'"
+    why: A pull request's previews are checked by whoever opened it, and one by Dependabot deploys nothing.
+  - path: jobs.pdf-check.container.image
+    value: ghcr.io/quantecon/quantecon-build:latest
+    why: The lean image, as in the build job.
+
+cache.yml:
+  - path: jobs.build-cache.container.image
+    value: ghcr.io/quantecon/quantecon-build:latest
+    why: The lean image, as the release gate and lecture-dp use (the maintainer's ruling, "Keep lean").
+
+publish.yml:
+  - path: on.push.branches
+    why: Not on a push to main. Every lecture repository publishes on a tag, and only a tag run makes release assets.
+  - path: on.push.tags
+    value: ['publish*']
+    why: The template's first documented change for release assets, as the fleet publishes.
+  - path: on.schedule[0].cron
+    value: '0 2 * * 0'
+    why: Weekly (#302), after cache.yml and ci.yml, clear of the release gate's hours, and before the watcher's 06:30 UTC run.
+  - path: jobs.build.container.image
+    value: ghcr.io/quantecon/quantecon-build:latest
+    why: The lean image, as the release gate and lecture-dp use (the maintainer's ruling, "Keep lean").
+  - path: jobs.build.steps[Build notebooks]
+    why: The template's optional notebook build, switched on, as the lecture sites offer notebooks.
+  - path: jobs.build.steps[Build PDF]
+    why: The template's optional PDF build, switched on, as the lecture sites offer a PDF.
+  - path: jobs.build.steps[Build HTML].with.html-copy-pdf
+    value: 'true'
+    why: The PDF copied into the site, with the PDF build above.
+  - path: jobs.build.steps[Build HTML].with.html-copy-notebooks
+    value: 'true'
+    why: The notebooks copied into the site, with the notebook build above.
+  - path: jobs.build.steps[Upload the site for release assets]
+    why: The template's third documented change for release assets (the maintainer's ruling, "Switch it on").
+  - path: jobs.build.steps[Upload the site for release assets].if
+    value: "github.ref_type == 'tag'"
+    why: The template's own condition, uncommented with the step. Only a tag run makes release assets.
+  - path: jobs.build.steps[Write this build's marker]
+    why: The marker that the deploy job's check reads back from GitHub Pages.
+  - path: jobs.deploy.steps[Check GitHub Pages serves this build]
+    why: Pages must serve the build's marker, by content, since the release gate deploys the same site.
+  - path: jobs.release-assets
+    why: The template's release-assets job, switched on, its fourth documented change.
+  - path: jobs.release-assets.if
+    value: "github.ref_type == 'tag'"
+    why: The template's own condition, uncommented with the job. Only a tag run makes release assets.
+  - path: jobs.release-assets.permissions
+    value: {contents: write}
+    why: The template's own permissions, uncommented with the job. The release upload needs contents write, and nothing more.
+  - path: jobs.release-assets.steps[Attach the site to the release].with.asset-name
+    value: test-actions-lecture-intro-html
+    why: The canary's asset name, in place of the template's example.
+
+restore.yml: []

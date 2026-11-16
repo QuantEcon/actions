@@ -27,7 +27,7 @@ All eight lecture repositories that use `publish-gh-pages` pass `create-release-
 
 Eight call sites across six repositories are exact pins, all on `@v0.12.0` (checked 2026-11-05). Each falls a release behind whenever one ships, until someone merges its Dependabot bump. Exact pins are what stranded `lecture-dp` three releases behind, with alerting that had never worked (#83), and a Dependabot bump surfaces a release without moving the pin: `lecture-python.myst#1000` sat open for 13 days before it was closed as superseded. Moving the lecture family to `@v0` (QuantEcon/workspace-lectures#33) needs each release to pass a gate before `v0` moves to it. The release gate does that (P0 below), so when to repin is the lecture family's call.
 
-The canary meets a release first on one path only. Its weekly cache build runs on Sunday at 03:00 UTC, a day ahead of the consumers' Monday builds. But its `ci.yml` runs on pull requests and by hand, with no schedule and no `dispatch-alias`, and its `publish.yml` runs only on a `publish*` tag, so neither the preview path nor the publish path has an automatic lead over consumers. And its workflows name `@v0`, the tag a release moves, so a candidate is tested by the release gate instead (P0 below).
+The canary meets a release on each of its paths a day ahead of the consumers' Monday builds: on Sunday its `cache.yml` runs at 00:00 UTC, `ci.yml` at 01:00 and `publish.yml` at 02:00, and the last two fail unless their deploys serve their own build (QuantEcon/test-actions-lecture-intro#94). `canary-watch.yml`, here, reports a scheduled run of `cache.yml` that is red, missing or disabled, and a workflow that has drifted from `templates/` at `v0`; `ci.yml` and `publish.yml` join its watch list once they have run on their schedule (item 0c). The canary's workflows name `@v0`, the tag a release moves, so a candidate is tested by the release gate instead (P0 below).
 
 Lecture repositories are tracked centrally in [QuantEcon/meta#321](https://github.com/QuantEcon/meta/issues/321), and the preview rollout in [QuantEcon/meta#327](https://github.com/QuantEcon/meta/issues/327).
 
@@ -41,7 +41,7 @@ The release gate is `gate.yml` in the canary. It tests a checkout of the candida
 
 | # | Item | Refs |
 |---|---|---|
-| 0c | **Close the ungated consumer paths.** Schedule the canary's `ci.yml` and `publish.yml` ahead of the consumers' Monday builds. `publish.yml` has no `workflow_dispatch`, and its job-level `if:` accepts only tag pushes, so a scheduled or dispatched run would skip its only job and never go red. `ci.yml` should pass `dispatch-alias` and fail unless `deployed` is `'true'`. Revisited once the release gate has replaced the hand-staged legs that these two workflows still carry | #302 |
+| 0c | **Close the ungated consumer paths.** The canary's `ci.yml` and `publish.yml` run on Sunday, and check what they deploy. What remains is for the watcher to read their scheduled runs: they join `CANARY_WORKFLOWS` in `canary-watch.yml` once each has run on its schedule | #302 |
 
 ### Backlog
 
@@ -63,12 +63,12 @@ The lean image pins every package in its `environment.yml` that the `anaconda` m
 
 | Area | Issues | Where it stands |
 |---|---|---|
-| Release gating | #302 | The release gate is live in the canary. #302 is P0 item 0c, low priority |
-| Testing | #100, #282 | Stage 1, the harness, the canary and the release gate are live. #282, a harness run of the pinned wrangler against a stub of Cloudflare's API, is low priority |
+| Release gating | #302 | The release gate is live in the canary, and `canary-watch.yml` watches the canary's schedules and its drift from `templates/`. #302 is P0 item 0c, with one step left |
+| Testing | #282 | Stage 1, the harness, the canary and the release gate are live. #282, a harness run of the pinned wrangler against a stub of Cloudflare's API, is low priority |
 | Previews | #291 | A Cloudflare Pages preview never answers 404, since a build with no `404.html` makes Pages serve `index.html` for every unknown path. Low priority |
 | Preview speed | #92 (tracking), #147–#152, #154–#158 | HTML-only previews are decided (#146): #148 is unblocked, and the PDF check that goes with it is in `templates/ci.yml` |
 | Environment and reproducibility | #30, #129, #18, #2 | #30 is backlog item 12; #129 is parked as a discussion; #18, container-mode caching, is parked until a repository passes `environment-update`; #2 is exploratory |
-| New actions and decisions | #96, #183, #184, #185, #186, #194 | #96 is parked until [quantecon-book-theme#359](https://github.com/QuantEcon/quantecon-book-theme/issues/359) moves: #195 chose to SHA-pin the `.notebooks` pushes in place (QuantEcon/workspace-lectures#58) rather than build an action with a known end of life. #183 tracks alternatives to the RunsOn GPU image. #184 and #185 propose shared actions for link checking and Colab checks, which #194 asks whether to build; #186 proposes build-time monitoring across the lecture repositories |
+| New actions and decisions | #96, #183, #185, #186 | #96 is parked until [quantecon-book-theme#359](https://github.com/QuantEcon/quantecon-book-theme/issues/359) moves: #195 chose to SHA-pin the `.notebooks` pushes in place (QuantEcon/workspace-lectures#58) rather than build an action with a known end of life. #183 tracks alternatives to the RunsOn GPU image. #185 proposes a shared Colab check that runs the built notebooks in Colab's image, and waits for #2; #186 proposes build-time monitoring across the lecture repositories |
 | Docs | #29, #178, #179 | #29 is backlog item 11; #179 publishes the manual |
 | Work plan | #319 | v0.20.0's first consumer runs, and the next wave |
 
@@ -103,4 +103,4 @@ Before `lecture-python.myst`'s full chain, two things are unconfirmed on RunsOn'
 - `actions/cache` saving and restoring;
 - the OIDC token flow of `actions/deploy-pages`.
 
-Settled: the `.notebooks` repositories give way to notebooks on gh-pages with theme-generated Colab URLs ([quantecon-book-theme#359](https://github.com/QuantEcon/quantecon-book-theme/issues/359)); the notebook zip stays an inline workflow step; `collab.yml` and `linkcheck.yml` stay standalone workflows; and the HTML recovery tool (#27) is built here as a restore action, with no off-GitHub copy of the release archives, since the sources are the backup.
+Settled: the `.notebooks` repositories give way to notebooks on gh-pages with theme-generated Colab URLs ([quantecon-book-theme#359](https://github.com/QuantEcon/quantecon-book-theme/issues/359)); the notebook zip stays an inline workflow step; `collab.yml` and `linkcheck.yml` stay standalone workflows (#194); the shared link checker is `QuantEcon/action-link-checker`, in its own repository, and lychee stays where it also checks root-relative links; a shared Colab check waits for #2 (#185); and the HTML recovery tool (#27) is built here as a restore action, with no off-GitHub copy of the release archives, since the sources are the backup.
