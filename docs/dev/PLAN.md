@@ -63,8 +63,8 @@ The lean image pins every package in its `environment.yml` that the `anaconda` m
 
 | Area | Issues | Where it stands |
 |---|---|---|
-| Release gating | #302, #310 | The release gate is live in the canary, and `canary-watch.yml` watches the canary's schedules and its drift from `templates/`. #302 is P0 item 0c, with one step left; #310's drift check is the watcher's |
-| Testing | #100, #282 | Stage 1, the harness, the canary and the release gate are live. #282, a harness run of the pinned wrangler against a stub of Cloudflare's API, is low priority |
+| Release gating | #302 | The release gate is live in the canary, and `canary-watch.yml` watches the canary's schedules and its drift from `templates/`. #302 is P0 item 0c, with one step left |
+| Testing | #282 | Stage 1, the harness, the canary and the release gate are live. #282, a harness run of the pinned wrangler against a stub of Cloudflare's API, is low priority |
 | Previews | #291 | A Cloudflare Pages preview never answers 404, since a build with no `404.html` makes Pages serve `index.html` for every unknown path. Low priority |
 | Preview speed | #92 (tracking), #147–#152, #154–#158 | HTML-only previews are decided (#146): #148 is unblocked, and the PDF check that goes with it is in `templates/ci.yml` |
 | Environment and reproducibility | #30, #129, #18, #2 | #30 is backlog item 12; #129 is parked as a discussion; #18, container-mode caching, is parked until a repository passes `environment-update`; #2 is exploratory |
