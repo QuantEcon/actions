@@ -30,7 +30,7 @@ Use it in a job of its own that deploys a pull request's build, as [`ci.yml`](ht
 | A URL for each push | not reported, though Netlify keeps one for each deploy | yes, in `deployment-url` and in the comment |
 | Repository secrets | `NETLIFY_AUTH_TOKEN`, `NETLIFY_SITE_ID` | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` |
 | Other inputs it needs | none, and `netlify-site-name` for a placeholder | `project-name` |
-| CLI, installed each run | `netlify-cli`, which needs Node 22.13 or later | `wrangler`, which needs Node 22 or later |
+| CLI, installed each run | `netlify-cli`, which needs Node 22.13 or later | `wrangler`, which needs Node 22.12 or later |
 | In `ci.yml` | the `deploy` job's preview step | a commented alternative |
 
 Both deploy the files `build-lectures` built, with no build on the provider's side, and neither needs the provider to be linked to the repository. For what each provider's plans allow, see its pricing page.

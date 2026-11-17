@@ -23,7 +23,7 @@ Use it in a job of its own that deploys a pull request's build, in place of the 
 ## Requirements
 
 - **Runner.** Any, with `bash`, `git` and `npm`, as GitHub-hosted runners and the QuantEcon images have. The job must be able to reach `registry.npmjs.org`: `wrangler` is installed each run from the lockfile beside the action.
-- **Node.** 22 or later, which the pinned `wrangler` needs. The QuantEcon images carry Node 24. On a standard runner, set it up before this action with `actions/setup-node`, as in [preview-netlify's example](preview-netlify.md#on-a-standard-runner).
+- **Node.** 22.12 or later, which the pinned `wrangler` needs. The QuantEcon images carry Node 24. On a standard runner, set it up before this action with `actions/setup-node`, as in [preview-netlify's example](preview-netlify.md#on-a-standard-runner).
 - **Permissions.** `pull-requests: write`, for the comment. The job also needs `contents: read` for `actions/checkout`. A run outside a pull request posts no comment, so it needs only `contents: read`. A placeholder's job needs the same two, and no checkout: `pull-requests: write` for the comment and the pull request's changed files, and `contents: read` to look for `_toc.yml`.
 - **Secrets.** `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, from [Setting up Cloudflare Pages](#setting-up-cloudflare-pages). A placeholder needs neither, only `project-name`.
 - **Files in your repository.** None beyond the built site. The comment's lecture links compare the pull request's head with the commit where it branched off its base branch. A checkout with `fetch-depth: 0` has that commit, and nothing is fetched. From a shallow checkout, such as `actions/checkout`'s default of one commit, the action fetches history until it finds it, up to 1,024 commits behind the pull request's base and head: see [preview-netlify's Behaviour](preview-netlify.md#behaviour). That fetch uses whatever credentials `actions/checkout` left in the checkout, and with `persist-credentials: false`, as `ci.yml` sets, it has none. A public repository needs none. A private repository checks out with `fetch-depth: 0`, so that nothing is fetched.
@@ -223,7 +223,7 @@ Previews of pull requests from forks are not supported, and the action skips the
 
 **`npm ci of the pinned wrangler failed — see the npm output above (it needs registry.npmjs.org)`.** The runner cannot reach the npm registry, or npm is missing.
 
-**`wrangler installed but does not run — see the output above`.** Usually a Node older than 22. Set up Node 24 before this action.
+**`wrangler installed but does not run — see the output above`.** Usually a Node older than 22.12. Set up Node 24 before this action.
 
 **`A deploy needs cloudflare-api-token, cloudflare-account-id and build-dir, and this run has no …`.** The step does not pass them, or the repository has no such secret, which then reads as empty. A run that deploys nothing, such as a fork's pull request, is not checked. A placeholder's step needs none of the three: give it `placeholder: 'true'`.
 

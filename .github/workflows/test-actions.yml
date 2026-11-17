@@ -3790,7 +3790,8 @@ jobs:
   # jobs can prove without one: that the gate probe tells every response shape
   # apart, that the action refuses before installing anything when the gate is
   # absent, that bad inputs fail fast, and that the pinned wrangler (which
-  # Dependabot bumps) still accepts the config the action generates.
+  # Dependabot bumps) still accepts the config the action generates, and runs
+  # on the Node the action leaves it.
 
   dc-gate-probe:
     name: 'deploy-cloudflare: the gate probe tells every response shape apart, gated and public'
@@ -4367,7 +4368,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # The action installs Node itself only below 22; the runner's default
+      # The action installs Node itself only below 22.12; the runner's default
       # may be older, so set it here the way the action would.
       - uses: actions/setup-node@v7
         with:
@@ -4404,6 +4405,122 @@ jobs:
             echo "::error::the pinned wrangler does not recognise a key in the generated config (see 'Unexpected fields' above)"; exit 1
           fi
           echo "✅ wrangler $("$wrangler" --version | tail -1) accepts the generated config for deploy and versions upload"
+
+  dc-node-minimum:
+    # The pinned wrangler refuses to run below Node 22.12.0, its engines
+    # minimum since 4.159.0, and npm ci only warns about it. The action uses
+    # the runner's Node from 22.12 on and sets up Node 24 below that, so this
+    # job runs the whole action on a real Node either side of the line, set up
+    # with actions/setup-node, against dc-refuses-mismatch's stand-in for a
+    # public Worker: the check before the deploy passes, and the action gets
+    # as far as wrangler, which then fails on the fake token. The generated
+    # config, written only once `wrangler --version` has run, shows that
+    # wrangler ran, and `node --version` after the action shows which Node it
+    # left on PATH.
+    #
+    # On 22.11.0 the action must set up Node 24: a check of the major version
+    # alone keeps 22.11.0, on which the wrangler #340 pinned refuses to run.
+    # On 22.12.0 it must keep the runner's Node, and wrangler must run on it,
+    # so a wrangler bump that raises its minimum again turns this job red
+    # until the action's check and the docs' minimum move with it.
+    name: 'deploy-cloudflare: on Node 22.11 sets up Node 24 for the pinned wrangler, and on 22.12 keeps it'
+    # A GitHub-hosted runner only, for the stand-in's sake, as in
+    # dc-refuses-mismatch.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    env:
+      PUBLIC: harness-public.quantecon-harness-local.workers.dev
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Create a site to (not) deploy
+        run: |
+          mkdir -p harness-site/data
+          echo '<h1>report</h1>' > harness-site/index.html
+          echo '{}' > harness-site/data/latest.json
+
+      # dc-refuses-mismatch's stand-in, for the public Worker alone.
+      - name: Stand in for a public Worker on this runner
+        run: |
+          set -euo pipefail
+          d="$RUNNER_TEMP/stand-in"
+          mkdir -p "$d"
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=deploy-cloudflare harness' \
+            -addext "subjectAltName=DNS:$PUBLIC" -keyout "$d/key.pem" -out "$d/cert.pem" 2>/dev/null
+          sudo cp "$d/cert.pem" /usr/local/share/ca-certificates/deploy-cloudflare-harness.crt
+          sudo update-ca-certificates
+          echo "127.0.0.1 $PUBLIC" | sudo tee -a /etc/hosts
+          sudo sysctl -w net.ipv4.ip_unprivileged_port_start=443
+          python3 .github/fixtures/access-gate/server.py 443 "$d/cert.pem" "$d/key.pem" > "$RUNNER_TEMP/server.log" 2>&1 &
+          for _ in $(seq 1 50); do curl -s -o /dev/null "https://$PUBLIC/" && break; sleep 0.2; done
+          bash scripts/check-access-gate.sh --public "https://$PUBLIC/" "https://$PUBLIC/data/latest.json"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22.11.0'
+          package-manager-cache: false
+
+      - name: On Node 22.11.0 (expected to set up Node 24, reach wrangler, then fail)
+        id: node-22-11
+        continue-on-error: true
+        uses: ./deploy-cloudflare
+        with:
+          cloudflare-api-token: 'harness-fake-token'
+          cloudflare-account-id: '00000000000000000000000000000000'
+          worker-name: 'harness-public'
+          account-subdomain: 'quantecon-harness-local'
+          visibility: 'public'
+          build-dir: 'harness-site'
+
+      - name: Assert the action set up Node 24, and wrangler ran
+        env:
+          OUTCOME: ${{ steps.node-22-11.outcome }}
+        run: |
+          set -euo pipefail
+          [ "$OUTCOME" = "failure" ] || { echo "::error::outcome: expected [failure] with a fake token, got [$OUTCOME]"; exit 1; }
+          v=$(node --version)
+          case "$v" in
+            v24.*) ;;
+            *) echo "::error::Node is $v after the action, not 24: it did not set up Node 24 on a runner whose Node, 22.11.0, the pinned wrangler refuses"; exit 1 ;;
+          esac
+          [ -f "$RUNNER_TEMP/deploy-cloudflare/harness-public.wrangler.jsonc" ] || { echo "::error::the generated config is missing: the action did not get past installing wrangler (see its output above)"; exit 1; }
+          # The next case must show its own install.
+          rm -rf "$RUNNER_TEMP/deploy-cloudflare"
+          echo "✅ on Node 22.11.0 the action set up Node $v, and the pinned wrangler ran"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22.12.0'
+          package-manager-cache: false
+
+      - name: On Node 22.12.0 (expected to keep it, reach wrangler, then fail)
+        id: node-22-12
+        continue-on-error: true
+        uses: ./deploy-cloudflare
+        with:
+          cloudflare-api-token: 'harness-fake-token'
+          cloudflare-account-id: '00000000000000000000000000000000'
+          worker-name: 'harness-public'
+          account-subdomain: 'quantecon-harness-local'
+          visibility: 'public'
+          build-dir: 'harness-site'
+
+      - name: Assert the action kept Node 22.12.0, and wrangler ran on it
+        env:
+          OUTCOME: ${{ steps.node-22-12.outcome }}
+        run: |
+          set -euo pipefail
+          [ "$OUTCOME" = "failure" ] || { echo "::error::outcome: expected [failure] with a fake token, got [$OUTCOME]"; exit 1; }
+          v=$(node --version)
+          [ "$v" = "v22.12.0" ] || { echo "::error::Node is $v after the action, not v22.12.0: it set up another Node on a runner whose Node meets the pinned wrangler's minimum"; exit 1; }
+          [ -f "$RUNNER_TEMP/deploy-cloudflare/harness-public.wrangler.jsonc" ] || { echo "::error::the generated config is missing: the action did not get past installing wrangler on Node 22.12.0. If wrangler refused to run (see its output above), the pinned wrangler needs a later Node: raise the action's Node check, and the minimum in the docs of deploy-cloudflare, preview-cloudflare and preview-workers, and preview-netlify's comparison table"; exit 1; }
+          echo "✅ on Node 22.12.0 the action kept the runner's Node, and the pinned wrangler ran on it"
+
+      - name: Show the stand-in's requests
+        if: always()
+        run: cat "$RUNNER_TEMP/server.log" || true
 
   # ==========================================================================
   # publish-gh-pages — the release assets' contract, and the modes (#233)
@@ -6282,6 +6399,7 @@ jobs:
       - dc-inputs
       - dc-wrangler-config
       - dc-refuses-mismatch
+      - dc-node-minimum
       - publish-release-packaging
       - publish-modes
       - restore-round-trip
