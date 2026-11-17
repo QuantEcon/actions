@@ -24,7 +24,7 @@ Use it to publish a site that must not be public, or a public site that belongs 
 ## Requirements
 
 - **Runner.** Any with `bash`, `curl` and `npm`, as GitHub-hosted runners and the QuantEcon images have. The job must be able to reach `registry.npmjs.org`, from which `wrangler` is installed each run.
-- **Node.** 22 or later, for `wrangler`. The action sets up Node 24 itself when the runner has an older one or none. The QuantEcon images carry Node 24.
+- **Node.** 22.12 or later, for `wrangler`. The action sets up Node 24 itself when the runner has an older one or none. The QuantEcon images carry Node 24.
 - **Permissions.** None of its own: the action calls no GitHub API. The job needs `contents: read` for `actions/checkout`.
 - **Secrets.** `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, from the [setup checklist](#setup-checklist). Runs from forks and by Dependabot get no secrets, and the action then fails before it contacts anything.
 - **Files in your repository.** None beyond the built site: the action writes the Worker's wrangler configuration itself, for each run.
@@ -192,7 +192,7 @@ No template uses this action: a site on a Worker, private or public, is a choice
 2. **The check before the deploy**, on the production URL. If it fails, the job fails with nothing uploaded.
    - **Private:** the URL must be gated. That refuses a Worker that does not exist, as a mistyped name would be, one that is public, and one gated by another Access organisation.
    - **Public:** the URL must not be behind any Access. That refuses a private site's Worker named by mistake, and a site declared public that is in fact gated, before anything is overwritten. A `404` passes here, since the version live now need not hold this build's files; a Worker that does not exist then fails at the deploy, because the token cannot create one.
-3. **wrangler.** The action sets up Node 24 if the runner lacks Node 22 or later, and installs the `wrangler` version pinned in its [`package.json`](https://github.com/QuantEcon/actions/blob/main/deploy-cloudflare/package.json) with `npm ci`, into a temporary directory.
+3. **wrangler.** The action sets up Node 24 if the runner lacks Node 22.12 or later, and installs the `wrangler` version pinned in its [`package.json`](https://github.com/QuantEcon/actions/blob/main/deploy-cloudflare/package.json) with `npm ci`, into a temporary directory.
 4. **The configuration.** It writes a wrangler configuration for this one run, with the Worker's name, a fixed compatibility date, `build-dir` as the assets directory, and `workers_dev` and `preview_urls` both on. It declares no routes.
 5. **The deploy.** `wrangler deploy` publishes `build-dir` to production. Every version also gets its own preview URL, `https://<first 8 characters of the version ID>-<worker-name>.<account-subdomain>.workers.dev`, read from the `Current Version ID` line of wrangler's output.
 6. **The check after the deploy**, on production and on the new version's preview URL: gated for a private site, served for a public one. It runs even when `wrangler deploy` fails, because wrangler can fail after the new version is already live.

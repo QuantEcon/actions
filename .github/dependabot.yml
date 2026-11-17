@@ -134,7 +134,9 @@ updates:
   # preview-workers-config dry-run the generated config through each bumped
   # wrangler, the second also checking its record of the upload, and
   # preview-cli-install runs `npm ci` from each preview lockfile and checks
-  # `--version`.
+  # `--version`. dc-node-minimum runs deploy-cloudflare's wrangler on Node
+  # 22.12, the action's minimum, so a bump that raises wrangler's Node
+  # minimum fails there.
   - package-ecosystem: "npm"
     directories:
       - "/deploy-cloudflare"

@@ -23,7 +23,7 @@ Use it in a job of its own that deploys a pull request's build, in place of the 
 ## Requirements
 
 - **Runner.** Any, with `bash`, `git` and `npm`, as GitHub-hosted runners and the QuantEcon images have. The job must be able to reach `registry.npmjs.org`: `wrangler` is installed each run from the lockfile beside the action.
-- **Node.** 22 or later, which the pinned `wrangler` needs. The QuantEcon images carry Node 24. On a standard runner, set it up before this action with `actions/setup-node`, as in [preview-netlify's example](preview-netlify.md#on-a-standard-runner).
+- **Node.** 22.12 or later, which the pinned `wrangler` needs. The QuantEcon images carry Node 24. On a standard runner, set it up before this action with `actions/setup-node`, as in [preview-netlify's example](preview-netlify.md#on-a-standard-runner).
 - **Permissions.** `pull-requests: write`, for the comment. The job also needs `contents: read` for `actions/checkout`. A run outside a pull request posts no comment, so it needs only `contents: read`. A placeholder's job needs the same two, and no checkout: `pull-requests: write` for the comment and the pull request's changed files, and `contents: read` to look for `_toc.yml`.
 - **Secrets.** `CLOUDFLARE_WORKERS_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, from [Setting up a Cloudflare Worker](#setting-up-a-cloudflare-worker). A placeholder needs neither, only `worker-name` and `account-subdomain`.
 - **Files in your repository.** None beyond the built site: the action writes the Worker's wrangler configuration for each run. The comment's lecture links are found as [preview-cloudflare's](preview-cloudflare.md#requirements) are, from the pull request's history, and the same notes on shallow checkouts and private repositories apply.
@@ -243,7 +243,7 @@ The token from [step 4](#setting-up-a-cloudflare-worker) can upload versions of 
 
 **`npm ci of the pinned wrangler failed — see the npm output above (it needs registry.npmjs.org)`.** The runner cannot reach the npm registry, or npm is missing.
 
-**`wrangler installed but does not run — see the output above`.** Usually a Node older than 22. Set up Node 24 before this action.
+**`wrangler installed but does not run — see the output above`.** Usually a Node older than 22.12. Set up Node 24 before this action.
 
 **`A deploy needs cloudflare-api-token, cloudflare-account-id and build-dir, and this run has no …`.** The step does not pass them, or the repository has no such secret, which then reads as empty. A run that deploys nothing, such as a fork's pull request, is not checked. A placeholder's step needs none of the three: give it `placeholder: 'true'`.
 

@@ -279,22 +279,29 @@ runs:
         esac
         exit 1
 
-    - name: Check for Node.js 22 or later
+    # The pinned wrangler refuses to run below Node 22.12.0, its engines
+    # minimum since 4.159.0, and npm ci only warns about it (#340). So the
+    # runner's Node is used only from 22.12 on, compared by major and minor;
+    # below that, with no node, or with a version that cannot be read, the next
+    # step sets up Node 24, which the QuantEcon images carry. dc-node-minimum
+    # in the harness runs the action on a Node either side of the line.
+    - name: Check for Node.js 22.12 or later
       id: node
       shell: bash
       run: |
-        major=0
+        ok=false v=""
         if command -v node >/dev/null 2>&1; then
-          v=$(node --version); major=${v#v}; major=${major%%.*}
+          v=$(node --version 2>/dev/null || true)
           echo "Found node $v"
         fi
-        # wrangler refuses to run below 22. The QuantEcon images carry 24.
-        if [ "$major" -ge 22 ] 2>/dev/null; then
-          echo "ok=true" >> "$GITHUB_OUTPUT"
-        else
-          echo "ok=false" >> "$GITHUB_OUTPUT"
-          echo "Node.js 22+ not found; installing 24"
+        if [[ "$v" =~ ^v([0-9]+)\.([0-9]+)\.[0-9] ]]; then
+          major=${BASH_REMATCH[1]} minor=${BASH_REMATCH[2]}
+          if [ "$major" -gt 22 ] || { [ "$major" -eq 22 ] && [ "$minor" -ge 12 ]; }; then
+            ok=true
+          fi
         fi
+        echo "ok=$ok" >> "$GITHUB_OUTPUT"
+        [ "$ok" = true ] || echo "Node.js 22.12 or later not found; installing 24"
 
     - name: Set up Node.js
       if: steps.node.outputs.ok != 'true'

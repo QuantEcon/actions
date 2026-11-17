@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **`deploy-cloudflare`**: the action now sets up Node 24 when the runner's Node is 22.0 to 22.11.
+  The pinned wrangler, now 4.162.0, refuses to run below Node 22.12.0, its minimum since 4.159.0,
+  but the action's check read only the major version, so on such a runner it kept the runner's
+  Node and the wrangler install failed. The check now compares the major and minor versions, and
+  sets up Node 24 below 22.12, with no `node`, or with a version it cannot read. The new harness
+  job `dc-node-minimum` runs the action on Node 22.11.0, where it must set up Node 24, and on
+  22.12.0, where it must keep the runner's Node and wrangler must run on it, so a wrangler bump
+  that raises its minimum again fails the harness. The chapters of `deploy-cloudflare`,
+  `preview-cloudflare` and `preview-workers`, and `preview-netlify`'s comparison table, now give
+  wrangler's minimum as Node 22.12. (#340)
+
 ## [0.21.0] - 2026-11-16
 
 ### Documentation
