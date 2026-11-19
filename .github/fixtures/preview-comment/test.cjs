@@ -22,7 +22,19 @@
 //     lectures-dir, project-name, worker-name or account-subdomain (#267),
 //     and never sees a secret; preview-workers' refuses a Worker name or
 //     subdomain that is not a hostname label, and an alias that does not
-//     fit in one with the Worker's name.
+//     fit in one with the Worker's name;
+//   - with comment-key (#336), the comment has the key in its marker and
+//     headings, the KEYED fixtures, and each key, and the comment with none,
+//     keeps a comment of its own on one pull request, never taking another's;
+//     the input check refuses a key that is not lowercase words joined by
+//     dashes, at most 28 characters, on every event;
+//   - with toc-file (#336), the placeholder lists the files of
+//     ../preview-toc/changes.tsv that each site's toc names, as
+//     ../preview-toc/<site>.tsv lists them, which is also what
+//     preview-change-detection asserts of the deploy's change detection, and
+//     links each at its page; a toc it cannot read, or that names no page, is
+//     a warning, and the comment lists no lectures; the input check refuses a
+//     toc-file that is not a plain path from the repository root.
 //
 // Usage: node test.cjs STEPS_JSON, where STEPS_JSON maps each action's
 // directory to its `check-inputs`, `comment-script` and `comment` steps and
@@ -56,6 +68,24 @@ const NETLIFY_URL = 'https://pr-5--harness-site.netlify.app';
 const CLOUDFLARE_URL = 'https://pr-5.harness-project.pages.dev';
 const WORKERS_URL = 'https://pr-5-harness-worker.harness-sub.workers.dev';
 const TWO_LECTURES = 'lectures/aiyagari.md\nlectures/mccall_model.md';
+
+// A keyed comment's marker: the provider's, with `:<key>` before its end.
+const keyedMarker = (action, key) => MARKER[action].replace(/ -->$/, `:${key} -->`);
+
+// toc-file's fixtures, shared with preview-change-detection: two sites' tocs,
+// copied from QuantEcon/lectures, a pull request's files as the API lists
+// them, and what each site's toc must list from them, as [file, page].
+const TOC_FIXTURES = path.join(__dirname, '..', 'preview-toc');
+const DP_TOC = 'sites/dp/_toc.yml';
+const JAX_TOC = 'sites/jax/_toc.yml';
+const tocText = file => fs.readFileSync(path.join(TOC_FIXTURES, file), 'utf8');
+const TOCS = { [DP_TOC]: tocText(DP_TOC), [JAX_TOC]: tocText(JAX_TOC) };
+const TOC_PR_FILES = tocText('changes.tsv').split('\n').filter(l => l && !l.startsWith('#')).map(l => {
+  const [status, filename, previous] = l.split('\t');
+  return previous ? { filename, status, previous_filename: previous } : { filename, status };
+});
+const tocListed = site => tocText(`${site}.tsv`).split('\n').filter(l => l).map(l => l.split('\t'));
+const DP_LISTED = tocListed('dp');
 
 // Each one is a fixture, <name>.md: the step env the action would pass, as
 // the deploy and change detection would set it.
@@ -157,18 +187,71 @@ const PENDING = [
   },
 ];
 
-const golden = name => [...GOLDEN, ...WORKERS, ...PENDING].find(g => g.name === name);
+// comment-key's and toc-file's fixtures (#336), <name>.md, rendered by the
+// shared script and read by eye: the deploy's comments, and the
+// placeholder's.
+const KEYED = [
+  {
+    // As change detection sets it from dp's toc: a pool lecture, a renamed
+    // one and a page of the site's own, each at its page.
+    name: 'netlify-keyed-toc', action: 'preview-netlify',
+    env: { DEPLOY_URL: NETLIFY_URL, COMMENT_KEY: 'dp', CHANGED_FILES: DP_LISTED.map(([f]) => f).join('\n'), CHANGED_PAGES: DP_LISTED.map(([, p]) => p).join('\n'),
+      LECTURES_DIR: 'lectures', TOC_FILE: DP_TOC, STRIP_LECTURES_DIR: 'false', COMMIT_SHA: SHA },
+  },
+  {
+    // toc-file alone: the heading and marker with no key.
+    name: 'netlify-toc', action: 'preview-netlify',
+    env: { DEPLOY_URL: NETLIFY_URL, CHANGED_FILES: DP_LISTED.map(([f]) => f).join('\n'), CHANGED_PAGES: DP_LISTED.map(([, p]) => p).join('\n'),
+      LECTURES_DIR: 'lectures', TOC_FILE: DP_TOC, STRIP_LECTURES_DIR: 'false', COMMIT_SHA: SHA },
+  },
+  {
+    // comment-key alone: the lectures as without one.
+    name: 'cloudflare-keyed', action: 'preview-cloudflare',
+    env: { DEPLOY_URL: CLOUDFLARE_URL, COMMENT_KEY: 'dp', DEPLOYMENT_URL: 'https://1a2b3c4d.harness-project.pages.dev', CHANGED_FILES: TWO_LECTURES, LECTURES_DIR: 'lectures', STRIP_LECTURES_DIR: 'true', COMMIT_SHA: SHA },
+  },
+  {
+    name: 'workers-keyed', action: 'preview-workers',
+    env: { DEPLOY_URL: WORKERS_URL, COMMENT_KEY: 'dp', DEPLOYMENT_URL: 'https://1a2b3c4d-harness-worker.harness-sub.workers.dev', CHANGED_FILES: TWO_LECTURES, LECTURES_DIR: 'lectures', STRIP_LECTURES_DIR: 'true', COMMIT_SHA: SHA },
+  },
+];
+const KEYED_PENDING = [
+  {
+    name: 'netlify-pending-keyed-toc', action: 'preview-netlify',
+    env: { PREVIEW_STATE: 'pending', PREVIEW_ALIAS: 'pr-5', PREVIEW_SITE: 'harness-site', COMMENT_KEY: 'dp', LECTURES_DIR: 'lectures', TOC_FILE: DP_TOC, COMMIT_SHA: SHA },
+    api: { files: TOC_PR_FILES, tocs: TOCS },
+  },
+  {
+    // The other site on the same pull request, on another provider.
+    name: 'cloudflare-pending-keyed-toc', action: 'preview-cloudflare',
+    env: { PREVIEW_STATE: 'pending', PREVIEW_ALIAS: 'pr-5', PREVIEW_SITE: 'harness-project', COMMENT_KEY: 'jax', LECTURES_DIR: 'lectures', TOC_FILE: JAX_TOC, COMMIT_SHA: SHA },
+    api: { files: TOC_PR_FILES, tocs: TOCS },
+  },
+  {
+    // A toc that is not at the head: no lectures.
+    name: 'netlify-pending-keyed', action: 'preview-netlify',
+    env: { PREVIEW_STATE: 'pending', PREVIEW_ALIAS: 'pr-5', PREVIEW_SITE: 'harness-site', COMMENT_KEY: 'dp', LECTURES_DIR: 'lectures', TOC_FILE: 'sites/gone/_toc.yml', COMMIT_SHA: SHA },
+    api: { files: TOC_PR_FILES, tocs: TOCS },
+  },
+];
+
+const golden = name => [...GOLDEN, ...WORKERS, ...PENDING, ...KEYED, ...KEYED_PENDING].find(g => g.name === name);
 const fixture = name => fs.readFileSync(path.join(__dirname, `${name}.md`), 'utf8');
 
 // Comments, in the API's shape. Ids are positions, from 1.
 const person = body => ({ user: { login: 'a-reviewer', type: 'User' }, body });
 const bot = body => ({ user: { login: BOT, type: 'Bot' }, body });
 const people = n => Array.from({ length: n }, (_, i) => person(`Review comment ${i + 1}`));
-// A comment as v0.14.0 posted it, with no marker, and as the script posts it.
+// A comment as v0.14.0 posted it, with no marker, and as the script posts it,
+// after its key's marker when it has one.
 const before = name => fixture(name);
-const after = name => `${MARKER[golden(name).action]}\n${fixture(name)}`;
+const after = name => {
+  const g = golden(name);
+  return `${g.env.COMMENT_KEY ? keyedMarker(g.action, g.env.COMMENT_KEY) : MARKER[g.action]}\n${fixture(name)}`;
+};
 // The same, for an earlier push.
 const earlier = body => body.split(SHA).join(OLD_SHA).split(SHA.substring(0, 7)).join(OLD_SHA.substring(0, 7));
+// A keyed comment with another key, in its marker and its heading.
+const rekey = (body, from, to) => body.replace(`:${from} -->\n`, `:${to} -->\n`).replace(` (${from})\n`, ` (${to})\n`);
 
 // Each case runs one action with one golden's env on a pull request that
 // already has `comments`, and expects one write: a new comment (`create`) or
@@ -233,6 +316,36 @@ const lookupCases = () => [
     comments: [bot(before('cloudflare-lectures')), bot(after('cloudflare-lectures'))], expect: 'create' },
   { name: "preview-workers' comment only: posts one", golden: 'cloudflare-lectures',
     comments: [bot(before('workers-lectures')), bot(after('workers-lectures'))], expect: 'create' },
+
+  // comment-key (#336): each key, and the comment with none, keeps its own.
+  { name: 'keyed, beside the comment with no key: posts its own', golden: 'netlify-keyed-toc',
+    comments: [bot(after('netlify-lectures'))], expect: 'create' },
+  { name: 'keyed, beside a comment from before the marker: posts its own', golden: 'netlify-keyed-toc',
+    comments: [bot(before('netlify-lectures'))], expect: 'create' },
+  { name: 'keyed: updates its own, after the one with no key', golden: 'netlify-keyed-toc',
+    comments: [bot(after('netlify-lectures')), person('Thanks!'), bot(earlier(after('netlify-keyed-toc')))], expect: { update: 3 } },
+  { name: 'no key, beside a keyed comment: posts its own', golden: 'netlify-lectures',
+    comments: [bot(after('netlify-keyed-toc'))], expect: 'create' },
+  { name: 'no key: updates its own, not the keyed one after it', golden: 'netlify-lectures',
+    comments: [bot(earlier(after('netlify-lectures'))), bot(after('netlify-keyed-toc'))], expect: { update: 1 } },
+  { name: "keyed dp, beside dp-2's comment: posts its own", golden: 'netlify-keyed-toc',
+    comments: [bot(rekey(after('netlify-keyed-toc'), 'dp', 'dp-2'))], expect: 'create' },
+  { name: "keyed dp, beside d's comment: posts its own", golden: 'netlify-keyed-toc',
+    comments: [bot(rekey(after('netlify-keyed-toc'), 'dp', 'd'))], expect: 'create' },
+  { name: 'keyed: a comment with its heading and no marker is not its own', golden: 'netlify-keyed-toc',
+    comments: [bot(before('netlify-keyed-toc'))], expect: 'create' },
+  { name: "keyed, the deploy: replaces its placeholder's comment in place", golden: 'netlify-keyed-toc',
+    comments: [bot(after('netlify-lectures')), bot(after('netlify-pending-keyed-toc'))], expect: { update: 2 } },
+  { name: "keyed, the placeholder, after this push's keyed deploy: leaves the deploy's comment", golden: 'netlify-pending-keyed-toc',
+    comments: [bot(after('netlify-keyed-toc'))], expect: 'none' },
+  { name: "keyed, the placeholder, after this push's deploy with no key: posts its own", golden: 'netlify-pending-keyed-toc',
+    comments: [bot(after('netlify-lectures'))], expect: 'create' },
+  { name: "no key, the placeholder, after this push's keyed deploy: posts its own", golden: 'netlify-pending',
+    comments: [bot(after('netlify-keyed-toc'))], expect: 'create' },
+  { name: 'two keys on one provider: each updates its own', golden: 'cloudflare-pending-keyed-toc',
+    comments: [bot(after('cloudflare-keyed')), bot(earlier(after('cloudflare-pending-keyed-toc')))], expect: { update: 2 } },
+  { name: "the same key on preview-cloudflare: posts its own", golden: 'workers-keyed',
+    comments: [bot(after('cloudflare-keyed'))], expect: 'create' },
 ];
 
 // The input check's cases, one action each: `env` is the step's env, `rc` the
@@ -378,7 +491,48 @@ const CHECKS = [
   { name: "account-subdomain with a line break, on a fork's run that deploys nothing", action: 'preview-workers',
     env: { ...WORKERS_DEPLOY, DEPLOY: 'false', ALIAS: '', ...WORKERS_NONE, ACCOUNT_SUBDOMAIN: 'harness-sub\r\n' }, rc: 1,
     out: /^::error::account-subdomain must be a single line, got 'harness-sub%0D%0A'\n?$/ },
+  ...keyAndTocChecks(),
 ];
+
+// comment-key's and toc-file's input checks (#336), the same in each action:
+// from a deploy with every other input set, and on a fork's run, which
+// deploys nothing but is checked all the same.
+function keyAndTocChecks() {
+  const base = {
+    'preview-netlify': [{ PLACEHOLDER: 'false', DEPLOY: 'true', SITE_NAME: '', ...NETLIFY_SET, BUILD_DIR: '_build/html', LECTURES_DIR: 'lectures' },
+      { PLACEHOLDER: 'false', DEPLOY: 'false', SITE_NAME: '', ...NETLIFY_NONE, LECTURES_DIR: 'lectures' }],
+    'preview-cloudflare': [{ PLACEHOLDER: 'false', DEPLOY: 'true', ...CLOUDFLARE_SET, PROJECT_NAME: 'harness-project', BUILD_DIR: '_build/html', LECTURES_DIR: 'lectures' },
+      { PLACEHOLDER: 'false', DEPLOY: 'false', ...CLOUDFLARE_NONE, PROJECT_NAME: 'harness-project', LECTURES_DIR: 'lectures' }],
+    'preview-workers': [{ ...WORKERS_DEPLOY, ...WORKERS_SET },
+      { ...WORKERS_DEPLOY, DEPLOY: 'false', ALIAS: '', ...WORKERS_NONE }],
+  };
+  const cases = [];
+  for (const [action, [deploy, fork]] of Object.entries(base)) {
+    const output = action === 'preview-workers' ? { output: WORKERS_OUTPUT } : {};
+    const ok = (name, env) => cases.push({ name, action, env: { ...deploy, ...env }, rc: 0, out: 'quiet', ...output });
+    const refused = (name, env, out, from = deploy) => cases.push({ name, action, env: { ...from, ...env }, rc: 1, out });
+    ok('comment-key and toc-file, as a site in a matrix passes them', { COMMENT_KEY: 'dp', TOC_FILE: DP_TOC });
+    ok('comment-key of 28 characters', { COMMENT_KEY: `${'a'.repeat(13)}-${'b'.repeat(14)}` });
+    ok('toc-file in lectures-dir', { TOC_FILE: 'lectures/_toc.yml' });
+    for (const key of ['a'.repeat(29), 'DP', 'dp_2', '-dp', 'dp-', 'dp--2', 'dp 2']) {
+      refused(`comment-key [${key}]`, { COMMENT_KEY: key },
+        new RegExp(`^::error::comment-key is \\[${key}\\], not lowercase letters and digits in words joined by single dashes, at most 28 characters\\n?$`));
+    }
+    refused("a bad comment-key on a fork's run that deploys nothing", { COMMENT_KEY: 'DP' }, /^::error::comment-key is \[DP\], /, fork);
+    refused('comment-key with a line break, refused before anything else and escaped', { COMMENT_KEY: 'dp\n::warning::injected' },
+      /^::error::comment-key must be a single line, got 'dp%0A::warning::injected'\n?$/);
+    for (const toc of ['/sites/dp/_toc.yml', '../_toc.yml', 'sites/../_toc.yml', './sites/dp/_toc.yml', 'sites/./dp/_toc.yml', 'sites//dp/_toc.yml', 'sites/dp/']) {
+      refused(`toc-file [${toc}]`, { TOC_FILE: toc },
+        new RegExp(`^::error::toc-file is \\[${toc.replace(/\./g, '\\.')}\\], not a path from the repository root such as sites/dp/_toc\\.yml: `));
+    }
+    refused("a bad toc-file on a fork's run that deploys nothing", { TOC_FILE: '../_toc.yml' }, /^::error::toc-file is \[\.\.\/_toc\.yml\], /, fork);
+    refused('toc-file with a line break, refused before anything else and escaped', { TOC_FILE: 'sites/dp/_toc.yml\r\n' },
+      /^::error::toc-file must be a single line, got 'sites\/dp\/_toc\.yml%0D%0A'\n?$/);
+    cases.push({ name: "toc-file with lectures-dir: ''", action, env: { ...deploy, TOC_FILE: DP_TOC, LECTURES_DIR: '' }, rc: 0,
+      out: /^::warning::toc-file is not used with lectures-dir: '', which turns change detection off\.\n?$/, ...output });
+  }
+  return cases;
+}
 
 // What each action's steps must say, where the cases above take a value for
 // granted: the expressions behind the env that test cases fill in, and the
@@ -389,6 +543,16 @@ const WIRING = {
       PREVIEW_COMMENT_SCRIPT: '${{ steps.comment-script.outputs.path }}',
       PREVIEW_STATE: "${{ inputs.placeholder == 'true' && 'pending' || 'ready' }}",
       PREVIEW_ALIAS: '${{ steps.decide.outputs.alias }}',
+      COMMENT_KEY: '${{ inputs.comment-key }}',
+      TOC_FILE: '${{ inputs.toc-file }}',
+      CHANGED_FILES: '${{ steps.detect-changes.outputs.changed-files }}',
+      CHANGED_PAGES: '${{ steps.detect-changes.outputs.changed-pages }}',
+      LECTURES_DIR: '${{ inputs.lectures-dir }}',
+    },
+    // The deploy's change detection, which reads toc-file from the checkout.
+    detect: {
+      LECTURES_DIR: '${{ inputs.lectures-dir }}',
+      TOC_FILE: '${{ inputs.toc-file }}',
     },
     if: {
       'detect-changes': "steps.decide.outputs.deploy == 'true' && inputs.placeholder != 'true' && inputs.lectures-dir != '' && github.event_name == 'pull_request'",
@@ -405,6 +569,7 @@ const WIRING = {
       PLACEHOLDER: '${{ inputs.placeholder }}', DEPLOY: '${{ steps.decide.outputs.deploy }}', SITE_NAME: '${{ inputs.netlify-site-name }}',
       HAVE_TOKEN: "${{ inputs.netlify-auth-token != '' }}", HAVE_SITE_ID: "${{ inputs.netlify-site-id != '' }}", HAVE_BUILD_DIR: "${{ inputs.build-dir != '' }}",
       BUILD_DIR: '${{ inputs.build-dir }}', LECTURES_DIR: '${{ inputs.lectures-dir }}',
+      TOC_FILE: '${{ inputs.toc-file }}', COMMENT_KEY: '${{ inputs.comment-key }}',
     },
   },
   'preview-cloudflare': {
@@ -413,6 +578,7 @@ const WIRING = {
       PLACEHOLDER: '${{ inputs.placeholder }}', DEPLOY: '${{ steps.decide.outputs.deploy }}',
       HAVE_TOKEN: "${{ inputs.cloudflare-api-token != '' }}", HAVE_ACCOUNT_ID: "${{ inputs.cloudflare-account-id != '' }}", HAVE_BUILD_DIR: "${{ inputs.build-dir != '' }}",
       PROJECT_NAME: '${{ inputs.project-name }}', BUILD_DIR: '${{ inputs.build-dir }}', LECTURES_DIR: '${{ inputs.lectures-dir }}',
+      TOC_FILE: '${{ inputs.toc-file }}', COMMENT_KEY: '${{ inputs.comment-key }}',
     },
   },
   'preview-workers': {
@@ -422,6 +588,7 @@ const WIRING = {
       HAVE_TOKEN: "${{ inputs.cloudflare-api-token != '' }}", HAVE_ACCOUNT_ID: "${{ inputs.cloudflare-account-id != '' }}", HAVE_BUILD_DIR: "${{ inputs.build-dir != '' }}",
       WORKER_NAME: '${{ inputs.worker-name }}', ACCOUNT_SUBDOMAIN: '${{ inputs.account-subdomain }}', DISPATCH_ALIAS: '${{ inputs.dispatch-alias }}',
       BUILD_DIR: '${{ inputs.build-dir }}', LECTURES_DIR: '${{ inputs.lectures-dir }}',
+      TOC_FILE: '${{ inputs.toc-file }}', COMMENT_KEY: '${{ inputs.comment-key }}',
     },
   },
 };
@@ -429,8 +596,9 @@ const WIRING = {
 // A stand-in for the Octokit client actions/github-script passes as `github`.
 // listComments and listFiles serve one page, 30 items unless per_page says
 // otherwise (at most 100), as the REST API does; paginate fetches every page.
-// getContent finds only the paths in `api.contents`, and answers 404 for
-// any other, as the API does; `api.fail` makes the named call fail.
+// getContent finds only the paths in `api.contents`, and those in `api.tocs`
+// with their text, base64-encoded as the API sends a file, and answers 404
+// for any other, as the API does; `api.fail` makes the named call fail.
 function stubGitHub(comments, api = {}) {
   const stored = comments.map((c, i) => ({ id: i + 1, ...c }));
   const writes = [];
@@ -484,6 +652,9 @@ function stubGitHub(comments, api = {}) {
       if (p.ref !== SHA) throw new Error(`getContent called at ${p.ref}, not the pull request's head`);
       failing('getContent');
       if ((api.contents || []).includes(p.path)) return { data: { type: 'file', path: p.path } };
+      if (api.tocs && Object.hasOwn(api.tocs, p.path)) {
+        return { data: { type: 'file', path: p.path, encoding: 'base64', content: Buffer.from(api.tocs[p.path]).toString('base64') } };
+      }
       throw Object.assign(new Error('Not Found'), { status: 404 });
     },
   };
@@ -628,6 +799,9 @@ async function main() {
       for (const [id, want] of Object.entries(WIRING.common.if)) {
         if (s.if[id] !== want) problems.push(`step ${id}'s if is [${s.if[id]}], not [${want}]`);
       }
+      for (const [key, want] of Object.entries(WIRING.common.detect)) {
+        if (s.detect.env[key] !== want) problems.push(`detect-changes env ${key} is [${s.detect.env[key]}], not [${want}]`);
+      }
       const want = WIRING[action].check;
       for (const key of new Set([...Object.keys(want), ...Object.keys(s.check.env)])) {
         if (s.check.env[key] !== want[key]) problems.push(`check-inputs env ${key} is [${s.check.env[key]}], not [${want[key]}]`);
@@ -687,6 +861,106 @@ async function main() {
     });
   }
 
+  // comment-key and toc-file (#336).
+  for (const g of KEYED) {
+    await check(`${g.action}: renders ${g.name}.md, after its marker`, async () => {
+      const result = await runGolden(g, []);
+      const w = oneWrite(result);
+      if (w.op !== 'create') throw new Error(`expected a new comment, got ${w.op} ${w.id}`);
+      if (w.body !== after(g.name)) throw new Error(difference(after(g.name), w.body));
+      if (result.calls.length) throw new Error(`the deploy's comment asked the API for [${result.calls.join(', ')}], which change detection gives it`);
+    });
+  }
+
+  for (const g of KEYED_PENDING) {
+    await check(`${g.action}: the placeholder renders ${g.name}.md, after its marker`, async () => {
+      const w = oneWrite(await runGolden(g, []));
+      if (w.op !== 'create') throw new Error(`expected a new comment, got ${w.op} ${w.id}`);
+      if (w.body !== after(g.name)) throw new Error(difference(after(g.name), w.body));
+    });
+  }
+
+  for (const [site, name] of [['dp', 'netlify-pending-keyed-toc'], ['jax', 'cloudflare-pending-keyed-toc']]) {
+    await check(`the placeholder lists what ${site}'s toc names, as preview-toc/${site}.tsv, with no warning`, async () => {
+      const g = golden(name);
+      const { log } = writesOf(await runGolden(g, []));
+      const listed = log.filter(l => l.startsWith('info: ✓ Changed: ')).map(l => l.slice('info: ✓ Changed: '.length));
+      const want = tocListed(site).map(([f]) => f);
+      if (listed.join('\n') !== want.join('\n')) throw new Error(`listed [${listed.join(', ')}], not [${want.join(', ')}]`);
+      if (log.some(l => l.startsWith('warning:'))) throw new Error(`a warning; log: [${log.join(' | ')}]`);
+    });
+  }
+
+  // A toc it cannot use is a warning, and the comment lists no lectures, as
+  // netlify-pending-keyed.md, whose toc is not at the head.
+  const tocProblems = [
+    { name: 'not at the head', env: {}, api: {}, warning: /^warning: Could not read toc-file sites\/gone\/_toc\.yml at the pull request's head, so no changed lectures are listed: Not Found$/ },
+    { name: 'when getContent fails', env: { TOC_FILE: DP_TOC }, api: { fail: 'getContent' },
+      warning: /^warning: Could not read toc-file sites\/dp\/_toc\.yml at the pull request's head, so no changed lectures are listed: stand-in getContent failure$/ },
+    { name: 'that names no page but its root', env: { TOC_FILE: DP_TOC }, api: { tocs: { [DP_TOC]: 'format: jb-book\nroot: intro\n' } },
+      warning: /^warning: toc-file sites\/dp\/_toc\.yml names no page, so no changed lectures are listed$/ },
+  ];
+  for (const t of tocProblems) {
+    await check(`preview-netlify: the placeholder, with a toc ${t.name}: warns, and posts the comment with no lectures`, async () => {
+      const g = golden('netlify-pending-keyed');
+      const result = await runSteps(steps, g.action, { ...g.env, ...t.env }, [], { ...g.api, ...t.api });
+      const w = oneWrite(result);
+      if (!result.log.some(l => t.warning.test(l))) throw new Error(`no warning matching ${t.warning}; log: [${result.log.join(' | ')}]`);
+      if (w.body !== after('netlify-pending-keyed')) throw new Error(difference(after('netlify-pending-keyed'), w.body));
+    });
+  }
+
+  await check("preview-netlify: the placeholder, when the toc names none of the pull request's files: lists none, with no warning", async () => {
+    const g = golden('netlify-pending-keyed-toc');
+    const result = await runSteps(steps, g.action, g.env, [], { ...g.api, files: [{ filename: 'README.md', status: 'modified' }] });
+    const w = oneWrite(result);
+    if (result.log.some(l => l.startsWith('warning:'))) throw new Error(`a warning; log: [${result.log.join(' | ')}]`);
+    if (w.body !== after('netlify-pending-keyed')) throw new Error(difference(after('netlify-pending-keyed'), w.body));
+  });
+
+  // The toc reader on its own, for the forms QuantEcon/lectures' tocs do not
+  // use, and a toc in lectures-dir or at the root, as other repositories keep
+  // it.
+  const script = require(path.join(steps['preview-netlify'].dir, '..', 'scripts', 'preview-comment.cjs'));
+  const readerCases = [
+    { name: 'quotes, a .md, nested sections and CRLF line ends', text: "format: jb-book\r\nroot: 'intro.md'\r\nchapters:\r\n- file: \"a.md\"\r\n  sections:\r\n  - file: sub/b\r\n- file: 'c'  # a comment\r\n",
+      pages: ['a', 'sub/b', 'c'] },
+    { name: 'no glob, url or title entry, nor a line commented out', text: 'root: intro\nchapters:\n- glob: extra/*\n- url: https://example.com\n  title: Example\n#- file: off\n  # - file: off2\n- file: on\n',
+      pages: ['on'] },
+    { name: 'not the root, even where an entry names it again', text: 'root: intro\nchapters:\n- file: intro\n- file: a\n- file: a\n', pages: ['a'] },
+  ];
+  for (const t of readerCases) {
+    await check(`the toc reader: ${t.name}`, async () => {
+      const { pages } = script.readToc(t.text);
+      if (pages.join(',') !== t.pages.join(',')) throw new Error(`read [${pages.join(', ')}], not [${t.pages.join(', ')}]`);
+    });
+  }
+  const selectCases = [
+    { name: 'a toc in lectures-dir links each page without the folder', tocFile: 'lectures/_toc.yml', text: 'root: intro\nchapters:\n- file: a\n- file: sub/b\n',
+      files: ['lectures/a.md', 'lectures/c.md', 'lectures/sub/b.md', 'other/a.md'], found: [['lectures/a.md', 'a'], ['lectures/sub/b.md', 'sub/b']] },
+    { name: 'a toc at the root keeps lectures-dir in the page, as its site does', tocFile: '_toc.yml', text: 'root: intro\nchapters:\n- file: lectures/a\n',
+      files: ['lectures/a.md', 'lectures/b.md'], found: [['lectures/a.md', 'lectures/a']] },
+    { name: 'a toc at the root that names a and lectures/a gives each file its own page', tocFile: '_toc.yml', text: 'root: intro\nchapters:\n- file: a\n- file: lectures/a\n',
+      files: ['a.md', 'lectures/a.md'], found: [['a.md', 'a'], ['lectures/a.md', 'lectures/a']] },
+    { name: 'a toc at the root that names only a does not take lectures/a.md for it', tocFile: '_toc.yml', text: 'root: intro\nchapters:\n- file: a\n',
+      files: ['lectures/a.md'], found: [] },
+  ];
+  for (const t of selectCases) {
+    await check(`toc-file's choice: ${t.name}`, async () => {
+      const { found, problem } = script.tocSelect(t.files, { lecturesDir: 'lectures', tocFile: t.tocFile, text: t.text });
+      const got = (found || []).map(f => `${f.file}=${f.page}`).join(', ');
+      const want = t.found.map(([f, p]) => `${f}=${p}`).join(', ');
+      if (problem || got !== want) throw new Error(`chose [${got}]${problem ? ` (${problem})` : ''}, not [${want}]`);
+    });
+  }
+
+  await check('a COMMENT_KEY the input check would refuse fails the step, and writes nothing', async () => {
+    const g = golden('netlify-keyed-toc');
+    const { writes, error } = await runSteps(steps, g.action, { ...g.env, COMMENT_KEY: 'dp -->' }, []);
+    if (!error || !/COMMENT_KEY is \[dp -->\]/.test(error.message)) throw new Error(`expected an error naming COMMENT_KEY [dp -->], got [${error ? error.message : 'none'}]`);
+    if (writes.length) throw new Error(`expected no write, got ${writes.length}`);
+  });
+
   const lookup = lookupCases();
   for (const t of lookup) {
     const g = golden(t.golden);
@@ -728,7 +1002,9 @@ async function main() {
     if (writes.length) throw new Error(`expected no write, got ${writes.length}`);
   });
 
-  const want = 3 + CHECKS.length + GOLDEN.length + WORKERS.length + PENDING.length + 3 + lookup.length + 3;
+  const want = 3 + CHECKS.length + GOLDEN.length + WORKERS.length + PENDING.length + 3
+    + KEYED.length + KEYED_PENDING.length + 2 + tocProblems.length + 1 + readerCases.length + selectCases.length + 1
+    + lookup.length + 3;
   if (n !== want) {
     console.log(`::error::expected ${want} cases, ran ${n}`);
     process.exit(1);
@@ -738,7 +1014,7 @@ async function main() {
 }
 
 // For rendering the fixtures with an older action.yml's steps.
-module.exports = { GOLDEN, WORKERS, PENDING, runSteps };
+module.exports = { GOLDEN, WORKERS, PENDING, KEYED, KEYED_PENDING, runSteps };
 
 if (require.main === module) {
   main().catch(e => {

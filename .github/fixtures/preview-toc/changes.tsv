@@ -1,0 +1,36 @@
+# The pull request that both harness jobs run toc-file against (#336): the
+# files GitHub's API lists for it, one to a line, as status, path and, for a
+# rename, the previous path, separated by tabs. preview-change-detection makes
+# it as commits in a scratch repository and runs the deploy's change
+# detection; preview-comment serves it as the API's file list to the
+# placeholder. sites/dp/_toc.yml and sites/jax/_toc.yml are copies of
+# QuantEcon/lectures' at 868773d, and dp.tsv and jax.tsv are what each must
+# list from this pull request. The comment above each line says why.
+# dp.
+modified	lectures/mccall_model.md
+# dp: its toc's line for it ends in a comment.
+modified	lectures/mccall_risk.md
+# dp: under its new path.
+renamed	lectures/os_egm.md	lectures/os_egm_draft.md
+# Neither: no toc names it.
+added	lectures/new_lecture.md
+# jax.
+modified	lectures/job_search.md
+# Neither: jax's toc has its line commented out.
+modified	lectures/cake_eating_numerical.md
+# Neither: removed, though dp's toc names it.
+removed	lectures/career.md
+# Neither: no toc names it (without a toc, the `_` rule leaves it out).
+added	lectures/_static/lecture_specific/notes.md
+# Neither: dp's root page, which is not listed.
+modified	sites/dp/intro.md
+# dp: a page of the site's own, in the toc's folder.
+modified	sites/dp/status.md
+# Neither: not a .md.
+modified	sites/dp/_toc.yml
+# jax.
+modified	sites/jax/about_jax.md
+# jax, not dp: in jax's folder, though both tocs name status.
+modified	sites/jax/status.md
+# Neither.
+modified	README.md

@@ -5245,7 +5245,9 @@ jobs:
     #     (#147), whether or not the two commits had to be fetched first;
     #   - history already in the checkout is never cut;
     #   - every git failure a ::warning:: with git's own message, and never a
-    #     failed step (finding L4 of the 2026-10-06 review).
+    #     failed step (finding L4 of the 2026-10-06 review);
+    #   - with toc-file, only what the toc names, as the placeholder lists it
+    #     (#336): the second step.
     name: 'preview-*: change detection lists only what the pull request changed'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -5430,6 +5432,146 @@ jobs:
           [ "$bad" -eq 0 ] || exit 1
           echo "✅ change detection lists what the pull request changed, fetches a bounded history, and warns when git fails"
 
+      # toc-file (#336): the pull request in .github/fixtures/preview-toc/,
+      # which the preview-comment job serves to the placeholder, made here as
+      # two commits. Each site's toc must list from it exactly what that job's
+      # placeholder lists, <site>.tsv, file and page; a toc that is not in the
+      # checkout, or a node that fails, is a warning with nothing listed;
+      # with no toc-file, the same pull request is listed by lectures-dir's
+      # rules; and a page called EOF reaches the outputs whole.
+      - name: Run the script with toc-file against the fixture pull request
+        run: |
+          set -euo pipefail
+          script="$PWD/scripts/detect-changed-lectures.sh"
+          fixtures="$PWD/.github/fixtures/preview-toc"
+          work="$RUNNER_TEMP/detect-toc"
+          rm -rf "$work"; mkdir -p "$work/repo"; cd "$work/repo"
+          export GIT_AUTHOR_NAME=harness GIT_AUTHOR_EMAIL=harness@example.com
+          export GIT_COMMITTER_NAME=harness GIT_COMMITTER_EMAIL=harness@example.com
+          bad=0
+          fail() { echo "::error::$*"; bad=1; }
+
+          # The base holds every path the pull request modifies or removes,
+          # a rename's old path, and jax's toc; the head makes each change,
+          # with dp's toc as its modification of sites/dp/_toc.yml.
+          changes=$(grep -v '^#' "$fixtures/changes.tsv")
+          put() { mkdir -p "$(dirname "$1")"; echo "# $1" > "$1"; }
+          git init -q -b main .
+          while IFS=$'\t' read -r status path old; do
+            case "$status" in
+              modified|removed) put "$path" ;;
+              renamed) put "$old" ;;
+            esac
+          done <<< "$changes"
+          mkdir -p sites/jax && cp "$fixtures/sites/jax/_toc.yml" sites/jax/_toc.yml
+          git add -A && git commit -qm base
+          BASE=$(git rev-parse HEAD)
+          while IFS=$'\t' read -r status path old; do
+            case "$status" in
+              modified) echo "an edit" >> "$path" ;;
+              added) put "$path" ;;
+              removed) git rm -q "$path" ;;
+              renamed) mkdir -p "$(dirname "$path")"; git mv "$old" "$path" ;;
+              *) fail "changes.tsv: unknown status [$status]" ;;
+            esac
+          done <<< "$changes"
+          cp "$fixtures/sites/dp/_toc.yml" sites/dp/_toc.yml
+          git add -A && git commit -qm "the pull request"
+          HEAD_SHA=$(git rev-parse HEAD)
+          # The commits match the fixture, so both jobs test one pull request.
+          got=$(git diff --no-renames --name-only "$BASE" "$HEAD_SHA" | sort)
+          want=$(cut -f2,3 <<< "$changes" | tr '\t' '\n' | sort -u)
+          [ "$got" = "$want" ] || fail "the commits change [$(paste -sd' ' <<< "$got")], not changes.tsv's [$(paste -sd' ' <<< "$want")]"
+
+          # value NAME FILE: the output NAME in a GITHUB_OUTPUT file, read as
+          # the runner reads one: NAME=VALUE, or NAME<<DELIMITER and the
+          # lines up to DELIMITER. Fails on a line that is neither, or a
+          # block that does not end.
+          value() {
+            awk -v name="$1" '
+              d != "" { if ($0 == d) d = ""; else if (n == name) print; next }
+              index($0, "<<") { n = substr($0, 1, index($0, "<<") - 1); d = substr($0, index($0, "<<") + 2); next }
+              index($0, "=") { if (substr($0, 1, index($0, "=") - 1) == name && substr($0, index($0, "=") + 1) != "") print substr($0, index($0, "=") + 1); next }
+              { bad = 1 }
+              END { exit (bad || d != "") }
+            ' "$2"
+          }
+
+          # detect NAME TOC [PATH]: run the script as the actions do, with
+          # TOC_FILE=TOC and, if given, PATH. The log is echoed between
+          # stop-commands, so the warnings these cases expect are not raised
+          # as annotations on this job. NAME.files holds changed-files and
+          # changed-pages side by side, as <site>.tsv does.
+          detect() {
+            local status=0 token="detect-$RANDOM$RANDOM$RANDOM" out="$work/$1.out"
+            : > "$out"
+            GITHUB_OUTPUT="$out" BASE_SHA="$BASE" HEAD_SHA="$HEAD_SHA" LECTURES_DIR=lectures TOC_FILE="$2" PATH="${3:-$PATH}" \
+              bash "$script" > "$work/$1.log" 2>&1 || status=$?
+            echo "::stop-commands::$token"
+            sed 's/^/    /' "$work/$1.log"
+            echo "::$token::"
+            [ "$status" -eq 0 ] || fail "$1: the script exited $status"
+            value changed-files "$out" > "$work/$1.f" || fail "$1: GITHUB_OUTPUT is not as the runner reads it"
+            value changed-pages "$out" > "$work/$1.p" || true
+            paste "$work/$1.f" "$work/$1.p" | sed $'s/\t$//' > "$work/$1.files"
+          }
+          expect() {  # expect NAME FILE: NAME's list is FILE's
+            cmp -s "$work/$1.files" "$2" \
+              || fail "$1: listed [$(paste -sd' ' "$work/$1.files")], expected [$(paste -sd' ' "$2")]"
+          }
+          expect_no_warning() { ! grep -q '::warning::' "$work/$1.log" || fail "$1: unexpected warning"; }
+
+          for site in dp jax; do
+            echo "::group::$site: sites/$site/_toc.yml"
+            detect "$site" "sites/$site/_toc.yml"
+            expect "$site" "$fixtures/$site.tsv"
+            expect_no_warning "$site"
+            echo "::endgroup::"
+          done
+
+          echo "::group::gone: a toc-file that is not in the checkout"
+          detect gone sites/gone/_toc.yml
+          grep -q '^::warning::Could not read toc-file sites/gone/_toc.yml in the checkout, so no changed lectures are listed: ENOENT' "$work/gone.log" \
+            || fail "gone: no warning naming the toc"
+          expect gone /dev/null
+          echo "::endgroup::"
+
+          echo "::group::nonode: a node that fails"
+          mkdir -p "$work/bin"
+          printf '#!/bin/sh\necho "harness: node failed" >&2\nexit 1\n' > "$work/bin/node"
+          chmod +x "$work/bin/node"
+          detect nonode sites/dp/_toc.yml "$work/bin:$PATH"
+          grep -q '^::warning::Could not read toc-file sites/dp/_toc.yml with node, so no changed lectures are listed: harness: node failed' "$work/nonode.log" \
+            || fail "nonode: no warning carrying node's message"
+          expect nonode /dev/null
+          echo "::endgroup::"
+
+          echo "::group::notoc: the same pull request with no toc-file"
+          detect notoc ''
+          printf '%s\n' lectures/cake_eating_numerical.md lectures/job_search.md lectures/mccall_model.md \
+            lectures/mccall_risk.md lectures/new_lecture.md lectures/os_egm.md > "$work/notoc.want"
+          expect notoc "$work/notoc.want"
+          expect_no_warning notoc
+          echo "::endgroup::"
+
+          echo "::group::eof: a page called EOF, the outputs' usual delimiter"
+          mkdir -p "$work/eof/lectures" "$work/eof/sites/eof"
+          cd "$work/eof"
+          git init -q -b main .
+          echo "# EOF" > lectures/EOF.md
+          printf 'root: intro\nchapters:\n- file: EOF\n' > sites/eof/_toc.yml
+          git add -A && git commit -qm base
+          BASE=$(git rev-parse HEAD)
+          echo "an edit" >> lectures/EOF.md && git commit -qam "the pull request"
+          HEAD_SHA=$(git rev-parse HEAD)
+          detect eof sites/eof/_toc.yml
+          printf 'lectures/EOF.md\tEOF\n' > "$work/eof.want"
+          expect eof "$work/eof.want"
+          echo "::endgroup::"
+
+          [ "$bad" -eq 0 ] || exit 1
+          echo "✅ with toc-file, change detection lists what each site's toc names, as the placeholder does, and warns when it cannot read the toc"
+
   preview-decide:
     # #227, #193: scripts/preview-decide.sh is the one decision both preview
     # actions follow, for their change detection, CLI install, deploy and
@@ -5565,9 +5707,11 @@ jobs:
     # their bodies), and preview-workers' as its own fixtures, which came
     # after (#145); that the placeholder's comment lists the lectures by
     # change detection's rules, and that the deploy's comment then replaces
-    # it, never the other way round for one commit; and that the action
-    # updates its own comment however many come before it, and never anyone
-    # else's. test.cjs lists the cases.
+    # it, never the other way round for one commit; that the action updates
+    # its own comment however many come before it, and never anyone else's;
+    # and, with comment-key and toc-file (#336), that each key keeps a
+    # comment of its own and the comment lists only what the toc names.
+    # test.cjs lists the cases.
     name: 'preview-*: each action renders its comment as before, and updates only its own'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -5599,6 +5743,7 @@ jobs:
               steps[d] = {
                   'dir': os.path.abspath(d),
                   'check': {'shell': check['shell'], 'env': check['env'], 'run': check['run']},
+                  'detect': {'env': by_id['detect-changes']['env']},
                   'resolve': {'shell': resolve['shell'], 'run': resolve['run']},
                   'comment': {'uses': comment['uses'], 'env': comment['env'], 'with': comment['with']},
                   # Each step's condition, by id, '' for none.
