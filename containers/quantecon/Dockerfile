@@ -146,7 +146,7 @@ ENV CHROME_SHA256=dba9cc838e1ce269c33ea68170881127bd15d078fc3ca5891c90802819a4d7
 RUN apt-get update && \
     apt-get install -y --no-install-recommends unzip fonts-liberation && \
     rm -rf /var/lib/apt/lists/* && \
-    curl -fsSL https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chrome-linux64.zip -o /tmp/chrome.zip && \
+    curl -fsSL --retry 5 --retry-all-errors https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chrome-linux64.zip -o /tmp/chrome.zip && \
     echo "${CHROME_SHA256}  /tmp/chrome.zip" | sha256sum -c - && \
     unzip -q /tmp/chrome.zip -d /opt && \
     mv /opt/chrome-linux64 /opt/chrome && \
@@ -181,7 +181,8 @@ RUN python --version && \
     test "$(node -p process.versions.node)" = "${NODE_VERSION}" && \
     npm --version && \
     "$BROWSER_PATH" --version | grep -F "$CHROME_VERSION" && \
-    ! ldd "$BROWSER_PATH" | grep -F 'not found' && \
+    chrome_libs=$(ldd "$BROWSER_PATH" /opt/chrome/*.so*) && \
+    ! printf '%s\n' "$chrome_libs" | grep -F 'not found' && \
     jupyter --version && \
     jupyter-book --version && \
     pdflatex --version

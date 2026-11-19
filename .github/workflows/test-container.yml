@@ -57,8 +57,8 @@ jobs:
         image: ${{ fromJSON(inputs.images) }}
     # A real container job, not `docker run`. The runner mounts an empty
     # directory at /github/home and forces HOME=/github/home; `docker run` gets
-    # HOME=/root. That is exactly how #85 (kaleido v1 losing its bundled
-    # chromium, provisioned under /root at image build time) passed this
+    # HOME=/root. That is exactly how #85 (kaleido v1 losing the Chrome
+    # provisioned under /root at image build time) passed this
     # workflow while failing test-containers-lectures.yml, which does use a
     # container job. Same pattern as that workflow.
     container:

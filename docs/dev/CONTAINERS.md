@@ -58,7 +58,7 @@ A digest pinned anywhere else must be in the pins file, or it goes with its buil
 3. builds the fixture book, `minimal-jupyter-book/`, as HTML with `quantecon_book_theme`, executing every cell, under `-W --keep-going`;
 4. builds it as a PDF with the `pdflatex` builder, using XeLaTeX and Sphinx's default FreeFont `fontpkg`.
 
-The fixture's cells execute, so a broken science stack fails the build, and they export a plotly figure, which covers kaleido and Chrome. In an image, that cell first checks that the export goes through the image's Chrome, so it fails for any of these:
+The fixture's cells execute, so a broken science stack fails the build, and they export two plotly figures, which covers kaleido and Chrome. The second is a 3D scene, drawn with WebGL in software, and its cell fails if the picture comes back blank. In an image, that cell first checks that the export goes through the image's Chrome, so it fails for any of these:
 
 - a kaleido below 1.0, which would export with its own bundled browser;
 - a `BROWSER_PATH` that names no executable;

@@ -126,3 +126,35 @@ assert img.startswith(b"\x89PNG"), "plotly/kaleido did not produce a PNG"
 assert len(img) > 1000, f"plotly PNG suspiciously small ({len(img)} bytes)"
 print(f"plotly {plotly.__version__}: kaleido exported {len(img)} byte PNG")
 ```
+
+## Plotly 3D export (WebGL)
+
+A 3D scene is drawn with WebGL, which headless Chrome runs in software
+(SwiftShader, through ANGLE). The BCG lectures export `go.Surface` and
+`go.Scatter3d` figures. When WebGL fails, the export still returns a valid PNG,
+just a blank one, so the cell checks the pixels. With no legend, title or
+margins, everything in the picture but the white paper is WebGL's: the scene's
+shaded axis planes and the red markers.
+
+```{code-cell} python3
+import io
+
+import numpy as np
+import plotly.graph_objects as go
+from PIL import Image
+
+t = np.linspace(0, 4 * np.pi, 60)
+fig = go.Figure(go.Scatter3d(
+    x=np.cos(t), y=np.sin(t), z=t, mode="markers",
+    marker=dict(size=6, color="rgb(255, 0, 0)"),
+))
+fig.update_layout(showlegend=False, margin=dict(l=0, r=0, t=0, b=0))
+img = fig.to_image(format="png", width=300, height=300)
+
+pixels = list(Image.open(io.BytesIO(img)).convert("RGB").getdata())
+drawn = sum(p != (255, 255, 255) for p in pixels)
+red = sum(r > 200 and g < 80 and b < 80 for r, g, b in pixels)
+assert drawn > len(pixels) // 10, f"3D export is blank: {drawn} of {len(pixels)} pixels drawn, so WebGL drew no scene"
+assert red > 100, f"3D export shows no markers: {red} red pixels of {len(pixels)}"
+print(f"3D export: {drawn} of {len(pixels)} pixels drawn, {red} red")
+```
