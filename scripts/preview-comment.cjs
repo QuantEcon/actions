@@ -184,10 +184,13 @@ function readToc(text) {
 }
 
 // The changed files that are pages of toc-file's toc, each with its page,
-// which is also its link: a `.md` in lecturesDir, or in the toc's own folder
-// (where a site keeps the pages that are not in the pool), whose path there,
-// without `.md`, is a page the toc names. `problem` is set, and nothing is
-// listed, when the toc names no page.
+// which is also its link. A `.md` in the toc's own folder is the page at its
+// path there, as for a book built from that folder, or a site's own pages
+// kept beside its toc; any other `.md` in lecturesDir is the page at its path
+// in lecturesDir, as for a site built from a pool of lectures. Each is listed
+// when the toc names its page. So a toc at the repository root reads
+// lectures/a.md as the page lectures/a, never as a. `problem` is set, and
+// nothing is listed, when the toc names no page.
 function tocSelect(files, { lecturesDir, tocFile, text }) {
   const { pages } = readToc(text);
   if (pages.length === 0) {
@@ -195,18 +198,16 @@ function tocSelect(files, { lecturesDir, tocFile, text }) {
   }
   const named = new Set(pages);
   const tocDir = path.posix.dirname(tocFile);
-  const prefixes = [`${lecturesDir}/`, tocDir === '.' ? '' : `${tocDir}/`];
+  const tocPrefix = tocDir === '.' ? '' : `${tocDir}/`;
   const found = [];
   for (const file of files) {
     if (!file.endsWith('.md')) continue;
-    for (const prefix of prefixes) {
-      if (!file.startsWith(prefix)) continue;
-      const page = file.slice(prefix.length, -'.md'.length);
-      if (named.has(page)) {
-        found.push({ file, page });
-        break;
-      }
-    }
+    let prefix;
+    if (file.startsWith(tocPrefix)) prefix = tocPrefix;
+    else if (file.startsWith(`${lecturesDir}/`)) prefix = `${lecturesDir}/`;
+    else continue;
+    const page = file.slice(prefix.length, -'.md'.length);
+    if (named.has(page)) found.push({ file, page });
   }
   return { found };
 }

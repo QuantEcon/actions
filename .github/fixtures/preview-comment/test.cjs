@@ -940,6 +940,10 @@ async function main() {
       files: ['lectures/a.md', 'lectures/c.md', 'lectures/sub/b.md', 'other/a.md'], found: [['lectures/a.md', 'a'], ['lectures/sub/b.md', 'sub/b']] },
     { name: 'a toc at the root keeps lectures-dir in the page, as its site does', tocFile: '_toc.yml', text: 'root: intro\nchapters:\n- file: lectures/a\n',
       files: ['lectures/a.md', 'lectures/b.md'], found: [['lectures/a.md', 'lectures/a']] },
+    { name: 'a toc at the root that names a and lectures/a gives each file its own page', tocFile: '_toc.yml', text: 'root: intro\nchapters:\n- file: a\n- file: lectures/a\n',
+      files: ['a.md', 'lectures/a.md'], found: [['a.md', 'a'], ['lectures/a.md', 'lectures/a']] },
+    { name: 'a toc at the root that names only a does not take lectures/a.md for it', tocFile: '_toc.yml', text: 'root: intro\nchapters:\n- file: a\n',
+      files: ['lectures/a.md'], found: [] },
   ];
   for (const t of selectCases) {
     await check(`toc-file's choice: ${t.name}`, async () => {

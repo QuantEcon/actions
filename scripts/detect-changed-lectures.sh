@@ -215,25 +215,21 @@ if [ -n "$toc_file" ]; then
   fi
 fi
 
-if [ -n "$changed_lecture_files" ]; then
-  {
-    echo "changed-files<<EOF"
-    echo "$changed_lecture_files"
-    echo "EOF"
-  } >> "$GITHUB_OUTPUT"
-else
-  echo "changed-files=" >> "$GITHUB_OUTPUT"
-fi
+# output NAME VALUE: VALUE, one or more lines, as the step's output NAME,
+# ended by EOF, or by another delimiter when EOF is one of VALUE's lines, as
+# a page called EOF would be.
+output() {
+  local delimiter=EOF
+  if [ -z "$2" ]; then
+    echo "$1=" >> "$GITHUB_OUTPUT"
+    return
+  fi
+  while grep -qxF -- "$delimiter" <<< "$2"; do delimiter="EOF_${RANDOM}${RANDOM}"; done
+  printf '%s<<%s\n%s\n%s\n' "$1" "$delimiter" "$2" "$delimiter" >> "$GITHUB_OUTPUT"
+}
 
-if [ -n "$changed_pages" ]; then
-  {
-    echo "changed-pages<<EOF"
-    echo "$changed_pages"
-    echo "EOF"
-  } >> "$GITHUB_OUTPUT"
-else
-  echo "changed-pages=" >> "$GITHUB_OUTPUT"
-fi
+output changed-files "$changed_lecture_files"
+output changed-pages "$changed_pages"
 
 if [ -n "$toc_file" ]; then
   echo "strip-lectures-dir=false" >> "$GITHUB_OUTPUT"

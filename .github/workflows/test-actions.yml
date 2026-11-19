@@ -5436,9 +5436,9 @@ jobs:
       # which the preview-comment job serves to the placeholder, made here as
       # two commits. Each site's toc must list from it exactly what that job's
       # placeholder lists, <site>.tsv, file and page; a toc that is not in the
-      # checkout, or a node that fails, is a warning with nothing listed; and
+      # checkout, or a node that fails, is a warning with nothing listed;
       # with no toc-file, the same pull request is listed by lectures-dir's
-      # rules.
+      # rules; and a page called EOF reaches the outputs whole.
       - name: Run the script with toc-file against the fixture pull request
         run: |
           set -euo pipefail
@@ -5483,6 +5483,20 @@ jobs:
           want=$(cut -f2,3 <<< "$changes" | tr '\t' '\n' | sort -u)
           [ "$got" = "$want" ] || fail "the commits change [$(paste -sd' ' <<< "$got")], not changes.tsv's [$(paste -sd' ' <<< "$want")]"
 
+          # value NAME FILE: the output NAME in a GITHUB_OUTPUT file, read as
+          # the runner reads one: NAME=VALUE, or NAME<<DELIMITER and the
+          # lines up to DELIMITER. Fails on a line that is neither, or a
+          # block that does not end.
+          value() {
+            awk -v name="$1" '
+              d != "" { if ($0 == d) d = ""; else if (n == name) print; next }
+              index($0, "<<") { n = substr($0, 1, index($0, "<<") - 1); d = substr($0, index($0, "<<") + 2); next }
+              index($0, "=") { if (substr($0, 1, index($0, "=") - 1) == name && substr($0, index($0, "=") + 1) != "") print substr($0, index($0, "=") + 1); next }
+              { bad = 1 }
+              END { exit (bad || d != "") }
+            ' "$2"
+          }
+
           # detect NAME TOC [PATH]: run the script as the actions do, with
           # TOC_FILE=TOC and, if given, PATH. The log is echoed between
           # stop-commands, so the warnings these cases expect are not raised
@@ -5497,8 +5511,8 @@ jobs:
             sed 's/^/    /' "$work/$1.log"
             echo "::$token::"
             [ "$status" -eq 0 ] || fail "$1: the script exited $status"
-            awk '/^changed-files<<EOF$/ { on = 1; next } /^EOF$/ { on = 0 } on' "$out" > "$work/$1.f"
-            awk '/^changed-pages<<EOF$/ { on = 1; next } /^EOF$/ { on = 0 } on' "$out" > "$work/$1.p"
+            value changed-files "$out" > "$work/$1.f" || fail "$1: GITHUB_OUTPUT is not as the runner reads it"
+            value changed-pages "$out" > "$work/$1.p" || true
             paste "$work/$1.f" "$work/$1.p" | sed $'s/\t$//' > "$work/$1.files"
           }
           expect() {  # expect NAME FILE: NAME's list is FILE's
@@ -5538,6 +5552,21 @@ jobs:
             lectures/mccall_risk.md lectures/new_lecture.md lectures/os_egm.md > "$work/notoc.want"
           expect notoc "$work/notoc.want"
           expect_no_warning notoc
+          echo "::endgroup::"
+
+          echo "::group::eof: a page called EOF, the outputs' usual delimiter"
+          mkdir -p "$work/eof/lectures" "$work/eof/sites/eof"
+          cd "$work/eof"
+          git init -q -b main .
+          echo "# EOF" > lectures/EOF.md
+          printf 'root: intro\nchapters:\n- file: EOF\n' > sites/eof/_toc.yml
+          git add -A && git commit -qm base
+          BASE=$(git rev-parse HEAD)
+          echo "an edit" >> lectures/EOF.md && git commit -qam "the pull request"
+          HEAD_SHA=$(git rev-parse HEAD)
+          detect eof sites/eof/_toc.yml
+          printf 'lectures/EOF.md\tEOF\n' > "$work/eof.want"
+          expect eof "$work/eof.want"
           echo "::endgroup::"
 
           [ "$bad" -eq 0 ] || exit 1
