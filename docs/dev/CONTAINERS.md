@@ -59,10 +59,13 @@ A digest pinned anywhere else must be in the pins file, or it goes with its buil
 4. builds it as a PDF with the `pdflatex` builder, using XeLaTeX and Sphinx's default FreeFont `fontpkg`.
 
 The fixture's cells execute, so a broken science stack fails the build, and they export a plotly figure, which covers kaleido and Chrome. In an image, that cell first checks that the export goes through the image's Chrome, so it fails for any of these:
+
 - a kaleido below 1.0, which would export with its own bundled browser;
 - a `BROWSER_PATH` that names no executable;
 - choreographer, kaleido's browser layer, finding any other Chrome first;
-- a Chrome downloaded under `HOME`. `smoke-test.sh --self-test` stages a raising cell and fails unless the build goes red. Run the smoke test in a `container:` job, not with `docker run`: `docker run` keeps `HOME=/root`, so it cannot reproduce failures that depend on a container job's `HOME=/github/home`, such as #85.
+- a Chrome downloaded under `HOME`.
+
+`smoke-test.sh --self-test` stages a raising cell and fails unless the build goes red. Run the smoke test in a `container:` job, not with `docker run`: `docker run` keeps `HOME=/root`, so it cannot reproduce failures that depend on a container job's `HOME=/github/home`, such as #85.
 
 To test a branch's fixture against the published images, or a pull request's candidates:
 

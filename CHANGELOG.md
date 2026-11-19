@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   environment does, could export no figure. The Chrome is Chrome for Testing 158.0.8127.36, pinned
   by version and SHA-256 as Node is, in `/opt/chrome`. `BROWSER_PATH` names it, so kaleido finds
   it whatever `HOME` a job sets. plotly stays at 6.7.0, the Anaconda 2026.07 baseline. With
-  kaleido 0.2's bundled Chromium gone, each image grows by about 0.13 GB compressed and 0.2 GB on
+  kaleido 0.2's bundled Chromium gone, each image grows by about 0.04 GB compressed and 0.13 GB on
   disk. The smoke fixture's export now checks that it goes through that Chrome, and
   `scripts/check-base-pins.sh` that both Dockerfiles pin the same Miniconda, Node and Chrome. A
   repository that needs kaleido 0.2 back can install `kaleido<1` through `environment-update`.
