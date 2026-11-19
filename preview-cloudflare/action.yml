@@ -41,6 +41,29 @@ inputs:
       turns change detection off, and the comment gives only the preview URL.
     required: false
     default: 'lectures'
+  toc-file:
+    description: >-
+      A Jupyter Book `_toc.yml`, as a path from the repository root such as `sites/dp/_toc.yml`,
+      for a site built from some of the lectures in `lectures-dir`. A changed `.md` is then listed
+      only when the toc names it, as `<lectures-dir>/<page>.md`, or as `<page>.md` in the toc's own
+      folder for a page of the site's own, and its link is `<page>.html`. The toc's `root:` page
+      is not listed. The toc is read at the pull request's head, one `file:` entry to a line; when
+      it is missing or names no page, the action warns and lists no lectures. A value with a line
+      break, a leading `/`, or a `.`, `..` or empty part fails the job. Empty, the default, lists
+      the lectures in `lectures-dir` by its own rules. Not used with `lectures-dir: ''`.
+    required: false
+    default: ''
+  comment-key:
+    description: >-
+      Gives this preview a pull request comment of its own, for a repository that previews several
+      sites on Cloudflare Pages, such as one per site in a matrix. The key goes after the comment's heading,
+      as `(dp)`, and in its hidden marker, and the action then finds and updates only the comment
+      with that key. Lowercase letters and digits in words joined by single dashes, at most 28
+      characters; any other value fails the job, on every event. Empty, the default, is the
+      comment with no key, which a keyed preview never touches. The key does not change where the
+      preview is deployed: each site needs a Pages project of its own.
+    required: false
+    default: ''
   dispatch-alias:
     description: >-
       Deploys on `workflow_dispatch` and `schedule` events too, to this branch, such as
@@ -93,7 +116,8 @@ outputs:
       line, compared from the commit where it branched off. When a shallow checkout's history does
       not reach that commit within 1,024 commits, the comparison starts from the base branch's tip
       instead, with a warning, so a lecture changed only on the base branch is listed too. When git
-      fails, the action warns and lists none.
+      fails, the action warns and lists none. With `toc-file`, the files its toc names, which
+      can include pages in the toc's folder.
       Empty when there are none, with `lectures-dir: ''`, on an event other than
       `pull_request`, for a pull request from a fork or by Dependabot, and with `placeholder:
       'true'`.
@@ -136,16 +160,34 @@ runs:
         PROJECT_NAME: ${{ inputs.project-name }}
         BUILD_DIR: ${{ inputs.build-dir }}
         LECTURES_DIR: ${{ inputs.lectures-dir }}
+        TOC_FILE: ${{ inputs.toc-file }}
+        COMMENT_KEY: ${{ inputs.comment-key }}
       run: |
         # shellcheck source=scripts/workflow-command.sh
         . "$GITHUB_ACTION_PATH/../scripts/workflow-command.sh"
         # Each of these is one value, and a line break in one would end the
         # line that prints it, and could start a workflow command (#267).
-        single_line "project-name=$PROJECT_NAME" "build-dir=$BUILD_DIR" "lectures-dir=$LECTURES_DIR" || exit 1
+        single_line "project-name=$PROJECT_NAME" "build-dir=$BUILD_DIR" "lectures-dir=$LECTURES_DIR" \
+          "toc-file=$TOC_FILE" "comment-key=$COMMENT_KEY" || exit 1
         case "$PLACEHOLDER" in
           true|false) ;;
           *) echo "::error::placeholder is [$(esc "$PLACEHOLDER")], not 'true' or 'false'"; exit 1 ;;
         esac
+        # On every event, as placeholder is (#336): the key goes into the
+        # comment's hidden marker, and the toc is read from the checkout and
+        # through the API, from the repository root.
+        key='^[a-z0-9]+(-[a-z0-9]+)*$'
+        if [ -n "$COMMENT_KEY" ] && { [ "${#COMMENT_KEY}" -gt 28 ] || ! [[ "$COMMENT_KEY" =~ $key ]]; }; then
+          echo "::error::comment-key is [$(esc "$COMMENT_KEY")], not lowercase letters and digits in words joined by single dashes, at most 28 characters"
+          exit 1
+        fi
+        not_from_root='//|/\.\.?/'
+        if [ -n "$TOC_FILE" ] && [[ "/$TOC_FILE/" =~ $not_from_root ]]; then
+          echo "::error::toc-file is [$(esc "$TOC_FILE")], not a path from the repository root such as sites/dp/_toc.yml: it may not start with /, nor have a ., .. or empty part"
+          exit 1
+        fi
+        [ -z "$TOC_FILE" ] || [ -n "$LECTURES_DIR" ] \
+          || echo "::warning::toc-file is not used with lectures-dir: '', which turns change detection off."
         if [ "$PLACEHOLDER" = true ]; then
           for given in "cloudflare-api-token=$HAVE_TOKEN" "cloudflare-account-id=$HAVE_ACCOUNT_ID"; do
             [ "${given#*=}" != true ] \
@@ -168,6 +210,7 @@ runs:
       shell: bash
       env:
         LECTURES_DIR: ${{ inputs.lectures-dir }}
+        TOC_FILE: ${{ inputs.toc-file }}
         BASE_SHA: ${{ github.event.pull_request.base.sha }}
         HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       run: bash "$GITHUB_ACTION_PATH/../scripts/detect-changed-lectures.sh"
@@ -365,6 +408,7 @@ runs:
         PREVIEW_COMMENT_SCRIPT: ${{ steps.comment-script.outputs.path }}
         # Picks the comment's heading and hidden marker in the script.
         PROVIDER: cloudflare
+        COMMENT_KEY: ${{ inputs.comment-key }}
         PREVIEW_STATE: ${{ inputs.placeholder == 'true' && 'pending' || 'ready' }}
         DEPLOY_URL: ${{ steps.deploy.outputs.deploy-url }}
         # The placeholder builds the URL from these, having no deploy to ask:
@@ -374,7 +418,9 @@ runs:
         # Named under Build Info, when wrangler printed it.
         DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
         CHANGED_FILES: ${{ steps.detect-changes.outputs.changed-files }}
+        CHANGED_PAGES: ${{ steps.detect-changes.outputs.changed-pages }}
         LECTURES_DIR: ${{ inputs.lectures-dir }}
+        TOC_FILE: ${{ inputs.toc-file }}
         STRIP_LECTURES_DIR: ${{ steps.detect-changes.outputs.strip-lectures-dir }}
         COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
       with:

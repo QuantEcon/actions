@@ -39,7 +39,7 @@ Both deploy the files `build-lectures` built, with no build on the provider's si
 
 - **Runner.** Any, with `bash`, `git`, `python3` and `npm`, as GitHub-hosted runners and the QuantEcon images have. The job must be able to reach `registry.npmjs.org`: `netlify-cli` is installed each run from the lockfile beside the action.
 - **Node.** 22.13 or later, which the pinned `netlify-cli` needs. The QuantEcon images carry Node 24. On a standard runner, set it up before this action with `actions/setup-node`; see [On a standard runner](#on-a-standard-runner).
-- **Permissions.** `pull-requests: write`, for the comment. The job also needs `contents: read` for `actions/checkout`. A run outside a pull request posts no comment, so it needs only `contents: read`. A placeholder's job needs the same two, and no checkout: `pull-requests: write` for the comment and the pull request's changed files, and `contents: read` to look for `_toc.yml`.
+- **Permissions.** `pull-requests: write`, for the comment. The job also needs `contents: read` for `actions/checkout`. A run outside a pull request posts no comment, so it needs only `contents: read`. A placeholder's job needs the same two, and no checkout: `pull-requests: write` for the comment and the pull request's changed files, and `contents: read` to look for `_toc.yml`, or to read `toc-file`.
 - **Secrets.** `NETLIFY_AUTH_TOKEN` and `NETLIFY_SITE_ID`, from [Setting up Netlify](#setting-up-netlify). A placeholder needs neither, only the site's name.
 - **Files in your repository.** None beyond the built site. The comment's lecture links compare the pull request's head with the commit where it branched off its base branch. A checkout with `fetch-depth: 0` has that commit, and nothing is fetched. From a shallow checkout, such as `actions/checkout`'s default of one commit, the action fetches history until it finds it, up to 1,024 commits behind the pull request's base and head: see [Behaviour](#behaviour). That fetch uses whatever credentials `actions/checkout` left in the checkout, and with `persist-credentials: false`, as `ci.yml` sets, it has none. A public repository needs none. A private repository checks out with `fetch-depth: 0`, so that nothing is fetched.
 - **Setup outside GitHub.** A Netlify project, once: see [Setting up Netlify](#setting-up-netlify).
@@ -80,6 +80,8 @@ All three settings are in the project's configuration:
 | `netlify-site-id` | no | `''` | The ID of the Netlify site to deploy to, from a repository secret such as `secrets.NETLIFY_SITE_ID`. Required for a deploy, as `netlify-auth-token` is. Leave it out with `placeholder: 'true'`. |
 | `build-dir` | no | `''` | The directory that holds the built site, such as `_build/html`, which `build-lectures` gives in its `build-path` output. Required for a deploy, as `netlify-auth-token` is. |
 | `lectures-dir` | no | `lectures` | The directory of lecture `.md` files that change detection looks in, as a path from the repository root such as `lectures`, with no `./` or trailing slash: each lecture the pull request added or modified gets a link in the comment, and is listed in `changed-files`. Empty turns change detection off, and the comment gives only the preview URL. |
+| `toc-file` | no | `''` | A Jupyter Book `_toc.yml`, as a path from the repository root such as `sites/dp/_toc.yml`, for a site built from some of the lectures in `lectures-dir`. A changed `.md` is then listed only when the toc names it, as `<lectures-dir>/<page>.md`, or as `<page>.md` in the toc's own folder for a page of the site's own, and its link is `<page>.html`. The toc's `root:` page is not listed. The toc is read at the pull request's head, one `file:` entry to a line; when it is missing or names no page, the action warns and lists no lectures. A value with a line break, a leading `/`, or a `.`, `..` or empty part fails the job. Empty, the default, lists the lectures in `lectures-dir` by its own rules. Not used with `lectures-dir: ''`. |
+| `comment-key` | no | `''` | Gives this preview a pull request comment of its own, for a repository that previews several sites on Netlify, such as one per site in a matrix. The key goes after the comment's heading, as `(dp)`, and in its hidden marker, and the action then finds and updates only the comment with that key. Lowercase letters and digits in words joined by single dashes, at most 28 characters; any other value fails the job, on every event. Empty, the default, is the comment with no key, which a keyed preview never touches. The key does not change where the preview is deployed: each site needs a Netlify site of its own. |
 | `dispatch-alias` | no | `''` | Deploys on `workflow_dispatch` and `schedule` events too, to this alias, such as `dispatch-canary`, at `https://<alias>--<site>.netlify.app`. It must start with `dispatch-`, which keeps it clear of every pull request's `pr-<number>`, and be lowercase letters and digits in words joined by single dashes, at most 28 characters in all. Any other value fails the job, on every event. Such a run has no comment and no changed lectures, and a pull request ignores the input. Empty, the default, deploys on `pull_request` only. |
 | `placeholder` | no | `false` | `'true'` posts the pull request's preview comment at once, before there is a build to deploy, and deploys nothing. The comment has the preview's URL and links to the lectures the pull request changes, all built from its number and `netlify-site-name`, and says that they show the last deployed push until this one's deploy finishes; the deploy's comment then replaces it. It needs no checkout and no secret, so it runs in a job of its own, with no `needs:`. It posts only where a deploy would run, so not for a pull request from a fork or by Dependabot, nor on any other event. Any value but `'true'` or `'false'` fails the job. |
 | `netlify-site-name` | no | `''` | The Netlify site's name, as in `<name>.netlify.app`, from which `placeholder: 'true'` builds the preview URL, `https://pr-<number>--<name>.netlify.app`. Required with `placeholder: 'true'`, where it must be lowercase letters, digits and dashes, or the job fails; not used otherwise. |
@@ -94,7 +96,7 @@ All three settings are in the project's configuration:
 |---|---|
 | `deployed` | `'true'` when this run deployed a preview, so that `deploy-url` is set, and `'false'` when it did not: then a notice or a warning in the log says why, or `placeholder` is `'true'`. A scheduled or dispatched check should assert `deployed == 'true'`, or it passes without testing the deploy. |
 | `deploy-url` | The preview's URL, `https://pr-<number>--<site>.netlify.app`, the same for every push to the pull request, or `https://<dispatch-alias>--<site>.netlify.app` on a `workflow_dispatch` or `schedule` run. Empty when nothing was deployed. |
-| `changed-files` | The lecture files under `lectures-dir` that the pull request added or modified, one path per line, compared from the commit where it branched off. When a shallow checkout's history does not reach that commit within 1,024 commits, the comparison starts from the base branch's tip instead, with a warning, so a lecture changed only on the base branch is listed too. When git fails, the action warns and lists none. Empty when there are none, with `lectures-dir: ''`, on an event other than `pull_request`, for a pull request from a fork or by Dependabot, and with `placeholder: 'true'`. |
+| `changed-files` | The lecture files under `lectures-dir` that the pull request added or modified, one path per line, compared from the commit where it branched off. When a shallow checkout's history does not reach that commit within 1,024 commits, the comparison starts from the base branch's tip instead, with a warning, so a lecture changed only on the base branch is listed too. When git fails, the action warns and lists none. With `toc-file`, the files its toc names, which can include pages in the toc's folder. Empty when there are none, with `lectures-dir: ''`, on an event other than `pull_request`, for a pull request from a fork or by Dependabot, and with `placeholder: 'true'`. |
 
 <!-- END GENERATED -->
 
@@ -192,6 +194,36 @@ A job with `placeholder: 'true'` posts the preview comment within seconds of a p
 
 It has no `needs:`, so it starts at once, and no checkout, container or secret. It builds the URL from the pull request's number and `netlify-site-name`, the site's name as in `<name>.netlify.app`, and asks the API for the pull request's changed files. Its comment is headed `## ⏳ Netlify Preview Building…`, and says that until this push's deploy finishes, the links show the last push that was deployed, or nothing on the pull request's first push. The deploy job's comment then replaces it in place, so the pull request keeps one preview comment. When the build fails, the deploy job is skipped and the comment stays pending, with a link to the workflow run that failed.
 
+### Several sites on one pull request
+
+A repository that builds several sites from one folder of lectures, each site with its own `_toc.yml`, previews each site in a comment of its own. Each site deploys to a Netlify site of its own, and its preview step sets two more inputs:
+
+- `comment-key`, the site's name. It goes after the comment's heading, as `## 📖 Netlify Preview Ready! (dp)`, and in its hidden marker, and the action finds and updates only the comment with its key. So the sites' comments never replace each other, nor a comment with no key.
+- `toc-file`, the site's `_toc.yml`. The comment then lists a changed lecture only when that toc names it, and links it at the site's root, as `<page>.html`. A page of the site's own kept beside its toc, such as `sites/dp/status.md` for the toc's `status`, is listed too.
+
+Start from [A build job and a deploy job](#a-build-job-and-a-deploy-job), with a matrix over the sites in both jobs, and each site's build uploaded as `html-<site>`. The deploy job's matrix and last two steps are:
+
+```yaml
+strategy:
+  fail-fast: false
+  matrix:
+    site: [dp, jax]
+steps:
+  - uses: actions/download-artifact@v8
+    with:
+      name: html-${{ matrix.site }}
+      path: _build/html
+  - uses: quantecon/actions/preview-netlify@v0
+    with:
+      netlify-auth-token: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+      netlify-site-id: ${{ secrets[format('NETLIFY_SITE_ID_{0}', matrix.site)] }}
+      build-dir: _build/html
+      toc-file: sites/${{ matrix.site }}/_toc.yml
+      comment-key: ${{ matrix.site }}
+```
+
+A placeholder job takes the same two inputs, in a matrix of its own, so that each site's pending comment is the one its deploy replaces. [Behaviour](#behaviour) says how the toc is read. Adding `comment-key` to a workflow whose open pull requests already have a comment with no key leaves that comment as it last was, and the keyed comment is posted beside it.
+
 ### Outside a pull request
 
 A scheduled or dispatched run deploys only with `dispatch-alias` set, here to `https://dispatch-canary--<site>.netlify.app`, which each run replaces. Check `deployed`: a run that deployed nothing still passes.
@@ -243,6 +275,7 @@ The deploy job needs only `contents: read`, since there is no pull request to co
    - A shallow checkout may not have the merge base. The action then fetches the history behind the pull request's base and head, 64 commits behind each and then twice as many each time, until it finds the merge base. If it has not found it 1,024 commits behind each, or cannot fetch more, it logs a warning and compares from the tip of the base branch instead, so a lecture changed only on the base branch is listed too. A checkout that has the merge base, such as one with `fetch-depth: 0`, fetches nothing.
    - If git cannot read the checkout, fetch the two commits, or compare them, the action logs a warning with git's own message, lists no lectures, and goes on to deploy.
    - `lectures-dir` is matched against paths from the repository root, as git writes them: give it as `lectures`, not `./lectures` or `lectures/`, which match nothing. Lectures at the repository root cannot be listed.
+   - With `toc-file`, the toc decides in place of the rules above. An added or modified `.md` is listed when the toc names it as a page: `<lectures-dir>/<page>.md`, or `<page>.md` in the toc's own folder. The toc's `root:` page is not listed, and a path starting with `_` counts like any other. The toc is read from the checkout, one `file:` entry to a line, as Jupyter Book writes them, without quotes, a `.md` or a trailing comment. A `glob:` or `url:` entry, YAML's one-line `[...]` and `{...}` forms, and a line commented out are not read. Only changed files are listed, so a lecture the pull request adds to the toc without changing it gets no link. A toc that is not in the checkout, or names no page, is a warning, and no lectures are listed; one that names none of the changed files lists none, with no warning. The toc is read with the comment's script, run by `node`.
 3. **The CLI.** The `netlify-cli` version pinned in the action's [`package.json`](https://github.com/QuantEcon/actions/blob/main/preview-netlify/package.json) is installed with `npm ci`, into a temporary directory, and its `netlify` command is added to the `PATH` of the job's later steps.
 4. **The deploy:**
 
@@ -251,7 +284,9 @@ The deploy job needs only `contents: read`, since there is no pull request to co
    ```
 
    `<alias>` is `pr-<number>` or `dispatch-alias`, as step 1 decided. `<run>` is `PR #<number>`, or the event and branch, such as `workflow_dispatch on main`. `<short commit>` is the first 7 characters of the pull request's head commit, or of the commit a dispatched or scheduled run is on. The token and the site ID reach the CLI through the environment. `--no-build` stops Netlify from running a build of its own, and without `--prod` the deploy is a preview, so the site's production deploy is untouched. Netlify's output is in the "Deployment Output" log group. Outside a pull request, the preview's URL also goes in a notice, on the run's summary page.
-5. **The comment**, on a pull request only. The action reads all of the pull request's comments, and updates its own; if it has none, it posts a new one. Its own is a comment by `github-actions[bot]` that starts with the hidden line `<!-- quantecon-preview:netlify -->`, or with `## 📖 Netlify Preview Ready!`, as its comments did before that line was added. If there are several, it updates the newest. It never edits anyone else's comment, even one that quotes the preview's. Each changed lecture links to `<deploy-url>/<path>.html`. `<path>` is the file's path without `.md`, and also without the `lectures-dir/` in front when `_toc.yml` is in `lectures-dir`, because Jupyter Book then builds the pages relative to it.
+5. **The comment**, on a pull request only. The action reads all of the pull request's comments, and updates its own; if it has none, it posts a new one. Its own is a comment by `github-actions[bot]` that starts with the hidden line `<!-- quantecon-preview:netlify -->`, or with `## 📖 Netlify Preview Ready!`, as its comments did before that line was added. If there are several, it updates the newest. It never edits anyone else's comment, even one that quotes the preview's. Each changed lecture links to `<deploy-url>/<path>.html`. `<path>` is the file's path without `.md`, and also without the `lectures-dir/` in front when `_toc.yml` is in `lectures-dir`, because Jupyter Book then builds the pages relative to it. With `toc-file`, `<path>` is the page the toc names.
+
+   With `comment-key`, both headings end with ` (<key>)`, and the hidden line is `<!-- quantecon-preview:netlify:<key> -->`. The action's own comment is then only one that starts with that line: a comment with the heading alone is from before the hidden line was added, so it belongs to the preview with no key.
 
    For a pull request that changes two lectures, the comment's Markdown is as follows. GitHub does not show its first line.
 
@@ -276,7 +311,7 @@ The deploy job needs only `contents: read`, since there is no pull request to co
    ````
 6. **With `placeholder: 'true'`**, step 1 decides as for a deploy, so a pull request from a fork or by Dependabot, or any event but `pull_request`, gets no comment. The action checks `netlify-site-name`, on any event, and then installs nothing and deploys nothing. On a pull request it posts the pending comment, found and updated as in step 5:
    - The preview URL is `https://pr-<number>--<netlify-site-name>.netlify.app`, where the deploy will put it.
-   - The changed lectures come from the API's list of the pull request's files, which compares from the merge base as step 2 does, by step 2's rules: a renamed lecture is listed under its new path, a removed one is not, nor are `<lectures-dir>/intro.md` and paths within `lectures-dir` that start with `_`. Whether `_toc.yml` is in `lectures-dir` is read at the pull request's head. The API lists at most 3,000 files, and the action warns at that cap. If either call fails, the action warns, and the comment lists no lectures.
+   - The changed lectures come from the API's list of the pull request's files, which compares from the merge base as step 2 does, by step 2's rules: a renamed lecture is listed under its new path, a removed one is not, nor are `<lectures-dir>/intro.md` and paths within `lectures-dir` that start with `_`. Whether `_toc.yml` is in `lectures-dir` is read at the pull request's head. With `toc-file`, the toc is read at the pull request's head instead, with step 2's toc rules, by the same reader. The API lists at most 3,000 files, and the action warns at that cap. If either call fails, the action warns, and the comment lists no lectures.
    - The heading is `## ⏳ Netlify Preview Building…`, and a sentence under the commit says what the links show until the deploy finishes. There is no "This deployment" line.
    - If the newest of the action's comments is already the deploy's for this commit, as after re-running only the placeholder's job, the action leaves it as it is.
 
@@ -286,6 +321,8 @@ To know whether a preview was deployed, check `deployed`. A scheduled or dispatc
 
 - A `dispatch-alias` other than `dispatch-` followed by lowercase letters and digits in words joined by single dashes, at most 28 characters in all, on any event.
 - A `placeholder` other than `'true'` or `'false'`, on any event; and with `placeholder: 'true'`, a `netlify-site-name` that is missing or is not lowercase letters, digits and dashes, on any event.
+- A `comment-key` other than lowercase letters and digits in words joined by single dashes, at most 28 characters, on any event.
+- A `toc-file` that starts with `/`, or has a `.`, `..` or empty part, on any event.
 - A run that would deploy, without `netlify-auth-token`, `netlify-site-id` or `build-dir`, before anything is installed.
 - `npm ci` failing to install the pinned CLI, or the installed CLI failing to run.
 - `netlify deploy` failing, or printing no deploy URL.
