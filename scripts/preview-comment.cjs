@@ -165,7 +165,10 @@ async function findComments({ github, owner, repo, issueNumber, provider, key = 
 // not read, nor is a `glob:` or `url:` entry, nor YAML's one-line `[...]`
 // and `{...}` forms. It is not a YAML parser: the placeholder runs in
 // actions/github-script, which has none, and the deploy's change detection
-// runs this same function, so the two lists cannot differ.
+// runs this same function, so the two read a toc alike. Their lists can still
+// differ where the files they start from do: git quotes a path with a
+// character outside ASCII, such as café.md, and change detection then drops
+// it, while the API's list keeps it, with or without a toc.
 function readToc(text) {
   let root = '';
   const pages = [];

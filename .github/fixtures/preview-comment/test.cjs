@@ -513,7 +513,7 @@ function keyAndTocChecks() {
     const refused = (name, env, out, from = deploy) => cases.push({ name, action, env: { ...from, ...env }, rc: 1, out });
     ok('comment-key and toc-file, as a site in a matrix passes them', { COMMENT_KEY: 'dp', TOC_FILE: DP_TOC });
     ok('comment-key of 28 characters', { COMMENT_KEY: `${'a'.repeat(13)}-${'b'.repeat(14)}` });
-    ok('toc-file in lectures-dir, or at the root', { TOC_FILE: 'lectures/_toc.yml' });
+    ok('toc-file in lectures-dir', { TOC_FILE: 'lectures/_toc.yml' });
     for (const key of ['a'.repeat(29), 'DP', 'dp_2', '-dp', 'dp-', 'dp--2', 'dp 2']) {
       refused(`comment-key [${key}]`, { COMMENT_KEY: key },
         new RegExp(`^::error::comment-key is \\[${key}\\], not lowercase letters and digits in words joined by single dashes, at most 28 characters\\n?$`));

@@ -40,8 +40,10 @@ inputs:
       for a site built from some of the lectures in `lectures-dir`. A changed `.md` is then listed
       only when the toc names it, as `<lectures-dir>/<page>.md`, or as `<page>.md` in the toc's own
       folder for a page of the site's own, and its link is `<page>.html`. The toc's `root:` page
-      is not listed. The toc is read at the pull request's head, one `file:` entry to a line; when
-      it is missing or names no page, the action warns and lists no lectures. A value with a line
+      is not listed. The toc is read one `file:` entry to a line: by the deploy from the checkout,
+      which on a pull request is GitHub's merge commit unless the checkout asks for another ref,
+      and by `placeholder: 'true'` at the pull request's head. When it is missing or names no page,
+      the action warns and lists no lectures. A value with a line
       break, a leading `/`, or a `.`, `..` or empty part fails the job. Empty, the default, lists
       the lectures in `lectures-dir` by its own rules. Not used with `lectures-dir: ''`.
     required: false

@@ -19,8 +19,11 @@
 # With TOC_FILE, the toc decides which added or modified .md files are
 # lectures, not the path rules below: scripts/preview-comment.cjs reads it,
 # run with node, as the placeholder's comment reads it through the API, so
-# the two lists cannot differ. Node is on the PATH wherever a deploy can run,
-# since each preview action installs its CLI with npm.
+# the two read a toc alike. Their lists differ only where the files they start
+# from do: git quotes a path with a character outside ASCII, which the path
+# checks below then drop, while the API's list keeps it, with or without a toc. Node
+# is on the PATH wherever a deploy can run, since each preview action installs
+# its CLI with npm.
 #
 # The comparison is BASE...HEAD, from the merge base, so a lecture changed on
 # the base branch after the pull request branched off is not listed (#215).
