@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.1] - 2026-11-19
+
+### Changed
+- **`preview-netlify`, `preview-cloudflare`, `preview-workers`, `deploy-cloudflare`**: through
+  Dependabot's lockfile bump, `preview-cloudflare`, `preview-workers` and `deploy-cloudflare` pin
+  wrangler 4.162.0, up from 4.158.0, and `preview-netlify` pins netlify-cli 27.19.0, up from
+  27.16.2. Wrangler 4.162.0 refuses to run below Node 22.12, so `deploy-cloudflare` now sets up
+  Node 24 where the runner's Node is older (below). `preview-cloudflare` and `preview-workers` set
+  up no Node of their own, so a job that runs them outside the images, which carry Node 24, needs
+  Node 22.12 or later. The harness installs each from its lockfile. (#340)
+- **Container images**: `sphinx-proof` moves from 0.4.0 to 0.4.1 through Dependabot's bump, pinned
+  exactly in `quantecon`, with `quantecon-build`'s floor raised to match. The patch release fixes
+  captioned figures inside `prf:` boxes, which broke the LaTeX build with "Not in outer par mode",
+  and writes the figures inside every `prf:` box as `\begin{figure}[H]`, so they stay in place.
+  Both images were rebuilt and smoke-tested, and `:latest` moved on 2026-11-17, before this
+  release. (#339)
+
 ### Fixed
 - **`deploy-cloudflare`**: the action now sets up Node 24 when the runner's Node is 22.0 to 22.11.
   The pinned wrangler, now 4.162.0, refuses to run below Node 22.12.0, its minimum since 4.159.0,
