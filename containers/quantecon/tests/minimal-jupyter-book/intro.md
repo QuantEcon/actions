@@ -101,8 +101,9 @@ import os
 from importlib.metadata import version
 
 if os.path.exists("/etc/quantecon-container"):
-    # The pin in both images' environment.yml: a kaleido bump changes it here too.
-    assert version("kaleido") == "1.5.2", f"kaleido {version('kaleido')}, expected 1.5.2"
+    # Below 1.0, kaleido would export with its own bundled browser instead.
+    kaleido_version = version("kaleido")
+    assert int(kaleido_version.split(".")[0]) >= 1, f"kaleido {kaleido_version} is below 1.0, so the export would not use the image's Chrome"
 
     from choreographer.browsers.chromium import Chromium
     from choreographer.cli.defaults import default_download_path
@@ -113,7 +114,7 @@ if os.path.exists("/etc/quantecon-container"):
     assert found == browser, f"kaleido would launch [{found}], not BROWSER_PATH [{browser}]"
     # Where kaleido_get_chrome downloads to, and where kaleido looks first.
     assert not default_download_path.parent.exists(), f"a Chrome download directory exists: {default_download_path.parent}"
-    print(f"kaleido {version('kaleido')}: Chrome at {browser}")
+    print(f"kaleido {kaleido_version}: Chrome at {browser}")
 
 import plotly
 import plotly.graph_objects as go

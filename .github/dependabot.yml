@@ -16,8 +16,7 @@ updates:
   # proposes version-range bumps for conda-only deps. Miniconda, Node and Chrome
   # are not conda deps: each is pinned by version and SHA256 in both Dockerfiles,
   # which no ecosystem here tracks, so bump them by hand (docs/dev/CONTAINERS.md).
-  # kaleido, which drives that Chrome, is a pip entry this does track; its bump
-  # also updates the version the smoke fixture asserts, or the fixture fails. The
+  # kaleido, which drives that Chrome, is a pip entry this does track. The
   # core scientific stack (numpy, scipy, pandas, … and the `anaconda`
   # metapackage) is held at the 2026.07 baseline via `ignore` below — a date-pin
   # like `=2026.07` does NOT stop Dependabot proposing the next release, so each

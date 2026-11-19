@@ -47,7 +47,7 @@ A digest pinned anywhere else must be in the pins file, or it goes with its buil
 
 - **The science stack** moves as one coordinated change, to the Anaconda baseline the lecture repositories adopt, in both images together: see the Dependency policy in [PLAN.md](PLAN.md#dependency-policy).
 - **Everything else** comes from Dependabot (`.github/dependabot.yml`): the conda ecosystem for both `environment.yml` files, with every baseline-pinned package under `ignore`, and the docker ecosystem for the `ubuntu:24.04` digest, as one pull request for both images.
-- **Miniconda, Node and Chrome** are pinned by version and SHA-256 in the Dockerfiles, and no ecosystem tracks them: bump each version and its checksum together, by hand, in both Dockerfiles, which `scripts/check-base-pins.sh` holds to the same values. Chrome is a [Chrome for Testing](https://googlechromelabs.github.io/chrome-for-testing/) build, the one kaleido drives for plotly's static image export. Take the Stable version from [`last-known-good-versions-with-downloads.json`](https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json) and download its `linux64` `chrome-linux64.zip`. Check that the download's MD5 matches the `x-goog-hash` header Google serves with it, then record its SHA-256. kaleido is a pip entry Dependabot does track. A pull request that bumps either one smoke-tests the pair. A kaleido bump also changes the version the smoke fixture's export cell asserts, so Dependabot's pull request fails until someone does.
+- **Miniconda, Node and Chrome** are pinned by version and SHA-256 in the Dockerfiles, and no ecosystem tracks them: bump each version and its checksum together, by hand, in both Dockerfiles, which `scripts/check-base-pins.sh` holds to the same values. Chrome is a [Chrome for Testing](https://googlechromelabs.github.io/chrome-for-testing/) build, the one kaleido drives for plotly's static image export. Take the Stable version from [`last-known-good-versions-with-downloads.json`](https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json) and download its `linux64` `chrome-linux64.zip`. Check that the download's MD5 matches the `x-goog-hash` header Google serves with it, then record its SHA-256. kaleido is a pip entry Dependabot does track. A pull request that bumps either one smoke-tests the pair.
 
 ## The smoke test
 
@@ -59,7 +59,7 @@ A digest pinned anywhere else must be in the pins file, or it goes with its buil
 4. builds it as a PDF with the `pdflatex` builder, using XeLaTeX and Sphinx's default FreeFont `fontpkg`.
 
 The fixture's cells execute, so a broken science stack fails the build, and they export a plotly figure, which covers kaleido and Chrome. In an image, that cell first checks that the export goes through the image's Chrome, so it fails for any of these:
-- a kaleido other than the pinned one;
+- a kaleido below 1.0, which would export with its own bundled browser;
 - a `BROWSER_PATH` that names no executable;
 - choreographer, kaleido's browser layer, finding any other Chrome first;
 - a Chrome downloaded under `HOME`. `smoke-test.sh --self-test` stages a raising cell and fails unless the build goes red. Run the smoke test in a `container:` job, not with `docker run`: `docker run` keeps `HOME=/root`, so it cannot reproduce failures that depend on a container job's `HOME=/github/home`, such as #85.
