@@ -26,8 +26,9 @@ Both images hold:
 - **Ubuntu 24.04**, the base, pinned by digest.
 - **TeX Live** from Ubuntu's packages: `texlive-latex-recommended`, `texlive-latex-extra`, `texlive-fonts-recommended`, `texlive-fonts-extra` and `texlive-xetex`, with `latexmk`, `xindy`, `dvipng`, `ghostscript` and `cm-super`, and the FreeFont and DejaVu fonts set up for XeLaTeX. The full image adds `texlive-luatex`, and the lean image adds `graphviz`.
 - **Miniconda**, and a Conda environment named `quantecon`, with Python 3.13, first on `PATH`. A step's `python` is that environment's.
-- **Jupyter Book 1** with the extensions the lectures use: `quantecon-book-theme`, `sphinx-tojupyter`, `sphinxext-rediraffe`, `sphinx-exercise`, `sphinx-proof`, `sphinxcontrib-youtube`, `sphinx-togglebutton` and `sphinx-reredirects`, with `quantecon-book-networks`, and `kaleido` below 1.0 for plotly's static image export.
+- **Jupyter Book 1** with the extensions the lectures use: `quantecon-book-theme`, `sphinx-tojupyter`, `sphinxext-rediraffe`, `sphinx-exercise`, `sphinx-proof`, `sphinxcontrib-youtube`, `sphinx-togglebutton` and `sphinx-reredirects`, with `quantecon-book-networks`, and `kaleido` 1.x for plotly's static image export.
 - **Node 24**, outside Conda and ahead of it on `PATH`, for the deploy tools the preview actions install.
+- **Chrome**, a Chrome for Testing build at a pinned version in `/opt/chrome`, which kaleido drives to export figures. `BROWSER_PATH` names it, so kaleido finds it whatever `HOME` a job sets.
 - **A git setting that trusts every work tree.** In a container job the checkout belongs to the runner's user while the steps run as root, and without it git would refuse the repository, so each page would lose its "Last changed" date.
 - **The marker file** `/etc/quantecon-container`, which tells `setup-environment` it is in a QuantEcon image.
 

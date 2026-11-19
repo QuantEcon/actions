@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Container images**: both images hold a Chrome, and kaleido moves from 0.2.1 to 1.5.2, pinned
+  exactly in both. kaleido 1 bundles no browser. The Chrome it downloads for itself goes under
+  `$HOME`, which a container job sets to `/github/home`, so the images held kaleido below 1.0
+  (#85), and in them a lecture environment that installs kaleido 1, as QuantEcon/lectures' shared
+  environment does, could export no figure. The Chrome is Chrome for Testing 158.0.8127.36, pinned
+  by version and SHA-256 as Node is, in `/opt/chrome`. `BROWSER_PATH` names it, so kaleido finds
+  it whatever `HOME` a job sets. plotly stays at 6.7.0, the Anaconda 2026.07 baseline. With
+  kaleido 0.2's bundled Chromium gone, each image grows by about 0.13 GB compressed and 0.2 GB on
+  disk. The smoke fixture's export now checks that it goes through that Chrome, and
+  `scripts/check-base-pins.sh` that both Dockerfiles pin the same Miniconda, Node and Chrome. A
+  repository that needs kaleido 0.2 back can install `kaleido<1` through `environment-update`.
+  For an exported figure (#342):
+  - Chrome 158 draws it with the image's fonts, now including Liberation's faces for Arial and
+    Times, so its pixels and fonts differ from kaleido 0.2's;
+  - its LaTeX is typeset by MathJax 3.2.2 instead of 2.7.5, still fetched from cdnjs;
+  - each export starts a Chrome, so exports are slower;
+  - EPS export and kaleido's own `kaleido.scopes` API are gone. No QuantEcon lecture uses either.
+
 ## [0.21.1] - 2026-11-19
 
 ### Changed

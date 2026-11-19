@@ -31,12 +31,14 @@ echo "✓ python found: $PY_BIN ($("$PY_BIN" --version 2>&1))"
   echo "         docker run --rm -v \$(pwd)/../../..:/w -w /w ghcr.io/quantecon/quantecon:latest \\"
   echo "           ./containers/quantecon/tests/smoke-test.sh"
   echo "       (note: docker run gives HOME=/root, so it will NOT reproduce the"
-  echo "        #85 kaleido/chromium path that a container: job exercises)"
+  echo "        #85 kaleido/Chrome path that a container: job exercises)"
   exit 1
 }
 "$PY_BIN" -c "import plotly.graph_objects as go; go.Figure().to_image(format='png')" >/dev/null 2>&1 || {
   echo "ERROR: plotly static export (kaleido) is not working locally."
-  echo "       Install kaleido<1.0, or run the test inside the image (see above)."
+  echo "       Install kaleido 1.x and a Chrome it can find (an installed Google"
+  echo "       Chrome, one named by BROWSER_PATH, or kaleido_get_chrome's download),"
+  echo "       or run the test inside the image (see above)."
   exit 1
 }
 echo "✓ python stack available (numpy/scipy/pandas/matplotlib/plotly+kaleido)"

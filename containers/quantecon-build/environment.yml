@@ -12,8 +12,8 @@ dependencies:
   # from the metapackage. A package left unpinned moves ahead of that baseline
   # whenever the image is rebuilt, and the drift has broken notebook execution
   # downstream twice: un_insure.md's fsolve call (#28), and plotly 7, which a
-  # scheduled rebuild picked up and which cannot export images with the kaleido
-  # below (#222).
+  # scheduled rebuild picked up and which could not export images with the
+  # kaleido 0.2 the image then held (#222).
   # Versions are the anaconda=2026.07 linux-64 py313 (MKL) pins; bump them as a set
   # when the lecture repos move to a newer anaconda release, and keep each one in
   # the conda `ignore` list in .github/dependabot.yml. xlrd, graphviz,
@@ -78,10 +78,11 @@ dependencies:
     - quantecon-book-networks
     
     # Additional build dependencies
-    # Pinned <1.0: kaleido v1 dropped the bundled chromium and needs a separately
-    # provisioned Chrome, which isn't found at runtime in CI (container jobs set
-    # HOME=/github/home, not the build-time /root). v0.2.x bundles its own
-    # chromium (location-independent) and works with plotly 6, not 7: plotly 7
-    # exports images only with kaleido>=1, which is why plotly is pinned above (#222).
-    - kaleido<1.0  # Plotly static image export
+    # kaleido 1 bundles no browser: it drives the Chrome the Dockerfile installs
+    # at /opt/chrome, which it finds through BROWSER_PATH whatever HOME a job
+    # sets. Without that Chrome the images held kaleido below 1.0 (#85, #342).
+    # Pinned exactly, since it moves with the Chrome it drives: each bump is a
+    # pull request whose smoke test exports a figure with the pair, and whose
+    # fixture names the new version (../quantecon/tests/minimal-jupyter-book/intro.md).
+    - kaleido==1.5.2  # Plotly static image export
     - prettytable

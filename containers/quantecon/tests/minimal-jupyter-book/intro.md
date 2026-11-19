@@ -80,16 +80,41 @@ print(f"matplotlib {matplotlib.__version__}: rendered {len(png)} byte PNG")
 plt.close(fig)
 ```
 
-## Plotly static export (kaleido → chromium)
+## Plotly static export (kaleido → Chrome)
 
-The highest-value cell here. This is the path that broke in #85: kaleido v1
-dropped its bundled chromium, and because a GitHub Actions `container:` job
-forces `HOME=/github/home` rather than `/root`, a chromium provisioned under
-`/root` at image build time became unreachable at run time. Both images pin
-`kaleido<1.0` for exactly that reason — this cell is what would notice if the
-pin were lost or the resolved chromium moved again.
+The highest-value cell here. kaleido 1 bundles no browser: it drives a Chrome
+it has to find. This is the path that broke in #85: a GitHub Actions
+`container:` job forces `HOME=/github/home` rather than `/root`, so a Chrome
+provisioned under `/root` at image build time was unreachable at run time.
+Each image now installs Chrome at a fixed path and names it in `BROWSER_PATH`
+(#342).
+
+In an image, the cell first checks that the export goes through that Chrome.
+On its own the export would also pass with kaleido 0.2's bundled browser, or
+with a Chrome fetched under the build's `HOME`. A job with another `HOME`
+would not find that Chrome, but `docker run`, which keeps the build's `/root`,
+would. Outside an image, as in `run-local-tests.sh`, kaleido uses whatever
+Chrome it finds.
 
 ```{code-cell} python3
+import os
+from importlib.metadata import version
+
+if os.path.exists("/etc/quantecon-container"):
+    # The pin in both images' environment.yml: a kaleido bump changes it here too.
+    assert version("kaleido") == "1.5.2", f"kaleido {version('kaleido')}, expected 1.5.2"
+
+    from choreographer.browsers.chromium import Chromium
+    from choreographer.cli.defaults import default_download_path
+
+    browser = os.environ.get("BROWSER_PATH", "")
+    assert browser and os.access(browser, os.X_OK), f"BROWSER_PATH=[{browser}] is not an executable"
+    found = Chromium.find_browser(skip_local=False)
+    assert found == browser, f"kaleido would launch [{found}], not BROWSER_PATH [{browser}]"
+    # Where kaleido_get_chrome downloads to, and where kaleido looks first.
+    assert not default_download_path.parent.exists(), f"a Chrome download directory exists: {default_download_path.parent}"
+    print(f"kaleido {version('kaleido')}: Chrome at {browser}")
+
 import plotly
 import plotly.graph_objects as go
 

@@ -37,7 +37,8 @@ RUN apt-get update && \
         fontconfig \
         # Graphviz for network diagrams
         graphviz \
-        # Chrome dependencies for kaleido (Plotly static image export)
+        # Libraries for the Chrome below, which kaleido drives for Plotly's
+        # static image export
         libnss3 \
         libatk-bridge2.0-0 \
         libcups2 \
@@ -105,7 +106,7 @@ ENV CONDA_DEFAULT_ENV=quantecon
 
 # Node.js 24 LTS, for the Node tools the actions install into this image at run
 # time: preview-netlify's netlify-cli (needs node >=22.13) and preview-cloudflare's
-# wrangler (refuses to start below node 22). Installed from nodejs.org, pinned by
+# wrangler (needs node >=22.12). Installed from nodejs.org, pinned by
 # version and SHA256 like Miniconda above, and deliberately NOT from conda: every
 # jupyterlab build below 4.6 on the defaults channel, including the one the
 # Anaconda 2026.07 baseline pins, constrains nodejs to 20.x, so a conda nodejs
@@ -123,6 +124,35 @@ RUN curl -fsSL https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-li
 # Ahead of the conda env, so a lecture environment that adds a conda nodejs
 # cannot shadow the pinned Node.
 ENV PATH=/opt/node/bin:$PATH
+
+# Chrome, for kaleido 1.x, Plotly's static image export (#342). kaleido ships
+# no browser since 1.0: it drives a Chrome it finds, first one it downloaded
+# under $HOME, then $BROWSER_PATH, then the PATH. A container job sets
+# HOME=/github/home, so a Chrome fetched into the build's HOME is not there at
+# run time (#85), and this one sits at a fixed path, named by BROWSER_PATH.
+# Chrome for Testing, the build kaleido's own kaleido_get_chrome installs, pinned
+# by version and SHA256 like Miniconda and Node above. Not Google's apt
+# repository: it holds only the current release, so a rebuild could not
+# reproduce a pin. Chrome links only against libraries the apt layer above
+# installs, which the check below ldd's. fonts-liberation, which Chrome's own
+# package depends on, gives Arial and Times their metric-compatible faces, as on
+# the GitHub runners where the lecture series build. It and unzip come in here
+# rather than in that layer, whose change would re-run TeX Live and the conda
+# solve; placed after the conda layer, a Chrome bump does not re-run it.
+# Bump CHROME_VERSION and CHROME_SHA256 together, as docs/dev/CONTAINERS.md
+# describes; Dependabot does not track them, and scripts/check-base-pins.sh
+# fails unless both Dockerfiles agree.
+ENV CHROME_VERSION=158.0.8127.36
+ENV CHROME_SHA256=dba9cc838e1ce269c33ea68170881127bd15d078fc3ca5891c90802819a4d7c7
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends unzip fonts-liberation && \
+    rm -rf /var/lib/apt/lists/* && \
+    curl -fsSL https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chrome-linux64.zip -o /tmp/chrome.zip && \
+    echo "${CHROME_SHA256}  /tmp/chrome.zip" | sha256sum -c - && \
+    unzip -q /tmp/chrome.zip -d /opt && \
+    mv /opt/chrome-linux64 /opt/chrome && \
+    rm /tmp/chrome.zip
+ENV BROWSER_PATH=/opt/chrome/chrome
 
 # Create marker file for container detection by setup-environment action
 RUN echo "quantecon-container" > /etc/quantecon-container && \
@@ -152,6 +182,8 @@ RUN python --version && \
     conda --version && \
     test "$(node -p process.versions.node)" = "${NODE_VERSION}" && \
     npm --version && \
+    "$BROWSER_PATH" --version | grep -F "$CHROME_VERSION" && \
+    ! ldd "$BROWSER_PATH" | grep -F 'not found' && \
     jupyter --version && \
     jupyter-book --version && \
     pdflatex --version
