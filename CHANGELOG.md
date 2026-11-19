@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`preview-netlify`, `preview-cloudflare`, `preview-workers`**: two inputs, so that a repository
+  that builds several sites from one folder of lectures can preview each site on one pull
+  request. `comment-key` gives a preview a comment of its own: the key goes after both headings,
+  as `(dp)`, and into the hidden marker, `<!-- quantecon-preview:<provider>:<key> -->`, and the
+  action finds and updates only the comment with its key, so no two sites' previews replace each
+  other's comment. It is lowercase letters and digits in words joined by single dashes, at most
+  28 characters, and any other value fails the job, on every event. `toc-file` names a site's
+  `_toc.yml`: a changed `.md` is then listed only when the toc names it, as a lecture in
+  `lectures-dir` or a page in the toc's own folder, and linked at the site's root as
+  `<page>.html`, with the toc's `root:` page left out. The deploy's change detection and the
+  placeholder read the toc with one reader, from the checkout and at the pull request's head;
+  a toc they cannot read, or that names no page, is a warning, and the comment lists no
+  lectures. Both inputs are empty by default, and then the comment, its marker and its links are
+  unchanged. The key does not change where a preview is deployed: each site needs a deploy target
+  of its own. (#336)
+
 ### Changed
 - **Container images**: both images hold a Chrome, and kaleido moves from 0.2.1 to 1.5.2, pinned
   exactly in both. kaleido 1 bundles no browser. The Chrome it downloads for itself goes under

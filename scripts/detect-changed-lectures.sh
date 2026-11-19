@@ -6,12 +6,24 @@
 #
 # Inputs (environment variables):
 #   LECTURES_DIR  - directory holding lecture .md files (e.g. "lectures")
+#   TOC_FILE      - optional: a _toc.yml whose pages are the lectures (#336)
 #   BASE_SHA      - PR base commit SHA (the tip of the base branch)
 #   HEAD_SHA      - PR head commit SHA
 #
 # Outputs (appended to $GITHUB_OUTPUT):
 #   changed-files       - newline-separated list of changed lecture files
+#   changed-pages       - with TOC_FILE, each file's page in the toc, in the
+#                         same order, which the comment links to
 #   strip-lectures-dir  - "true" if _toc.yml lives inside LECTURES_DIR
+#
+# With TOC_FILE, the toc decides which added or modified .md files are
+# lectures, not the path rules below: scripts/preview-comment.cjs reads it,
+# run with node, as the placeholder's comment reads it through the API, so
+# the two read a toc alike. Their lists differ only where the files they start
+# from do: git quotes a path with a character outside ASCII, which the path
+# checks below then drop, while the API's list keeps it, with or without a toc. Node
+# is on the PATH wherever a deploy can run, since each preview action installs
+# its CLI with npm.
 #
 # The comparison is BASE...HEAD, from the merge base, so a lecture changed on
 # the base branch after the pull request branched off is not listed (#215).
@@ -36,13 +48,15 @@
 : "${BASE_SHA:?BASE_SHA is required}"
 : "${HEAD_SHA:?HEAD_SHA is required}"
 lectures_dir="${LECTURES_DIR:-lectures}"
+toc_file="${TOC_FILE:-}"
 
 first_depth=64
 max_depth=1024
 
 echo "Detecting changed lecture files in ${lectures_dir}..."
 
-# The last git command's stderr, so a warning can quote git's own message.
+# The last git command's stderr, so a warning can quote git's own message,
+# and node's, below.
 git_err=$(mktemp "${RUNNER_TEMP:-/tmp}/detect-changed-lectures.XXXXXX")
 trap 'rm -f "$git_err"' EXIT
 
@@ -144,6 +158,9 @@ if [ -n "$range" ] \
 fi
 
 changed_lecture_files=""
+changed_pages=""
+# With TOC_FILE: every added or modified .md, for the toc to choose from.
+toc_candidates=""
 if [ -n "$all_changed" ]; then
   while IFS=$'\t' read -r status file; do
     [ -z "$status" ] && continue
@@ -155,6 +172,13 @@ if [ -n "$all_changed" ]; then
       A*|M*) ;;
       *) continue ;;
     esac
+
+    if [ -n "$toc_file" ]; then
+      if [[ "$file" == *.md ]] && [ -f "$file" ]; then
+        toc_candidates="${toc_candidates}${file}"$'\n'
+      fi
+      continue
+    fi
 
     # Path filters — quoted "$lectures_dir" keeps it literal, so a dir name
     # with '.', '+', etc. doesn't act as a regex.
@@ -172,17 +196,48 @@ if [ -n "$all_changed" ]; then
   done <<< "$all_changed"
 fi
 
-if [ -n "$changed_lecture_files" ]; then
-  {
-    echo "changed-files<<EOF"
-    echo "$changed_lecture_files"
-    echo "EOF"
-  } >> "$GITHUB_OUTPUT"
-else
-  echo "changed-files=" >> "$GITHUB_OUTPUT"
+# With TOC_FILE, the toc's reader chooses, and gives each lecture's page. Like
+# a git failure, a toc it cannot read, or that names no page, is a warning,
+# and no lectures are listed.
+if [ -n "$toc_file" ]; then
+  echo "📁 Listing the changed lectures that ${toc_file} names"
+  if selected=$(printf '%s' "$toc_candidates" \
+      | TOC_FILE="$toc_file" LECTURES_DIR="$lectures_dir" \
+        node "$(dirname "${BASH_SOURCE[0]}")/preview-comment.cjs" toc-select 2>"$git_err"); then
+    nl=$'\n'
+    while IFS=$'\t' read -r file page; do
+      [ -n "$file" ] || continue
+      echo "✓ Changed: $file"
+      changed_lecture_files="${changed_lecture_files:+${changed_lecture_files}${nl}}${file}"
+      changed_pages="${changed_pages:+${changed_pages}${nl}}${page}"
+    done <<< "$selected"
+  elif [ $? -eq 2 ]; then
+    annotate warning "$(<"$git_err")"
+  else
+    warn "Could not read toc-file ${toc_file} with node, so no changed lectures are listed"
+  fi
 fi
 
-if [ -f "${lectures_dir}/_toc.yml" ]; then
+# output NAME VALUE: VALUE, one or more lines, as the step's output NAME,
+# ended by EOF, or by another delimiter when EOF is one of VALUE's lines, as
+# a page called EOF would be.
+output() {
+  local delimiter=EOF
+  if [ -z "$2" ]; then
+    echo "$1=" >> "$GITHUB_OUTPUT"
+    return
+  fi
+  while grep -qxF -- "$delimiter" <<< "$2"; do delimiter="EOF_${RANDOM}${RANDOM}"; done
+  printf '%s<<%s\n%s\n%s\n' "$1" "$delimiter" "$2" "$delimiter" >> "$GITHUB_OUTPUT"
+}
+
+output changed-files "$changed_lecture_files"
+output changed-pages "$changed_pages"
+
+if [ -n "$toc_file" ]; then
+  echo "strip-lectures-dir=false" >> "$GITHUB_OUTPUT"
+  echo "📁 Each link is the page that ${toc_file} names"
+elif [ -f "${lectures_dir}/_toc.yml" ]; then
   echo "strip-lectures-dir=true" >> "$GITHUB_OUTPUT"
   echo "📁 _toc.yml found in ${lectures_dir}/ - will strip directory from URLs"
 else
