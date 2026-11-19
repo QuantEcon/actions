@@ -4,7 +4,7 @@ Current priorities for `QuantEcon/actions`, the repositories that use the action
 
 ## Current state
 
-- **Actions (11):** `setup-environment`, `setup-latex`, `build-lectures`, `build-jupyter-cache`, `restore-jupyter-cache`, `preview-netlify`, `preview-cloudflare`, `preview-workers`, `publish-gh-pages`, `restore-gh-pages`, `deploy-cloudflare`. Latest release **`v0.21.0`** (2026-11-16). `@v0` points to **`v0.21.0`**.
+- **Actions (11):** `setup-environment`, `setup-latex`, `build-lectures`, `build-jupyter-cache`, `restore-jupyter-cache`, `preview-netlify`, `preview-cloudflare`, `preview-workers`, `publish-gh-pages`, `restore-gh-pages`, `deploy-cloudflare`. Latest release **`v0.21.1`** (2026-11-19). `@v0` points to **`v0.21.0`**, and moves there once `v0.21.1` has passed the release gate.
 - **Containers (2):** `quantecon` (full) and `quantecon-build` (lean), on the Anaconda 2026.07 baseline, with the Ubuntu base pinned by digest. See the Dependency policy below, and [CONTAINERS.md](CONTAINERS.md).
 - **Testing:** the action harness on every pull request, the container checks, and the canary repository; see [TESTING.md](TESTING.md). A release that changes what an action does passes the release gate, `gate.yml` in the canary, before `v0` moves, and anything the gate does not reach is staged there by hand ([CONTRIBUTING.md](../../CONTRIBUTING.md#staged-releases)).
 
@@ -16,6 +16,7 @@ Current priorities for `QuantEcon/actions`, the repositories that use the action
 | `lecture-python.myst` | `preview-netlify` (ci.yml), `publish-gh-pages` | `@v0` |
 | `test-actions-lecture-intro` | Full chain, `preview-netlify` and `preview-cloudflare` (`qe-preview-canary`): the canary | `@v0` |
 | `test-lecture-theme-sphinx` | `build-lectures` (`ci.yml`, `publish.yml`), `build-jupyter-cache` (`cache.yml`, weekly on Sunday at 03:00 UTC), `preview-netlify`, `publish-gh-pages`: a test corpus for the lecture theme | `@v0` |
+| `lectures` | `build-lectures` (`site-build.yml`): builds each published site from the shared lecture sources, on pushes, pull requests and twice a week. It builds `lecture-dp`'s site so far, and publishes nothing yet | `@v0` |
 | `lecture-jax` | `preview-netlify`, `publish-gh-pages` | **`@v0.12.0`** (2 call sites) |
 | `lecture-python-intro` | `publish-gh-pages` | **`@v0.12.0`** |
 | `lecture-python-advanced.myst` | `publish-gh-pages` | **`@v0.12.0`** |
@@ -70,7 +71,7 @@ The lean image pins every package in its `environment.yml` that the `anaconda` m
 | Environment and reproducibility | #30, #129, #18, #2 | #30 is backlog item 12; #129 is parked as a discussion; #18, container-mode caching, is parked until a repository passes `environment-update`; #2 is exploratory |
 | New actions and decisions | #96, #183, #185, #186 | #96 is parked until [quantecon-book-theme#359](https://github.com/QuantEcon/quantecon-book-theme/issues/359) moves: #195 chose to SHA-pin the `.notebooks` pushes in place (QuantEcon/workspace-lectures#58) rather than build an action with a known end of life. #183 tracks alternatives to the RunsOn GPU image. #185 proposes a shared Colab check that runs the built notebooks in Colab's image, and waits for #2; #186 proposes build-time monitoring across the lecture repositories |
 | Docs | #29, #178, #179 | #29 is backlog item 11; #179 publishes the manual |
-| Work plan | #319 | v0.20.0's first consumer runs, and the next wave |
+| Work plan | #319 | The canary's first scheduled runs, v0.21.1, then the next wave |
 
 ## Rollout status
 
