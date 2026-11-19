@@ -5,7 +5,7 @@
 # digest (never 26.04: see .github/dependabot.yml), and that pull request builds
 # and smoke-tests the images before :latest moves. Both Dockerfiles pin the same
 # digest, which scripts/check-base-pins.sh enforces.
-FROM ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852
+FROM ubuntu:24.04@sha256:73b999393d07f2bf65a40373778a44dc9a6d54ad7718d29247d8ff9413c4d6a8
 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
