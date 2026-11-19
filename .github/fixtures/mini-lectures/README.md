@@ -11,7 +11,7 @@ code cells, but they test different things and should stay separate:
 | Tests | **action logic** on hosted runners | **image contents** in a container job |
 | Environment | minimal — Python + `jupyter-book` | whatever the image ships |
 | Execution mode | `cache`, so `_build/.jupyter_cache` is genuinely populated | `force` + `raise_on_error` |
-| Optimised for | a fast conda solve | exercising numpy/scipy/pandas/matplotlib and the kaleido→chromium path |
+| Optimised for | a fast conda solve | exercising numpy/scipy/pandas/matplotlib and the kaleido→Chrome path |
 
 Merging them would make this one slow (a full science stack to solve on every
 harness job) and that one blind to the cache artifact.

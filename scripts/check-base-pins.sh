@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # Check that each container image pins its base image by digest, and that the
-# images agree on it (#235). validate-containers.yml runs this on every event.
+# images agree on it (#235) and on the versions and checksums they pin by hand
+# (#342). validate-containers.yml runs this on every event.
 #
 #   scripts/check-base-pins.sh                  # containers/*/Dockerfile
 #   scripts/check-base-pins.sh Dockerfile...    # these Dockerfiles
@@ -21,6 +22,11 @@
 # A FROM that names an earlier build stage, or `scratch`, pins nothing and is
 # skipped. One whose image comes from a build argument cannot be checked, so
 # it fails.
+#
+# The images pin Miniconda, Node and Chrome by hand, as ENV <NAME>_VERSION and
+# ENV <NAME>_SHA256, which no Dependabot ecosystem tracks (#342). Each such ENV
+# must have one value in every Dockerfile that sets it, so that a bump cannot
+# land in one image only either. These print nothing when they agree.
 set -euo pipefail
 
 fail() { echo "::error::$*" >&2; exit 1; }
@@ -30,9 +36,9 @@ PIN_RE='^[a-z0-9]([a-z0-9._/-]*[a-z0-9])?(:[0-9]+)?(/[a-z0-9._-]+)*:[A-Za-z0-9_]
 # Dockerfiles as arguments. Prints one line per pinned base and exits 0, or
 # reports every problem and exits 1.
 check_files() {
-  local file n line rest image stage word name digest i bad=0
+  local file n line rest image stage word name digest key value i bad=0
   local -a words=()
-  local -A digest_of=() where=() stages=()
+  local -A digest_of=() where=() stages=() env_of=() env_where=()
   [ "$#" -gt 0 ] || { echo "::error::no Dockerfiles to check" >&2; return 1; }
   for file in "$@"; do
     [ -f "$file" ] || { echo "::error::$file: no such file" >&2; bad=1; continue; }
@@ -40,6 +46,17 @@ check_files() {
     n=0
     while IFS= read -r line || [ -n "$line" ]; do
       n=$((n + 1))
+      if [[ $line =~ ^[[:space:]]*[Ee][Nn][Vv][[:space:]]+([A-Za-z0-9_]+_(VERSION|SHA256))=([^[:space:]]*)[[:space:]]*$ ]]; then
+        key=${BASH_REMATCH[1]}
+        value=${BASH_REMATCH[3]}
+        if [ -z "${env_where[$key]:-}" ]; then
+          env_of[$key]=$value
+          env_where[$key]="$file:$n"
+        elif [ "${env_of[$key]}" != "$value" ]; then
+          echo "::error file=$file,line=$n::ENV $key=$value, but ${env_where[$key]} sets ${env_of[$key]}: the images must move it together" >&2; bad=1
+        fi
+        continue
+      fi
       # Instructions are case-insensitive. Flags such as --platform come first.
       [[ $line =~ ^[[:space:]]*[Ff][Rr][Oo][Mm][[:space:]]+(.*)$ ]] || continue
       rest=${BASH_REMATCH[1]}
@@ -131,6 +148,22 @@ FROM $other"
   case_ build-arg 'comes from a build argument' 'ARG BASE=ubuntu:24.04
 FROM ${BASE}'
   case_ no-from 'no pinned FROM found' "RUN true"
+  case_ env-pins-agree pass "FROM $good
+ENV NODE_VERSION=24.0.0
+ENV NODE_SHA256=abc" "FROM $good
+env NODE_VERSION=24.0.0
+ENV NODE_SHA256=abc"
+  case_ env-pin-differs 'ENV CHROME_VERSION=2, but' "FROM $good
+ENV CHROME_VERSION=1" "FROM $good
+ENV CHROME_VERSION=2"
+  case_ env-checksum-differs 'ENV CHROME_SHA256=def, but' "FROM $good
+ENV CHROME_SHA256=abc" "FROM $good
+ENV CHROME_SHA256=def"
+  case_ env-pin-in-one-image pass "FROM $good
+ENV CHROME_VERSION=1" "FROM $good"
+  case_ env-other-names pass "FROM $good
+ENV PATH=/a" "FROM $good
+ENV PATH=/b"
   check_files "$dir/absent" > /dev/null 2>&1 && fail "self-test: a missing Dockerfile should fail"
   check_files > /dev/null 2>&1 && fail "self-test: no Dockerfiles at all should fail"
   echo "check-base-pins self-test passed"

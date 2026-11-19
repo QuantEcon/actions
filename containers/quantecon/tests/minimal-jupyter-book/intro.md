@@ -80,16 +80,42 @@ print(f"matplotlib {matplotlib.__version__}: rendered {len(png)} byte PNG")
 plt.close(fig)
 ```
 
-## Plotly static export (kaleido → chromium)
+## Plotly static export (kaleido → Chrome)
 
-The highest-value cell here. This is the path that broke in #85: kaleido v1
-dropped its bundled chromium, and because a GitHub Actions `container:` job
-forces `HOME=/github/home` rather than `/root`, a chromium provisioned under
-`/root` at image build time became unreachable at run time. Both images pin
-`kaleido<1.0` for exactly that reason — this cell is what would notice if the
-pin were lost or the resolved chromium moved again.
+The highest-value cell here. kaleido 1 bundles no browser: it drives a Chrome
+it has to find. This is the path that broke in #85: a GitHub Actions
+`container:` job forces `HOME=/github/home` rather than `/root`, so a Chrome
+provisioned under `/root` at image build time was unreachable at run time.
+Each image now installs Chrome at a fixed path and names it in `BROWSER_PATH`
+(#342).
+
+In an image, the cell first checks that the export goes through that Chrome.
+On its own the export would also pass with kaleido 0.2's bundled browser, or
+with a Chrome fetched under the build's `HOME`. A job with another `HOME`
+would not find that Chrome, but `docker run`, which keeps the build's `/root`,
+would. Outside an image, as in `run-local-tests.sh`, kaleido uses whatever
+Chrome it finds.
 
 ```{code-cell} python3
+import os
+from importlib.metadata import version
+
+if os.path.exists("/etc/quantecon-container"):
+    # Below 1.0, kaleido would export with its own bundled browser instead.
+    kaleido_version = version("kaleido")
+    assert int(kaleido_version.split(".")[0]) >= 1, f"kaleido {kaleido_version} is below 1.0, so the export would not use the image's Chrome"
+
+    from choreographer.browsers.chromium import Chromium
+    from choreographer.cli.defaults import default_download_path
+
+    browser = os.environ.get("BROWSER_PATH", "")
+    assert browser and os.access(browser, os.X_OK), f"BROWSER_PATH=[{browser}] is not an executable"
+    found = Chromium.find_browser(skip_local=False)
+    assert found == browser, f"kaleido would launch [{found}], not BROWSER_PATH [{browser}]"
+    # Where kaleido_get_chrome downloads to, and where kaleido looks first.
+    assert not default_download_path.parent.exists(), f"a Chrome download directory exists: {default_download_path.parent}"
+    print(f"kaleido {kaleido_version}: Chrome at {browser}")
+
 import plotly
 import plotly.graph_objects as go
 
@@ -99,4 +125,36 @@ img = fig.to_image(format="png")
 assert img.startswith(b"\x89PNG"), "plotly/kaleido did not produce a PNG"
 assert len(img) > 1000, f"plotly PNG suspiciously small ({len(img)} bytes)"
 print(f"plotly {plotly.__version__}: kaleido exported {len(img)} byte PNG")
+```
+
+## Plotly 3D export (WebGL)
+
+A 3D scene is drawn with WebGL, which headless Chrome runs in software
+(SwiftShader, through ANGLE). The BCG lectures export `go.Surface` and
+`go.Scatter3d` figures. When WebGL fails, the export still returns a valid PNG,
+just a blank one, so the cell checks the pixels. With no legend, title or
+margins, everything in the picture but the white paper is WebGL's: the scene's
+shaded axis planes and the red markers.
+
+```{code-cell} python3
+import io
+
+import numpy as np
+import plotly.graph_objects as go
+from PIL import Image
+
+t = np.linspace(0, 4 * np.pi, 60)
+fig = go.Figure(go.Scatter3d(
+    x=np.cos(t), y=np.sin(t), z=t, mode="markers",
+    marker=dict(size=6, color="rgb(255, 0, 0)"),
+))
+fig.update_layout(showlegend=False, margin=dict(l=0, r=0, t=0, b=0))
+img = fig.to_image(format="png", width=300, height=300)
+
+pixels = list(Image.open(io.BytesIO(img)).convert("RGB").getdata())
+drawn = sum(p != (255, 255, 255) for p in pixels)
+red = sum(r > 200 and g < 80 and b < 80 for r, g, b in pixels)
+assert drawn > len(pixels) // 10, f"3D export is blank: {drawn} of {len(pixels)} pixels drawn, so WebGL drew no scene"
+assert red > 100, f"3D export shows no markers: {red} red pixels of {len(pixels)}"
+print(f"3D export: {drawn} of {len(pixels)} pixels drawn, {red} red")
 ```

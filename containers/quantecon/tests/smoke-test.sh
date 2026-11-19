@@ -9,9 +9,9 @@
 # .github/workflows/test-container.yml). Do NOT wrap it in `docker run`: the
 # runner mounts an empty directory at /github/home and forces HOME=/github/home,
 # whereas `docker run` leaves HOME=/root. That difference is not cosmetic — it
-# is exactly why #85 (kaleido v1 losing its bundled chromium, provisioned under
-# /root at image build time) passed the old container tests while failing the
-# real lecture matrix, which does use a container job.
+# is exactly why #85 (kaleido v1 losing the Chrome provisioned under /root at
+# image build time) passed the old container tests while failing the real
+# lecture matrix, which does use a container job.
 #
 # The --self-test mode exists because the failure this fixture guards against is
 # silence. Before #108 the book executed nothing at all: `execute_notebooks` was
