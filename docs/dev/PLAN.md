@@ -16,7 +16,7 @@ Current priorities for `QuantEcon/actions`, the repositories that use the action
 | `lecture-python.myst` | `preview-netlify` (ci.yml), `publish-gh-pages` | `@v0` |
 | `test-actions-lecture-intro` | Full chain, `preview-netlify` and `preview-cloudflare` (`qe-preview-canary`): the canary | `@v0` |
 | `test-lecture-theme-sphinx` | `build-lectures` (`ci.yml`, `publish.yml`), `build-jupyter-cache` (`cache.yml`, weekly on Sunday at 03:00 UTC), `preview-netlify`, `publish-gh-pages`: a test corpus for the lecture theme | `@v0` |
-| `lectures` | `build-lectures` (`site-build.yml`): builds each published site from the shared lecture sources, on pushes, pull requests and twice a week. It builds `lecture-dp`'s site so far, and publishes nothing yet | `@v0` |
+| `lectures` | `build-lectures` (`site-build.yml`): builds each published site from the shared lecture sources, on pushes, pull requests and twice a week. It builds four sites so far (`dp`, `intro`, `advanced` and `programming`), and publishes nothing yet | `@v0` |
 | `lecture-jax` | `preview-netlify`, `publish-gh-pages` | **`@v0.12.0`** (2 call sites) |
 | `lecture-python-intro` | `publish-gh-pages` | **`@v0.12.0`** |
 | `lecture-python-advanced.myst` | `publish-gh-pages` | **`@v0.12.0`** |
@@ -66,7 +66,7 @@ The lean image pins every package in its `environment.yml` that the `anaconda` m
 | Environment and reproducibility | #30, #129, #18, #2 | #30 is backlog item 12; #129 is parked as a discussion; #18, container-mode caching, is parked until a repository passes `environment-update`; #2 is exploratory |
 | New actions and decisions | #96, #183, #185, #186 | #96 is parked until [quantecon-book-theme#359](https://github.com/QuantEcon/quantecon-book-theme/issues/359) moves: #195 chose to SHA-pin the `.notebooks` pushes in place (QuantEcon/workspace-lectures#58) rather than build an action with a known end of life. #183 tracks alternatives to the RunsOn GPU image. #185 proposes a shared Colab check that runs the built notebooks in Colab's image, and waits for #2; #186 proposes build-time monitoring across the lecture repositories |
 | Docs | #29, #178, #179 | #29 is backlog item 11; #179 publishes the manual |
-| Work plan | #319 | The canary's first scheduled runs, v0.21.1, then the next wave |
+| Work plan | #319 | The next release and the next wave |
 
 ## Rollout status
 
@@ -99,4 +99,4 @@ Before `lecture-python.myst`'s full chain, two things are unconfirmed on RunsOn'
 - `actions/cache` saving and restoring;
 - the OIDC token flow of `actions/deploy-pages`.
 
-Settled: the `.notebooks` repositories give way to notebooks on gh-pages with theme-generated Colab URLs ([quantecon-book-theme#359](https://github.com/QuantEcon/quantecon-book-theme/issues/359)); the notebook zip stays an inline workflow step; `collab.yml` and `linkcheck.yml` stay standalone workflows (#194); the shared link checker is `QuantEcon/action-link-checker`, in its own repository, and lychee stays where it also checks root-relative links; a shared Colab check waits for #2 (#185); and the HTML recovery tool (#27) is built here as a restore action, with no off-GitHub copy of the release archives, since the sources are the backup.
+Settled: the `.notebooks` repositories give way to notebooks on gh-pages with theme-generated Colab URLs ([quantecon-book-theme#359](https://github.com/QuantEcon/quantecon-book-theme/issues/359)); the notebook zip stays an inline workflow step; `collab.yml` and `linkcheck.yml` stay standalone workflows (#194); the shared link checker is `QuantEcon/action-link-checker`, in its own repository, and lychee stays in `lecture-dp` and `lecture-python.myst` until that action checks links within a site, root-relative ones included ([action-link-checker#11](https://github.com/QuantEcon/action-link-checker/issues/11)); a shared Colab check waits for #2 (#185); and the HTML recovery tool (#27) is built here as a restore action, with no off-GitHub copy of the release archives, since the sources are the backup.
