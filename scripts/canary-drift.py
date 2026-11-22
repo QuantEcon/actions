@@ -55,8 +55,12 @@ REPO_RE = re.compile(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+')
 FILE_RE = re.compile(r'[A-Za-z0-9_.-]+\.ya?ml')
 OURS_RE = re.compile(r'quantecon/actions(/|@|$)', re.I)
 SCHEDULE_RE = re.compile(r"github\.event\.schedule\s*(==|!=)\s*'([^']*)'")
-# Any read of the schedule, which what SCHEDULE_RE matches must account for.
-SCHEDULE_READ_RE = re.compile(r"github\.event(\.schedule\b|\[\s*'schedule'\s*\])", re.I)
+# Any read of the schedule, which what SCHEDULE_RE matches must account for:
+# each of `event` and `schedule` by property or by index, in either quote.
+# Only SCHEDULE_RE's form counts as a filter, so any other is reported, and
+# the check never has to read it right.
+MEMBER = r"""\s*(\.\s*{0}\b|\[\s*('{0}'|"{0}")\s*\])"""
+SCHEDULE_READ_RE = re.compile(r'\bgithub' + MEMBER.format('event') + MEMBER.format('schedule'), re.I)
 GUARDED = ('if', 'continue-on-error', 'permissions')
 MISSING = object()
 SHOWN = 60     # the most characters of a value a finding shows
@@ -651,6 +655,12 @@ jobs:
            schedule_filters(watch.format("${{{{ '30 6 * * *' != github.event.schedule }}}}")), [unread])
     expect('a filter that reads the schedule by index',
            schedule_filters(watch.format("github.event['schedule'] != '30 6 * * *'")), [unread])
+    expect('a filter that reads the event and the schedule by index',
+           schedule_filters(watch.format("github['event']['schedule'] == '30 6 * * *'")), [unread])
+    expect('a filter that reads the event by index',
+           schedule_filters(watch.format("github['event'].schedule != '30 6 * * *'")), [unread])
+    expect('a filter that reads both by index, with spaces and double quotes',
+           schedule_filters(watch.format('github [ "event" ] [ "schedule" ] != \'30 6 * * *\'')), [unread])
     expect('a filter that skips a cron it has and reads the schedule again',
            schedule_filters(watch.format("github.event.schedule != '30 6 * * *' && "
                                          "!startsWith(github.event.schedule, '30')")), [unread])
