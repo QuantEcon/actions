@@ -55,6 +55,12 @@ REPO_RE = re.compile(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+')
 FILE_RE = re.compile(r'[A-Za-z0-9_.-]+\.ya?ml')
 OURS_RE = re.compile(r'quantecon/actions(/|@|$)', re.I)
 SCHEDULE_RE = re.compile(r"github\.event\.schedule\s*(==|!=)\s*'([^']*)'")
+# Any read of the schedule, which what SCHEDULE_RE matches must account for:
+# each of `event` and `schedule` by property or by index, in either quote.
+# Only SCHEDULE_RE's form counts as a filter, so any other is reported, and
+# the check never has to read it right.
+MEMBER = r"""\s*(\.\s*{0}\b|\[\s*('{0}'|"{0}")\s*\])"""
+SCHEDULE_READ_RE = re.compile(r'\bgithub' + MEMBER.format('event') + MEMBER.format('schedule'), re.I)
 GUARDED = ('if', 'continue-on-error', 'permissions')
 MISSING = object()
 SHOWN = 60     # the most characters of a value a finding shows
@@ -330,21 +336,26 @@ def read_at(v0, canary_ref):
 def schedule_filters(text):
     """Problems with the jobs' filters on github.event.schedule in a
     workflow: one that runs a job only on a named cron, which an edit to that
-    cron alone would turn off, and one that names a cron on.schedule does
-    not have."""
+    cron alone would turn off, one that names a cron on.schedule does not
+    have, and one that reads the schedule in any other way, such as with
+    contains(), which this cannot follow."""
     doc = load_workflow(text, 'the workflow')
     on = doc.get('on', doc.get(True))
     schedule = on.get('schedule') if isinstance(on, dict) else None
     crons = {s.get('cron') for s in schedule or [] if isinstance(s, dict)}
     problems = []
     for job, spec in (doc.get('jobs') or {}).items():
-        cond = spec.get('if', '') if isinstance(spec, dict) else ''
-        for op, cron in SCHEDULE_RE.findall(str(cond)):
+        cond = str(spec.get('if', '') if isinstance(spec, dict) else '')
+        for op, cron in SCHEDULE_RE.findall(cond):
             if op == '==':
                 problems.append(f"job {job} runs on a schedule only when it is '{cron}', so editing that cron "
                                 "alone would turn the job off: skip a cron with != instead")
             if cron not in crons:
                 problems.append(f"job {job} names the schedule '{cron}', which on.schedule does not have")
+        if SCHEDULE_READ_RE.search(SCHEDULE_RE.sub('', cond)):
+            problems.append(f"job {job} reads github.event.schedule other than as github.event.schedule == or "
+                            "!= a cron in quotes, which this check cannot follow: skip a cron with "
+                            "github.event.schedule != '<cron>'")
     return problems
 
 
@@ -636,6 +647,23 @@ jobs:
     got = schedule_filters(watch.format("github.event.schedule != '45 6 * * 1'"))
     expect('a filter on a cron the workflow does not have', got,
            ["job drift names the schedule '45 6 * * 1', which on.schedule does not have"])
+    unread = ("job drift reads github.event.schedule other than as github.event.schedule == or != a cron in "
+              "quotes, which this check cannot follow: skip a cron with github.event.schedule != '<cron>'")
+    expect('a filter with contains()',
+           schedule_filters(watch.format("contains(github.event.schedule, '30 6')")), [unread])
+    expect('a filter with the cron first',
+           schedule_filters(watch.format("${{{{ '30 6 * * *' != github.event.schedule }}}}")), [unread])
+    expect('a filter that reads the schedule by index',
+           schedule_filters(watch.format("github.event['schedule'] != '30 6 * * *'")), [unread])
+    expect('a filter that reads the event and the schedule by index',
+           schedule_filters(watch.format("github['event']['schedule'] == '30 6 * * *'")), [unread])
+    expect('a filter that reads the event by index',
+           schedule_filters(watch.format("github['event'].schedule != '30 6 * * *'")), [unread])
+    expect('a filter that reads both by index, with spaces and double quotes',
+           schedule_filters(watch.format('github [ "event" ] [ "schedule" ] != \'30 6 * * *\'')), [unread])
+    expect('a filter that skips a cron it has and reads the schedule again',
+           schedule_filters(watch.format("github.event.schedule != '30 6 * * *' && "
+                                         "!startsWith(github.event.schedule, '30')")), [unread])
     try:
         with open(WATCH_WORKFLOW) as f:
             expect('canary-watch.yml runs each job on every cron it has', schedule_filters(f.read()), [])

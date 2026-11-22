@@ -38,9 +38,8 @@ permissions: {}
 
 env:
   CANARY_REPO: QuantEcon/test-actions-lecture-intro
-  # The canary's scheduled workflows, each weekly. ci.yml and publish.yml
-  # join once they have run on their schedule (#302).
-  CANARY_WORKFLOWS: cache.yml
+  # The canary's scheduled workflows, each weekly.
+  CANARY_WORKFLOWS: cache.yml ci.yml publish.yml
   # A week and a day. While a weekly schedule runs, its newest run is never
   # more than 168 hours old, and the day allows for GitHub's delays and for
   # this watcher's time of day. A run due on Sunday that never comes turns
@@ -90,7 +89,8 @@ jobs:
   # `if: github.event.schedule != '30 6 * * *'`: a filter that skips a cron,
   # so a cron edited later runs the job more often, never less. The drift
   # check's self-test fails on a filter that names a cron this workflow
-  # does not have, or that runs a job on one cron only.
+  # does not have, that runs a job on one cron only, or that reads
+  # github.event.schedule in any other way, such as with contains().
   drift:
     name: Compare the canary's workflows with templates/ at v0
     runs-on: ubuntu-latest
