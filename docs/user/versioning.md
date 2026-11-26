@@ -38,6 +38,8 @@ Before moving an exact reference, read the CHANGELOG sections in between. Its **
 
 [`build-jupyter-cache`](actions/build-jupyter-cache.md) runs [`setup-environment`](actions/setup-environment.md) and [`build-lectures`](actions/build-lectures.md) as steps of its own, at `@v0`, whatever version the workflow names for `build-jupyter-cache` itself, because GitHub does not allow an expression in `uses:`. So in a repository pinned to an exact release, those two still change when `v0` moves. The other actions run no other action of this repository.
 
+A reusable workflow is the same in another way: [`deploy-release`](workflows/deploy-release.md) names its actions at `@v0`, since a called workflow cannot name this repository's actions by a `./` path. A caller that pins the workflow at an exact release gets that release's jobs, and the latest release's actions.
+
 ## The manual for your version
 
 This manual describes `main`. For the version a workflow names, open the manual at that tag, at `https://github.com/QuantEcon/actions/tree/<tag>/docs/user`: `v0` for `@v0`, or `v0.14.0` for that release. The manual first shipped in v0.13.0. For an earlier release, read each action's `README.md` at that tag.

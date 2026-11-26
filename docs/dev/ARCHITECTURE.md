@@ -9,7 +9,8 @@ How QuantEcon Actions is built, and why. Using the actions is the [user manual](
 | Eleven composite actions | `<action>/action.yml` | The steps a lecture repository runs: `setup-environment`, `setup-latex`, `build-lectures`, `build-jupyter-cache`, `restore-jupyter-cache`, `preview-netlify`, `preview-cloudflare`, `preview-workers`, `publish-gh-pages`, `restore-gh-pages` and `deploy-cloudflare`. A workflow calls one as `quantecon/actions/<action>@v0`. An action that installs a CLI keeps its `package.json` and `package-lock.json` beside its `action.yml` |
 | Shared scripts | `scripts/` | What more than one action, or an action and its tests, run: change detection, the preview deploy decision and comment, the wrangler config for a Worker, the Access gate probe, release-asset packaging, the cached LaTeX package install. Also the repository's own tooling: the manual's generator, and the container checks |
 | Two container images | `containers/` | `quantecon` (full) and `quantecon-build` (lean), the environment most lecture builds run in. See [CONTAINERS.md](CONTAINERS.md) |
-| Workflow templates | `templates/` | `cache.yml`, `ci.yml` and `publish.yml`, which each lecture repository copies, and `restore.yml`, which puts the site back from a release |
+| Workflow templates | `templates/` | `cache.yml`, `ci.yml` and `publish.yml`, which each lecture repository copies, `restore.yml`, which puts the site back from a release, and `deploy-release.yml`, which calls the reusable workflow below |
+| A reusable workflow | `.github/workflows/deploy-release.yml` | Deploys one of the repository's releases to GitHub Pages, or an earlier one to roll back, for a lecture repository whose site is built elsewhere and arrives as a release. A lecture repository calls it as `quantecon/actions/.github/workflows/deploy-release.yml@v0`, from the template. Its inputs, secrets and outputs are described in its `on.workflow_call`, and the manual's tables generated from them |
 | The user manual | `docs/user/` | A chapter per action, with input and output tables generated from each `action.yml`, and the guides |
 | This repository's workflows | `.github/workflows/` | The action harness, and the container builds and tests. See [TESTING.md](TESTING.md) |
 
@@ -84,7 +85,7 @@ A release is a `vX.Y.Z` tag with a CHANGELOG section; `v0` is moved to each rele
 quantecon/actions/
 ├── <action>/                  # One per action: action.yml, its README signpost, and any lockfile or helper
 ├── scripts/                   # Shared scripts, and the repository's tooling
-├── templates/                 # cache.yml, ci.yml, publish.yml, restore.yml, latex-requirements.txt
+├── templates/                 # cache.yml, ci.yml, publish.yml, restore.yml, deploy-release.yml, latex-requirements.txt
 ├── containers/
 │   ├── quantecon/             # Full image: Dockerfile, environment.yml, tests/ (the smoke test)
 │   └── quantecon-build/       # Lean image: Dockerfile, environment.yml

@@ -1,0 +1,115 @@
+# Deploy a release to GitHub Pages: a reusable workflow
+#
+# Deploys the site one of the repository's releases holds, as publish-gh-pages
+# attached it: on a release published for a `publish-*` tag, that release; on
+# a dispatch, the release of the tag it names, which puts an earlier site back
+# (a rollback). It is for a lecture repository whose site is built elsewhere
+# and arrives as a release, which calls it from a short workflow of its own,
+# templates/deploy-release.yml. The user manual's chapter is
+# docs/user/workflows/deploy-release.md.
+#
+# Two jobs, so that only the second holds the Pages permissions:
+#   upload  restore-gh-pages downloads the release's archive and checksum,
+#           checks the archive's SHA-256 and extracts the site, and
+#           publish-gh-pages uploads it as the run's github-pages artifact.
+#           It has read access alone.
+#   deploy  publish-gh-pages deploys that artifact, in the caller's
+#           github-pages environment, and does nothing else. A deploy that
+#           fails can be re-run alone, and finds the one upload.
+# Neither runs repository or notebook code.
+#
+# The actions are named as quantecon/actions/<action>@v0: in a called
+# workflow a ./ path is the caller's checkout. So whatever ref a caller pins
+# this workflow at, the actions it runs are the latest release.
+#
+# The deploy joins the `pages` concurrency group, without cancelling, as the
+# templates' publish.yml and restore.yml do, so two deploys never overlap. A
+# caller must not set that group itself.
+
+name: Deploy a release to GitHub Pages, or an earlier one to roll back
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: >-
+          The tag of the release to deploy, such as `publish-2026-11-27`. Empty, the default, takes
+          the tag of the release whose `published` event started the run. A run started by a
+          release whose tag does not start with `publish-` deploys nothing, whatever this says.
+        type: string
+        required: false
+        default: ''
+      asset-name:
+        description: >-
+          The start of the release's asset names, as `restore-gh-pages` takes it. Empty, the
+          default, takes the release's one archive for the tag.
+        type: string
+        required: false
+        default: ''
+    outputs:
+      page-url:
+        description: The URL of the deployed site, as GitHub Pages reports it.
+        value: ${{ jobs.deploy.outputs.page-url }}
+      commit:
+        description: >-
+          The full SHA of the commit the deployed site was built from, as the release's manifest
+          records it. Empty when the manifest gives none.
+        value: ${{ jobs.upload.outputs.commit }}
+
+jobs:
+  upload:
+    # A release event deploys a publish- tag alone; a dispatch names its tag.
+    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'publish-')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read            # Required to read the release
+    outputs:
+      commit: ${{ steps.restore.outputs.commit }}
+    steps:
+      - name: Choose the release
+        id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          tag=${INPUT_TAG:-$RELEASE_TAG}
+          if [ -z "$tag" ]; then
+            echo "::error::no tag: pass the tag input, or call this workflow on a release event"
+            exit 1
+          fi
+          echo "Deploying the release of $tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the site from the release
+        id: restore
+        uses: quantecon/actions/restore-gh-pages@v0
+        with:
+          tag: ${{ steps.tag.outputs.tag }}
+          asset-name: ${{ inputs.asset-name }}
+
+      - name: Upload the site for GitHub Pages
+        uses: quantecon/actions/publish-gh-pages@v0
+        with:
+          mode: 'upload'
+          build-dir: ${{ steps.restore.outputs.build-dir }}
+
+  deploy:
+    needs: upload
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write              # Required for GitHub Pages deployment
+      id-token: write           # Required for GitHub Pages OIDC
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.publish.outputs.page-url }}
+    outputs:
+      page-url: ${{ steps.publish.outputs.page-url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: publish
+        uses: quantecon/actions/publish-gh-pages@v0
+        with:
+          mode: 'deploy'

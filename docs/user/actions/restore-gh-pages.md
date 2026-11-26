@@ -8,7 +8,7 @@ A release is a recovery point. Restoring one puts the site back exactly as it wa
 
 ## When to use it
 
-Use it, through [`restore.yml`](https://github.com/QuantEcon/actions/blob/main/templates/restore.yml), when the published site is broken or gone and a rebuild would be slow, or would not give back the same site.
+Use it, through [`restore.yml`](https://github.com/QuantEcon/actions/blob/main/templates/restore.yml), when the published site is broken or gone and a rebuild would be slow, or would not give back the same site. A repository whose site is built elsewhere and arrives as a release uses the [`deploy-release`](../workflows/deploy-release.md) workflow instead, which deploys each release, and an earlier one to roll back.
 
 - **Not to undo a change to the lectures.** Revert the change and publish. A restored site stays up only until the next publish, which replaces it.
 - **Not for a site deployed from a `gh-pages` branch.** Its Pages source is a branch, which an Actions deploy does not change, and the branch's history already holds every site it published: revert the branch instead.

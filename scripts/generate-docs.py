@@ -12,7 +12,13 @@ script copies them into the manual, between markers:
   actions          the action table in docs/user/README.md
   signpost         the whole of <action>/README.md
 
-Every action must have a chapter, and every chapter an action.
+The reusable workflows (`workflow_call`) in .github/workflows/ are the single source for theirs, from
+`on.workflow_call`, the same way:
+
+  inputs, secrets, outputs  in each chapter, docs/user/workflows/<workflow>.md
+  workflows                 the workflow table in docs/user/README.md
+
+Every action and every reusable workflow must have a chapter, and every chapter one of them.
 
 Usage:
 
@@ -26,6 +32,9 @@ Usage:
   - each yaml block in docs/user must parse;
   - each `uses: quantecon/actions/<action>@<ref>` step may pass only inputs that <action>/action.yml
     declares, and must pass every required one;
+  - each job that calls `quantecon/actions/.github/workflows/<workflow>.yml@<ref>` may pass only the
+    inputs and secrets the workflow's `on.workflow_call` declares, must pass every required one,
+    and may not pass `secrets: inherit`;
   - each complete workflow (one with both `on:` and `jobs:`) must set `permissions:`, at the top
     or on every job; a block with `jobs:` but no `on:` is refused, being neither complete nor a
     fragment;
@@ -52,6 +61,8 @@ MANUAL = ROOT / "docs" / "user"
 CHAPTERS = MANUAL / "actions"
 INDEX = MANUAL / "README.md"
 TEMPLATES = ROOT / "templates"
+WORKFLOWS = ROOT / ".github" / "workflows"
+WORKFLOW_CHAPTERS = MANUAL / "workflows"
 
 # The order the manual lists the actions in, which is the order a lecture repo meets them.
 # A new action goes here too; the script refuses to guess where.
@@ -69,11 +80,22 @@ ORDER = [
     "deploy-cloudflare",
 ]
 
+# The reusable workflows a lecture repository calls, in the order the manual lists them. A new
+# one goes here too, or, if only this repository's own workflows call it, in INTERNAL_WORKFLOWS.
+WORKFLOW_ORDER = [
+    "deploy-release",
+]
+INTERNAL_WORKFLOWS = [
+    "test-container",
+    "validate-containers",
+]
+
 BEGIN = re.compile(r"^<!-- BEGIN GENERATED: ([a-z]+)\b.*-->\s*$")
 END = re.compile(r"^<!-- END GENERATED -->\s*$")
 FENCE = re.compile(r"^( *)(`{3,}|~{3,})(.*)$")
 CODE_SPAN = re.compile(r"(`+)(?:[^`]|(?!\1)`)*?\1")
 OWN_STEP = re.compile(r"^quantecon/actions/([^@\s]+)@(\S+)$", re.IGNORECASE)
+OWN_WORKFLOW = re.compile(r"^quantecon/actions/\.github/workflows/([^@\s/]+)\.ya?ml@(\S+)$", re.IGNORECASE)
 
 errors = []
 
@@ -131,6 +153,55 @@ def load_actions():
     return [Action(name) for name in ORDER if name in found]
 
 
+class Workflow:
+    """A reusable workflow: what its `on.workflow_call` declares, read as an action's inputs are."""
+
+    def __init__(self, name):
+        self.name = name
+        self.path = WORKFLOWS / f"{name}.yml"
+        call = workflow_call(self.path) or {}
+        with open(self.path, encoding="utf-8") as f:
+            self.title = (yaml.safe_load(f) or {}).get("name") or name
+        self.inputs = call.get("inputs") or {}
+        self.secrets = call.get("secrets") or {}
+        self.outputs = call.get("outputs") or {}
+        self.chapter = WORKFLOW_CHAPTERS / f"{name}.md"
+
+    def required(self):
+        return {k for k, v in self.inputs.items() if str((v or {}).get("required", "")).lower() == "true"}
+
+    def required_secrets(self):
+        return {k for k, v in self.secrets.items() if str((v or {}).get("required", "")).lower() == "true"}
+
+
+def workflow_call(path):
+    """`on.workflow_call` of a workflow file, or None. PyYAML reads a bare `on` key as True."""
+    with open(path, encoding="utf-8") as f:
+        meta = yaml.safe_load(f) or {}
+    on = meta.get("on", meta.get(True))
+    if isinstance(on, dict) and "workflow_call" in on:
+        return on["workflow_call"] or {}
+    if on == "workflow_call" or (isinstance(on, list) and "workflow_call" in on):
+        return {}
+    return None
+
+
+def load_workflows():
+    found = sorted(p.stem for p in WORKFLOWS.glob("*.yml") if workflow_call(p) is not None)
+    for name in found:
+        if name not in WORKFLOW_ORDER and name not in INTERNAL_WORKFLOWS:
+            where = rel(Path(__file__))
+            error(WORKFLOWS / f"{name}.yml", 0,
+                  f"{name} is in neither WORKFLOW_ORDER nor INTERNAL_WORKFLOWS in {where}, so the manual cannot place it")
+    for name in INTERNAL_WORKFLOWS:
+        if name not in found:
+            error(Path(__file__), 0, f"INTERNAL_WORKFLOWS names {name}, which is no reusable workflow in {rel(WORKFLOWS)}")
+    for name in WORKFLOW_ORDER:
+        if name not in found:
+            error(Path(__file__), 0, f"WORKFLOW_ORDER names {name}, which is no reusable workflow in {rel(WORKFLOWS)}")
+    return [Workflow(name) for name in WORKFLOW_ORDER if name in found]
+
+
 # --------------------------------------------------------------------------------------------
 # Rendering
 # --------------------------------------------------------------------------------------------
@@ -168,9 +239,9 @@ def default(spec, required):
     return code(value) if value else "`''`"
 
 
-def inputs_table(action):
+def inputs_table(action, kind="action"):
     if not action.inputs:
-        return "This action has no inputs."
+        return f"This {kind} has no inputs."
     rows = ["| Input | Required | Default | Description |", "|---|---|---|---|"]
     required = action.required()
     for name, spec in action.inputs.items():
@@ -182,12 +253,33 @@ def inputs_table(action):
     return "\n".join(rows)
 
 
-def outputs_table(action):
+def outputs_table(action, kind="action"):
     if not action.outputs:
-        return "This action has no outputs."
+        return f"This {kind} has no outputs."
     rows = ["| Output | Description |", "|---|---|"]
     for name, spec in action.outputs.items():
         rows.append(f"| `{name}` | {cell((spec or {}).get('description', ''), action.path, f'output {name}')} |")
+    return "\n".join(rows)
+
+
+def secrets_table(workflow):
+    if not workflow.secrets:
+        return "This workflow takes no secrets."
+    rows = ["| Secret | Required | Description |", "|---|---|---|"]
+    required = workflow.required_secrets()
+    for name, spec in workflow.secrets.items():
+        rows.append(
+            f"| `{name}` | {'yes' if name in required else 'no'} | "
+            f"{cell((spec or {}).get('description', ''), workflow.path, f'secret {name}')} |"
+        )
+    return "\n".join(rows)
+
+
+def workflows_table(workflows):
+    rows = ["| Workflow | What it does |", "|---|---|"]
+    for workflow in workflows:
+        link = f"workflows/{workflow.name}.md"
+        rows.append(f"| [`{workflow.name}`]({link}) | {cell(workflow.title, workflow.path, 'name')} |")
     return "\n".join(rows)
 
 
@@ -267,9 +359,25 @@ def fill(path, blocks, source):
     return "\n".join(out) if set(seen) == set(blocks) else None
 
 
-def generate(actions):
+def generate(actions, workflows):
     """Map each generated file to the text it should have."""
     wanted = {}
+    workflow_names = {w.name for w in workflows}
+    for chapter in sorted(WORKFLOW_CHAPTERS.glob("*.md")) if WORKFLOW_CHAPTERS.is_dir() else []:
+        if chapter.stem not in workflow_names:
+            message = f"{rel(WORKFLOW_CHAPTERS)} holds one chapter per reusable workflow, and there is no {rel(WORKFLOWS)}/{chapter.stem}.yml"
+            error(chapter, 0, message)
+    for workflow in workflows:
+        source = rel(workflow.path)
+        if not workflow.chapter.is_file():
+            template = rel(ROOT / "docs" / "dev" / "CHAPTER-TEMPLATE.md")
+            error(workflow.path, 0, f"{workflow.name} has no chapter: write {rel(workflow.chapter)}, starting from {template}")
+            continue
+        blocks = {"inputs": inputs_table(workflow, "workflow"), "secrets": secrets_table(workflow),
+                  "outputs": outputs_table(workflow, "workflow")}
+        text = fill(workflow.chapter, blocks, source)
+        if text is not None:
+            wanted[workflow.chapter] = text
     names = {a.name for a in actions}
     for chapter in sorted(CHAPTERS.glob("*.md")) if CHAPTERS.is_dir() else []:
         if chapter.stem not in names:
@@ -286,7 +394,8 @@ def generate(actions):
             wanted[action.chapter] = text
         wanted[action.readme] = "\n".join(wrap("signpost", source, signpost(action))) + "\n"
     if INDEX.is_file():
-        text = fill(INDEX, {"actions": actions_table(actions)}, "each action.yml")
+        text = fill(INDEX, {"actions": actions_table(actions), "workflows": workflows_table(workflows)},
+                    "each action.yml and reusable workflow")
         if text is not None:
             wanted[INDEX] = text
     else:
@@ -365,7 +474,32 @@ def mappings(node, seen=None):
             yield from mappings(value, seen)
 
 
-def check_steps(root, path, offset, actions):
+def check_call(node, path, offset, ref, line, workflow):
+    """A job that calls one of this repository's reusable workflows: its with: and secrets:."""
+    for field, declared, required, what in (
+        ("with", workflow.inputs, workflow.required(), "input"),
+        ("secrets", workflow.secrets, workflow.required_secrets(), "secret"),
+    ):
+        supplied = {}
+        given = keys(node).get(field)
+        if given:
+            if isinstance(given[1], yaml.ScalarNode) and field == "secrets":
+                error(path, offset + given[1].start_mark.line + 1,
+                      f"{ref}: pass each secret by name, not secrets: {given[1].value}")
+                continue
+            if not isinstance(given[1], yaml.MappingNode):
+                error(path, offset + given[1].start_mark.line + 1, f"{ref}: {field}: is not a mapping")
+                continue
+            supplied = keys(given[1])
+        for name, (key, _) in supplied.items():
+            if name not in declared:
+                error(path, offset + key.start_mark.line + 1,
+                      f"{workflow.name} has no {what} '{name}' (it takes: {', '.join(declared) or 'none'})")
+        for name in sorted(required - set(supplied)):
+            error(path, line, f"{workflow.name} requires {what} '{name}', and this job does not pass it")
+
+
+def check_steps(root, path, offset, actions, workflows=None):
     steps = 0
     for node in mappings(root):
         uses = keys(node).get("uses")
@@ -375,6 +509,14 @@ def check_steps(root, path, offset, actions):
         if not ref.lower().startswith("quantecon/actions/"):
             continue
         steps += 1
+        w = OWN_WORKFLOW.match(ref)
+        if w:
+            workflow = (workflows or {}).get(w.group(1))
+            if workflow is None:
+                error(path, line, f"{ref}: there is no reusable workflow {w.group(1)} in {rel(WORKFLOWS)}")
+            else:
+                check_call(node, path, offset, ref, line, workflow)
+            continue
         m = OWN_STEP.match(ref)
         if not m:
             error(path, line, f"cannot read [{ref}]: expected quantecon/actions/<action>@<ref>")
@@ -425,8 +567,9 @@ def check_workflow(root, path, offset):
     return True
 
 
-def check_examples(actions, actionlint):
+def check_examples(actions, actionlint, workflows=()):
     by_name = {a.name: a for a in actions}
+    by_workflow = {w.name: w for w in workflows}
     workflows = []  # (path, offset, text)
     steps = 0
 
@@ -444,7 +587,7 @@ def check_examples(actions, actionlint):
             continue
         complete = False
         for root in roots:
-            steps += check_steps(root, path, offset, by_name)
+            steps += check_steps(root, path, offset, by_name, by_workflow)
             complete = check_workflow(root, path, offset) or complete
         if complete:
             workflows.append((path, offset, text))
@@ -482,10 +625,11 @@ def main():
         parser.error("--actionlint needs --check-examples")
 
     actions = load_actions()
+    workflows = load_workflows()
     if args.check or not args.check_examples:
-        drift(generate(actions), args.check)
+        drift(generate(actions, workflows), args.check)
     if args.check_examples:
-        check_examples(actions, args.actionlint)
+        check_examples(actions, args.actionlint, workflows)
 
     if errors:
         report_errors()

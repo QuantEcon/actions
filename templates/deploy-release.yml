@@ -1,0 +1,58 @@
+# Deploy Release Workflow (GitHub Pages)
+#
+# For a lecture repository whose site is built elsewhere and arrives as one
+# of its releases: it deploys that release to GitHub Pages, and rolls back by
+# deploying an earlier one. It calls the reusable workflow
+# quantecon/actions/.github/workflows/deploy-release.yml, which restores the
+# release's site (restore-gh-pages) and deploys it (publish-gh-pages); see
+# docs/user/workflows/deploy-release.md in QuantEcon/actions.
+#
+#   On a release published for a `publish-*` tag, it deploys that release.
+#   On a dispatch with a tag, it deploys that tag's release: the rollback.
+#     gh workflow run deploy-release.yml -f tag=publish-2026-11-27
+#
+# A repository that builds and publishes its own site uses publish.yml, and
+# restore.yml to put an earlier release back, instead of this file.
+#
+# Copy to your repository as .github/workflows/deploy-release.yml.
+#
+# Prerequisites:
+#   1. Releases that hold the site, as publish-gh-pages' release mode makes
+#      them: an archive, its checksum and a manifest.
+#   2. GitHub Pages with Source → "GitHub Actions" (Settings → Pages).
+#   3. The tag pattern `publish*` allowed under Settings → Environments →
+#      github-pages → Deployment branches and tags, beside the default
+#      branch: a release event runs on its tag.
+#   4. A release made by GITHUB_TOKEN starts no workflow, so the release must
+#      come from a person, an App or another token.
+#   5. No other workflow here that deploys on a `publish*` tag: a release
+#      creates its tag, and a publish.yml that runs on the tag's push would
+#      deploy over this one.
+#
+# Action versions: @v0 = latest 0.x release (floating); pin @v0.x.y for reproducibility. Latest at:
+#   https://github.com/quantecon/actions/releases
+
+name: Deploy Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The tag of the release to deploy, such as publish-2026-11-27'
+        required: true
+        type: string
+
+jobs:
+  deploy:
+    # A called workflow gets at most what its caller grants: reading the
+    # release, and the Pages deploy.
+    permissions:
+      contents: read            # Required to read the release
+      pages: write              # Required for GitHub Pages deployment
+      id-token: write           # Required for GitHub Pages OIDC
+    uses: quantecon/actions/.github/workflows/deploy-release.yml@v0
+    with:
+      tag: ${{ inputs.tag }}
+      # asset-name: 'lecture-python-html'   # Only if a release holds two archives for its tag
