@@ -5,7 +5,7 @@
 A reusable workflow that deploys one of the repository's releases to GitHub Pages: the site [`publish-gh-pages`](../actions/publish-gh-pages.md) attached to it as an archive, a checksum and a manifest. It runs in two jobs:
 
 - **`upload`** restores the release's site with [`restore-gh-pages`](../actions/restore-gh-pages.md), which checks the archive's SHA-256 before extracting it, and uploads it with `publish-gh-pages`' `mode: upload`. It has read access alone.
-- **`deploy`** deploys that upload with `publish-gh-pages`' `mode: deploy`, in the `github-pages` environment, and does nothing else. If the deploy fails, **Re-run failed jobs** re-runs this job alone, and it finds the one upload.
+- **`deploy`** deploys that upload with `publish-gh-pages`' `mode: deploy`, in the `github-pages` environment, and does nothing else. If the deploy fails, **Re-run failed jobs** re-runs this job alone, and it finds the one upload, which is kept for a day; after that, dispatch the tag again.
 
 Neither job runs repository or notebook code. A repository calls it from a short workflow of its own, [`deploy-release.yml`](https://github.com/QuantEcon/actions/blob/main/templates/deploy-release.yml), which runs it in two cases:
 
@@ -17,8 +17,8 @@ Neither job runs repository or notebook code. A repository calls it from a short
 Use it when the site is built somewhere else and reaches the repository as a release: once QuantEcon's lecture monorepo, QuantEcon/lectures, builds a lecture series, it creates the series repository's release with the built site, and this workflow serves it.
 
 - **Not for a repository that builds its own site.** That one publishes with [`publish.yml`](https://github.com/QuantEcon/actions/blob/main/templates/publish.yml) and puts an earlier release back with [`restore.yml`](https://github.com/QuantEcon/actions/blob/main/templates/restore.yml), as [`restore-gh-pages`](../actions/restore-gh-pages.md) describes.
-- **Not beside another deploy on the same tags.** A release creates its tag, so a `publish.yml` that runs on the push of a `publish*` tag would build the frozen source and deploy over this workflow's deploy. Disable or remove it first.
-- **The notebooks push is not here yet.** A series that serves its notebooks to Colab from a `.notebooks` repository still pushes them as it does today. The push is to come as a job of its own, with its own secret, in a later release (#356).
+- **Not beside another deploy on the same tags.** A release creates its tag, so a `publish.yml` that runs on the push of a `publish*` tag would build the frozen source and deploy over this workflow's deploy. Disable it first: removing the file protects only tags on later commits, since a tag made at an older commit still carries it.
+- **It does not push notebooks.** A series that serves its notebooks to Colab from a `.notebooks` repository pushes them as it does today. #356 tracks a push in a job of its own.
 
 ## Requirements
 
@@ -103,10 +103,10 @@ Inside a called workflow, `./` paths name the caller's checkout, so this workflo
 
 ### Concurrency
 
-The deploy job joins the `pages` concurrency group, without cancelling, the group `publish.yml` and `restore.yml` use, so no two deploys overlap. A caller must not set that group at its own top level: the called job would wait for a group its caller holds, and never start.
+The deploy job joins the `pages` concurrency group, without cancelling, the group `publish.yml` and `restore.yml` use, so no two deploys overlap. A caller should not use that group itself, at its top level or on the calling job: GitHub's documentation does not say how a called job's group meets its caller's, and the template sets none.
 
 ## Troubleshooting
 
-- **A release was published and nothing deployed.** Check that its tag starts with `publish-`, and that whoever created it was not a workflow's `GITHUB_TOKEN`.
+- **A release was published and nothing deployed.** Check that its tag starts with `publish-`, that whoever created it was not a workflow's `GITHUB_TOKEN`, and that `deploy-release.yml` exists at the commit the tag points at: a release event runs the caller from the tagged commit.
 - **The deploy job is rejected by environment protection.** The `github-pages` environment does not admit the run's ref: add the tag pattern `publish*` for a release event, or run the dispatch on the default branch.
 - **`restore-gh-pages` finds no archive, or two.** See its [troubleshooting](../actions/restore-gh-pages.md#troubleshooting); `asset-name` picks one of two archives.

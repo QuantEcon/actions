@@ -77,7 +77,7 @@ should pin an exact `v0.x.y` tag. After the 1.0.0 release, we'll add floating ma
 
 ### Staged Releases
 
-A release that changes what an action does, not just its docs, is staged: hold step 3 until the
+A release that changes what an action or a reusable workflow does, not just its docs, is staged: hold step 3 until the
 candidate has passed the release gate. Merging to `main` reaches no consumer, but moving `v0`
 reaches every `@v0` consumer on its next run. The gate is `gate.yml` in the canary,
 `QuantEcon/test-actions-lecture-intro`. It checks the candidate out and runs the actions from that
@@ -137,6 +137,9 @@ The gate does not reach:
 - `setup-environment` outside a container, `setup-latex`, `deploy-cloudflare` and
   `preview-workers`, since the gate builds in a container and deploys to no Worker. Stage them
   with a throwaway workflow on a canary branch, or for `preview-workers` a canary PR as above;
+- the `deploy-release` reusable workflow, which the gate does not call. Stage it with a caller on a
+  canary branch pinned to `quantecon/actions/.github/workflows/deploy-release.yml@vX.Y.Z`; its
+  actions still run at `v0`, so a release that also changes an action ships the action first;
 - a scenario of the release's own, such as a cache restored across several pushes;
 - how consumers fetch the actions by tag. The gate runs them from a checkout, and rewrites
   `build-jupyter-cache`'s four nested `@v0` calls to that checkout, so its siblings run at the
@@ -195,10 +198,12 @@ extend `IGNORED` in that job; it is an ignore list, so anything unrecognised run
 rather than silently passing.
 
 The `gate` job also checks the user manual, so a docs-only PR is checked too. Every action has a
-chapter in `docs/user/actions/`. The chapters' input and output tables, the action table in
-`docs/user/README.md` and every action's README are generated from each `action.yml` by
-`scripts/generate-docs.py`, and the gate fails when a committed copy no longer matches, or when an
-action has no chapter: run the script and commit what it writes. It also checks every example in
+chapter in `docs/user/actions/`, and every reusable workflow a lecture repository calls one in
+`docs/user/workflows/`. The chapters' tables, the action and workflow tables in
+`docs/user/README.md` and every action's README are generated from each `action.yml` and each
+workflow's `on.workflow_call` by `scripts/generate-docs.py`, and the gate fails when a committed
+copy no longer matches, or when an action or such a workflow has no chapter: run the script and
+commit what it writes. It also checks every example in
 `docs/user` and `templates/` against the `action.yml` files, for `permissions:`, and with
 actionlint. [docs/dev/CHAPTER-TEMPLATE.md](docs/dev/CHAPTER-TEMPLATE.md)
 lists the checks and how to run them locally. The gate also lints `.github/workflows/` with
@@ -255,6 +260,7 @@ Update these docs when adding features:
 | The action's `action.yml` descriptions, then run `python3 scripts/generate-docs.py` | Any input or output change |
 | The action's chapter, `docs/user/actions/<action>.md` | A change in what the action does |
 | A chapter for it, from `docs/dev/CHAPTER-TEMPLATE.md`, and its place in `ORDER` in `scripts/generate-docs.py` | A new action |
+| A chapter for it in `docs/user/workflows/`, and its place in `WORKFLOW_ORDER` in `scripts/generate-docs.py`; or, if only this repository's own workflows call it, an entry in `INTERNAL_WORKFLOWS` and no chapter | A new reusable workflow (`on: workflow_call`) |
 | `docs/user/getting-started.md` | A template changes: its triggers, jobs, permissions or secrets, or how to adopt it |
 | `docs/user/composition.md` | What one action hands to the next changes, or a new action joins the chain |
 | `docs/user/containers.md` | What an image holds, or when and how it is rebuilt |

@@ -90,10 +90,10 @@ quantecon/actions/
 │   ├── quantecon/             # Full image: Dockerfile, environment.yml, tests/ (the smoke test)
 │   └── quantecon-build/       # Lean image: Dockerfile, environment.yml
 ├── docs/
-│   ├── user/                  # The user manual: the guides, and actions/<action>.md
+│   ├── user/                  # The user manual: the guides, actions/<action>.md and workflows/<workflow>.md
 │   └── dev/                   # This file, testing, containers, the plan, the GPU image
 ├── tests/                     # Local scratch space; see tests/README.md
 └── .github/
-    ├── workflows/             # The action harness and the container workflows
+    ├── workflows/             # The action harness, the container workflows and the reusable deploy-release
     └── fixtures/              # The harness's fixtures
 ```

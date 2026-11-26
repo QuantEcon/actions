@@ -18,7 +18,7 @@ The actions are built for QuantEcon's lecture repositories, and are on 0.x, wher
 
 A workflow step uses an action as `quantecon/actions/<action>@v0`.
 
-<!-- BEGIN GENERATED: actions. scripts/generate-docs.py writes this from each action.yml and reusable workflow: edit that, not this. -->
+<!-- BEGIN GENERATED: actions. scripts/generate-docs.py writes this from each action.yml: edit that, not this. -->
 
 | Action | What it does |
 |---|---|
@@ -40,7 +40,7 @@ A workflow step uses an action as `quantecon/actions/<action>@v0`.
 
 A job calls a reusable workflow as `quantecon/actions/.github/workflows/<workflow>.yml@v0`, from a short workflow in your repository that its template gives.
 
-<!-- BEGIN GENERATED: workflows. scripts/generate-docs.py writes this from each action.yml and reusable workflow: edit that, not this. -->
+<!-- BEGIN GENERATED: workflows. scripts/generate-docs.py writes this from each reusable workflow's on.workflow_call: edit that, not this. -->
 
 | Workflow | What it does |
 |---|---|

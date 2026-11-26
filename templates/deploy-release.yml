@@ -27,9 +27,14 @@
 #      come from a person, an App or another token.
 #   5. No other workflow here that deploys on a `publish*` tag: a release
 #      creates its tag, and a publish.yml that runs on the tag's push would
-#      deploy over this one.
+#      deploy over this one. Disable it (Actions → the workflow → Disable
+#      workflow): removing the file protects only tags on later commits.
+#   6. This file at the commit each release's tag points at: a release event
+#      runs the workflow from the tagged commit.
 #
-# Action versions: @v0 = latest 0.x release (floating); pin @v0.x.y for reproducibility. Latest at:
+# Versions: @v0 = the workflow at the latest 0.x release (floating). Pinning
+# it at @v0.x.y pins the workflow's jobs, but the actions inside it still run
+# at @v0 (docs/user/versioning.md in QuantEcon/actions). Releases at:
 #   https://github.com/quantecon/actions/releases
 
 name: Deploy Release

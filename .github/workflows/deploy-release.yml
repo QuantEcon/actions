@@ -15,7 +15,8 @@
 #           It has read access alone.
 #   deploy  publish-gh-pages deploys that artifact, in the caller's
 #           github-pages environment, and does nothing else. A deploy that
-#           fails can be re-run alone, and finds the one upload.
+#           fails can be re-run alone within a day, while the upload is
+#           kept; after that, dispatch the tag again.
 # Neither runs repository or notebook code.
 #
 # The actions are named as quantecon/actions/<action>@v0: in a called
@@ -24,7 +25,8 @@
 #
 # The deploy joins the `pages` concurrency group, without cancelling, as the
 # templates' publish.yml and restore.yml do, so two deploys never overlap. A
-# caller must not set that group itself.
+# caller should not use that group itself, at its top level or on the calling
+# job: GitHub does not document how a called job's group meets its caller's.
 
 name: Deploy a release to GitHub Pages, or an earlier one to roll back
 
@@ -75,6 +77,13 @@ jobs:
           tag=${INPUT_TAG:-$RELEASE_TAG}
           if [ -z "$tag" ]; then
             echo "::error::no tag: pass the tag input, or call this workflow on a release event"
+            exit 1
+          fi
+          # restore-gh-pages' rule, checked before anything prints the tag, so
+          # a value with a line break cannot start a workflow command (#267).
+          # The error does not echo it.
+          if ! [[ "$tag" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+            echo "::error::the tag must be letters, digits, '.', '_' and '-' only, starting with a letter or a digit"
             exit 1
           fi
           echo "Deploying the release of $tag"

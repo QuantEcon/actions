@@ -323,7 +323,9 @@ def wrap(block, source, body):
 
 
 def fill(path, blocks, source):
-    """Return path's text with each named block regenerated, or None if its markers are unusable."""
+    """Return path's text with each named block regenerated, or None if its markers are unusable.
+
+    source names what the blocks are written from, for their markers: one string, or a dict per block."""
     lines = path.read_text(encoding="utf-8").split("\n")
     out, seen, i = [], [], 0
     while i < len(lines):
@@ -352,7 +354,7 @@ def fill(path, blocks, source):
             error(path, start + 1, f"the '{name}' block has no END GENERATED")
             return None
         seen.append(name)
-        out.extend(wrap(name, source, blocks[name]))
+        out.extend(wrap(name, source[name] if isinstance(source, dict) else source, blocks[name]))
         i += 1
     for name in sorted(set(blocks) - set(seen)):
         error(path, 0, f"no '{name}' block: add a BEGIN GENERATED: {name} / END GENERATED pair where it belongs")
@@ -395,7 +397,7 @@ def generate(actions, workflows):
         wanted[action.readme] = "\n".join(wrap("signpost", source, signpost(action))) + "\n"
     if INDEX.is_file():
         text = fill(INDEX, {"actions": actions_table(actions), "workflows": workflows_table(workflows)},
-                    "each action.yml and reusable workflow")
+                    {"actions": "each action.yml", "workflows": "each reusable workflow's on.workflow_call"})
         if text is not None:
             wanted[INDEX] = text
     else:
@@ -419,7 +421,8 @@ def drift(wanted, check):
                     f"b/{rel(path)}",
                 )
             )
-            error(path, 0, "out of date with action.yml: run python3 scripts/generate-docs.py and commit the result")
+            error(path, 0, "out of date with what it is generated from (an action.yml, or a reusable workflow's "
+                  "on.workflow_call): run python3 scripts/generate-docs.py and commit the result")
         else:
             path.write_text(text, encoding="utf-8")
             print(f"updated {rel(path)}")
@@ -567,9 +570,9 @@ def check_workflow(root, path, offset):
     return True
 
 
-def check_examples(actions, actionlint, workflows=()):
+def check_examples(actions, actionlint, reusable=()):
     by_name = {a.name: a for a in actions}
-    by_workflow = {w.name: w for w in workflows}
+    by_workflow = {w.name: w for w in reusable}
     workflows = []  # (path, offset, text)
     steps = 0
 
