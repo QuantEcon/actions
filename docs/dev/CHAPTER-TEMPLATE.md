@@ -1,6 +1,6 @@
 # Writing an action chapter
 
-Each action has one chapter in the user manual, at `docs/user/actions/<action>.md`. Start from the skeleton below. [setup-environment.md](../user/actions/setup-environment.md) is a finished chapter to compare against.
+Each action has one chapter in the user manual, at `docs/user/actions/<action>.md`, and each reusable workflow a lecture repository calls one at `docs/user/workflows/<workflow>.md`, with its facts in `on.workflow_call` where an action's are in `action.yml`. A workflow chapter has a Secrets block between Inputs and Outputs: `<!-- BEGIN GENERATED: secrets -->`. Start from the skeleton below. [setup-environment.md](../user/actions/setup-environment.md) is a finished chapter to compare against.
 
 ## What goes where
 
@@ -12,7 +12,7 @@ Each action has one chapter in the user manual, at `docs/user/actions/<action>.m
   python3 scripts/generate-docs.py
   ```
 
-  It fills the chapter's Inputs and Outputs tables, rewrites the action's `README.md` as a signpost to the chapter, and updates the action table in `docs/user/README.md`. The harness `gate` job runs it with `--check`, and fails when a committed table no longer matches, or when an action has no chapter.
+  It fills the chapter's Inputs and Outputs tables (and a workflow chapter's Secrets table), rewrites the action's `README.md` as a signpost to the chapter, and updates the action and workflow tables in `docs/user/README.md`. The harness `gate` job runs it with `--check`, and fails when a committed table no longer matches, or when an action has no chapter.
 - **Examples.** The minimal example is a complete workflow: `name:`, `on:`, `permissions:` and `jobs:`. Anything shorter is a fragment of steps, with no `jobs:` key. The realistic example is a link to the template that uses the action, not a copy of it.
 
 ## What the gate checks
@@ -21,6 +21,7 @@ Each action has one chapter in the user manual, at `docs/user/actions/<action>.m
 
 - a block does not parse as YAML;
 - a `quantecon/actions/<action>@…` step passes an input its `action.yml` does not declare, or leaves out a required one;
+- a job that calls `quantecon/actions/.github/workflows/<workflow>.yml@…` passes an input or a secret its `on.workflow_call` does not declare, leaves out a required one, or uses `secrets: inherit`;
 - a complete workflow sets no `permissions:`, at the top or on every job;
 - a block has `jobs:` but no `on:`;
 - a complete workflow fails actionlint, which the gate runs with `--actionlint`.

@@ -9,7 +9,8 @@ How QuantEcon Actions is built, and why. Using the actions is the [user manual](
 | Eleven composite actions | `<action>/action.yml` | The steps a lecture repository runs: `setup-environment`, `setup-latex`, `build-lectures`, `build-jupyter-cache`, `restore-jupyter-cache`, `preview-netlify`, `preview-cloudflare`, `preview-workers`, `publish-gh-pages`, `restore-gh-pages` and `deploy-cloudflare`. A workflow calls one as `quantecon/actions/<action>@v0`. An action that installs a CLI keeps its `package.json` and `package-lock.json` beside its `action.yml` |
 | Shared scripts | `scripts/` | What more than one action, or an action and its tests, run: change detection, the preview deploy decision and comment, the wrangler config for a Worker, the Access gate probe, release-asset packaging, the cached LaTeX package install. Also the repository's own tooling: the manual's generator, and the container checks |
 | Two container images | `containers/` | `quantecon` (full) and `quantecon-build` (lean), the environment most lecture builds run in. See [CONTAINERS.md](CONTAINERS.md) |
-| Workflow templates | `templates/` | `cache.yml`, `ci.yml` and `publish.yml`, which each lecture repository copies, and `restore.yml`, which puts the site back from a release |
+| Workflow templates | `templates/` | `cache.yml`, `ci.yml` and `publish.yml`, which each lecture repository copies, `restore.yml`, which puts the site back from a release, and `deploy-release.yml`, which calls the reusable workflow below |
+| A reusable workflow | `.github/workflows/deploy-release.yml` | Deploys one of the repository's releases to GitHub Pages, or an earlier one to roll back, for a lecture repository whose site is built elsewhere and arrives as a release. A lecture repository calls it as `quantecon/actions/.github/workflows/deploy-release.yml@v0`, from the template. Its inputs, secrets and outputs are described in its `on.workflow_call`, and the manual's tables generated from them |
 | The user manual | `docs/user/` | A chapter per action, with input and output tables generated from each `action.yml`, and the guides |
 | This repository's workflows | `.github/workflows/` | The action harness, and the container builds and tests. See [TESTING.md](TESTING.md) |
 
@@ -72,7 +73,7 @@ An unattended cache build that fails files an issue, or comments on the open one
 
 ### The manual is generated where it can drift
 
-Each input's and output's description lives in its `action.yml`, which is what the action itself reports. `scripts/generate-docs.py` copies them into the manual's tables, the manual's action index and each action's README, and the harness gate fails a pull request whose committed copies differ, whose examples pass an input an action does not declare, or whose action has no chapter. See [CHAPTER-TEMPLATE.md](CHAPTER-TEMPLATE.md).
+Each input's and output's description lives in its `action.yml`, which is what the action itself reports, and a reusable workflow's in its `on.workflow_call`. `scripts/generate-docs.py` copies them into the manual's tables, the manual's action and workflow index and each action's README, and the harness gate fails a pull request whose committed copies differ, whose examples pass an input an action does not declare, or whose action has no chapter. See [CHAPTER-TEMPLATE.md](CHAPTER-TEMPLATE.md).
 
 ### Releases
 
@@ -84,15 +85,15 @@ A release is a `vX.Y.Z` tag with a CHANGELOG section; `v0` is moved to each rele
 quantecon/actions/
 ├── <action>/                  # One per action: action.yml, its README signpost, and any lockfile or helper
 ├── scripts/                   # Shared scripts, and the repository's tooling
-├── templates/                 # cache.yml, ci.yml, publish.yml, restore.yml, latex-requirements.txt
+├── templates/                 # cache.yml, ci.yml, publish.yml, restore.yml, deploy-release.yml, latex-requirements.txt
 ├── containers/
 │   ├── quantecon/             # Full image: Dockerfile, environment.yml, tests/ (the smoke test)
 │   └── quantecon-build/       # Lean image: Dockerfile, environment.yml
 ├── docs/
-│   ├── user/                  # The user manual: the guides, and actions/<action>.md
+│   ├── user/                  # The user manual: the guides, actions/<action>.md and workflows/<workflow>.md
 │   └── dev/                   # This file, testing, containers, the plan, the GPU image
 ├── tests/                     # Local scratch space; see tests/README.md
 └── .github/
-    ├── workflows/             # The action harness and the container workflows
+    ├── workflows/             # The action harness, the container workflows and the reusable deploy-release
     └── fixtures/              # The harness's fixtures
 ```

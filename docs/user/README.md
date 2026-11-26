@@ -1,6 +1,6 @@
 # QuantEcon Actions user manual
 
-How to use the QuantEcon composite actions: what each one does, how to set it up, and every input and output.
+How to use the QuantEcon composite actions and reusable workflows: what each one does, how to set it up, and every input and output.
 
 The actions are built for QuantEcon's lecture repositories, and are on 0.x, where a minor release can change what an action does. Using them elsewhere is fine, but unsupported.
 
@@ -33,6 +33,18 @@ A workflow step uses an action as `quantecon/actions/<action>@v0`.
 | [`publish-gh-pages`](actions/publish-gh-pages.md) | Publishes a built site to GitHub Pages with GitHub's own Pages deploy, so no gh-pages branch is needed. On a tag it can also attach the site to the release, as an archive with its checksum and a manifest. The upload, the deploy and the release assets can each run in a job of their own. |
 | [`restore-gh-pages`](actions/restore-gh-pages.md) | Restores a site that publish-gh-pages attached to one of the repository's GitHub releases. It downloads the release's archive and checksum, checks the archive's SHA-256 before anything is extracted, and extracts the site for publish-gh-pages to deploy again. |
 | [`deploy-cloudflare`](actions/deploy-cloudflare.md) | Publishes a built site to an existing Cloudflare Worker, and proves who can see it before and after the deploy: a private site must be behind Cloudflare Access, a public one served to anyone. |
+
+<!-- END GENERATED -->
+
+## Reusable workflows
+
+A job calls a reusable workflow as `quantecon/actions/.github/workflows/<workflow>.yml@v0`, from a short workflow in your repository that its template gives.
+
+<!-- BEGIN GENERATED: workflows. scripts/generate-docs.py writes this from each reusable workflow's on.workflow_call: edit that, not this. -->
+
+| Workflow | What it does |
+|---|---|
+| [`deploy-release`](workflows/deploy-release.md) | Deploy a release to GitHub Pages, or an earlier one to roll back |
 
 <!-- END GENERATED -->
 

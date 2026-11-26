@@ -19,7 +19,7 @@ QuantEcon Actions is a set of composite GitHub Actions, workflow templates and c
 
 ## Rules that are easy to miss
 
-- **An input's or output's description lives in its `action.yml`.** After editing one, run `python3 scripts/generate-docs.py` and commit what it writes: the manual's tables and each action's README are generated, and CI fails when they differ.
+- **An input's or output's description lives in its `action.yml`,** or for a reusable workflow in its `on.workflow_call`. After editing one, run `python3 scripts/generate-docs.py` and commit what it writes: the manual's tables and each action's README are generated, and CI fails when they differ.
 - **A change to what an action does** gets an entry under `## [Unreleased]` in the CHANGELOG, a harness job that shows the change and can fail, and ships in a staged release.
 - **Do not add a `paths:` filter to `.github/workflows/test-actions.yml`.** Its `gate` job decides relevance; see CONTRIBUTING.md.
 - **Pass values to `run:` scripts through `env:`,** not `${{ }}` in the script text, and find an action's files from `$GITHUB_ACTION_PATH`, never `${{ github.action_path }}`, which is wrong inside a container job.
