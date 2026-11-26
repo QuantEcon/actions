@@ -73,7 +73,7 @@ An unattended cache build that fails files an issue, or comments on the open one
 
 ### The manual is generated where it can drift
 
-Each input's and output's description lives in its `action.yml`, which is what the action itself reports. `scripts/generate-docs.py` copies them into the manual's tables, the manual's action index and each action's README, and the harness gate fails a pull request whose committed copies differ, whose examples pass an input an action does not declare, or whose action has no chapter. See [CHAPTER-TEMPLATE.md](CHAPTER-TEMPLATE.md).
+Each input's and output's description lives in its `action.yml`, which is what the action itself reports, and a reusable workflow's in its `on.workflow_call`. `scripts/generate-docs.py` copies them into the manual's tables, the manual's action and workflow index and each action's README, and the harness gate fails a pull request whose committed copies differ, whose examples pass an input an action does not declare, or whose action has no chapter. See [CHAPTER-TEMPLATE.md](CHAPTER-TEMPLATE.md).
 
 ### Releases
 

@@ -26,7 +26,9 @@
 # The deploy joins the `pages` concurrency group, without cancelling, as the
 # templates' publish.yml and restore.yml do, so two deploys never overlap. A
 # caller should not use that group itself, at its top level or on the calling
-# job: GitHub does not document how a called job's group meets its caller's.
+# job: GitHub documents that a called workflow and its caller sharing a group
+# with cancel-in-progress: true cancels the run already going, and says
+# nothing of the same group without it.
 
 name: Deploy a release to GitHub Pages, or an earlier one to roll back
 
@@ -38,6 +40,8 @@ on:
           The tag of the release to deploy, such as `publish-2026-11-27`. Empty, the default, takes
           the tag of the release whose `published` event started the run. A run started by a
           release whose tag does not start with `publish-` deploys nothing, whatever this says.
+          Only letters, digits, `.`, `_` and `-`, starting with a letter or a digit: any other tag,
+          this input's or the release's, fails the job before anything is downloaded.
         type: string
         required: false
         default: ''

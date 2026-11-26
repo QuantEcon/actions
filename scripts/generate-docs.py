@@ -95,7 +95,7 @@ END = re.compile(r"^<!-- END GENERATED -->\s*$")
 FENCE = re.compile(r"^( *)(`{3,}|~{3,})(.*)$")
 CODE_SPAN = re.compile(r"(`+)(?:[^`]|(?!\1)`)*?\1")
 OWN_STEP = re.compile(r"^quantecon/actions/([^@\s]+)@(\S+)$", re.IGNORECASE)
-OWN_WORKFLOW = re.compile(r"^quantecon/actions/\.github/workflows/([^@\s/]+)\.ya?ml@(\S+)$", re.IGNORECASE)
+OWN_WORKFLOW = re.compile(r"^quantecon/actions/\.github/workflows/([^@\s/]+)(\.ya?ml)@(\S+)$", re.IGNORECASE)
 
 errors = []
 
@@ -367,7 +367,12 @@ def generate(actions, workflows):
     workflow_names = {w.name for w in workflows}
     for chapter in sorted(WORKFLOW_CHAPTERS.glob("*.md")) if WORKFLOW_CHAPTERS.is_dir() else []:
         if chapter.stem not in workflow_names:
-            message = f"{rel(WORKFLOW_CHAPTERS)} holds one chapter per reusable workflow, and there is no {rel(WORKFLOWS)}/{chapter.stem}.yml"
+            if chapter.stem in INTERNAL_WORKFLOWS:
+                message = (f"{chapter.stem} is in INTERNAL_WORKFLOWS: only this repository's own workflows call it, "
+                           f"so it has no chapter in {rel(WORKFLOW_CHAPTERS)}")
+            else:
+                message = (f"{rel(WORKFLOW_CHAPTERS)} holds one chapter per reusable workflow, "
+                           f"and there is no {rel(WORKFLOWS)}/{chapter.stem}.yml")
             error(chapter, 0, message)
     for workflow in workflows:
         source = rel(workflow.path)
@@ -515,8 +520,9 @@ def check_steps(root, path, offset, actions, workflows=None):
         w = OWN_WORKFLOW.match(ref)
         if w:
             workflow = (workflows or {}).get(w.group(1))
-            if workflow is None:
-                error(path, line, f"{ref}: there is no reusable workflow {w.group(1)} in {rel(WORKFLOWS)}")
+            if workflow is None or workflow.path.name != f"{w.group(1)}{w.group(2)}":
+                # A path names one file exactly: deploy-release.yaml is not deploy-release.yml.
+                error(path, line, f"{ref}: there is no reusable workflow {w.group(1)}{w.group(2)} in {rel(WORKFLOWS)}")
             else:
                 check_call(node, path, offset, ref, line, workflow)
             continue

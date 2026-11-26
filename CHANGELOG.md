@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rollback. Two jobs: `upload` restores the site with `restore-gh-pages` and uploads it with
   `publish-gh-pages`' `mode: upload`, with read access alone; `deploy` deploys it with
   `mode: deploy`, in the `github-pages` environment and the `pages` concurrency group. It names its
-  actions at `@v0`. A notebooks push is to come, in a job of its own (#356). Its chapter is
+  actions at `@v0`. It does not push notebooks (#356). Its chapter is
   `docs/user/workflows/deploy-release.md`, under a new Reusable workflows heading in the manual's
   index, and `scripts/generate-docs.py` writes its tables from its `on.workflow_call` and checks a
   caller's `with:` and `secrets:` against it. (#355)

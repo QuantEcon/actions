@@ -18,7 +18,7 @@ Use it when the site is built somewhere else and reaches the repository as a rel
 
 - **Not for a repository that builds its own site.** That one publishes with [`publish.yml`](https://github.com/QuantEcon/actions/blob/main/templates/publish.yml) and puts an earlier release back with [`restore.yml`](https://github.com/QuantEcon/actions/blob/main/templates/restore.yml), as [`restore-gh-pages`](../actions/restore-gh-pages.md) describes.
 - **Not beside another deploy on the same tags.** A release creates its tag, so a `publish.yml` that runs on the push of a `publish*` tag would build the frozen source and deploy over this workflow's deploy. Disable it first: removing the file protects only tags on later commits, since a tag made at an older commit still carries it.
-- **It does not push notebooks.** A series that serves its notebooks to Colab from a `.notebooks` repository pushes them as it does today. #356 tracks a push in a job of its own.
+- **It does not push notebooks.** A series that serves its notebooks to Colab from a `.notebooks` repository pushes them as it does today. [#356](https://github.com/QuantEcon/actions/issues/356) tracks a push in a job of its own.
 
 ## Requirements
 
@@ -37,7 +37,7 @@ Use it when the site is built somewhere else and reaches the repository as a rel
 
 | Input | Required | Default | Description |
 |---|---|---|---|
-| `tag` | no | `''` | The tag of the release to deploy, such as `publish-2026-11-27`. Empty, the default, takes the tag of the release whose `published` event started the run. A run started by a release whose tag does not start with `publish-` deploys nothing, whatever this says. |
+| `tag` | no | `''` | The tag of the release to deploy, such as `publish-2026-11-27`. Empty, the default, takes the tag of the release whose `published` event started the run. A run started by a release whose tag does not start with `publish-` deploys nothing, whatever this says. Only letters, digits, `.`, `_` and `-`, starting with a letter or a digit: any other tag, this input's or the release's, fails the job before anything is downloaded. |
 | `asset-name` | no | `''` | The start of the release's asset names, as `restore-gh-pages` takes it. Empty, the default, takes the release's one archive for the tag. |
 
 <!-- END GENERATED -->
@@ -103,7 +103,7 @@ Inside a called workflow, `./` paths name the caller's checkout, so this workflo
 
 ### Concurrency
 
-The deploy job joins the `pages` concurrency group, without cancelling, the group `publish.yml` and `restore.yml` use, so no two deploys overlap. A caller should not use that group itself, at its top level or on the calling job: GitHub's documentation does not say how a called job's group meets its caller's, and the template sets none.
+The deploy job joins the `pages` concurrency group, without cancelling, the group `publish.yml` and `restore.yml` use, so no two deploys overlap. A caller should not use that group itself, at its top level or on the calling job: GitHub's documentation says that a called workflow and its caller sharing a group with `cancel-in-progress: true` cancels the run already going, and does not say what the same group does without it. The template sets none.
 
 ## Troubleshooting
 

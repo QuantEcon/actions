@@ -138,8 +138,10 @@ The gate does not reach:
   `preview-workers`, since the gate builds in a container and deploys to no Worker. Stage them
   with a throwaway workflow on a canary branch, or for `preview-workers` a canary PR as above;
 - the `deploy-release` reusable workflow, which the gate does not call. Stage it with a caller on a
-  canary branch pinned to `quantecon/actions/.github/workflows/deploy-release.yml@vX.Y.Z`; its
-  actions still run at `v0`, so a release that also changes an action ships the action first;
+  canary branch pinned to `quantecon/actions/.github/workflows/deploy-release.yml@vX.Y.Z`, and
+  dispatch it from a `publish-*` tag on that branch, since the canary's `github-pages` environment
+  admits only `main` and `publish*` tags; its actions still run at `v0`, so a release that also
+  changes an action ships the action first;
 - a scenario of the release's own, such as a cache restored across several pushes;
 - how consumers fetch the actions by tag. The gate runs them from a checkout, and rewrites
   `build-jupyter-cache`'s four nested `@v0` calls to that checkout, so its siblings run at the
@@ -204,7 +206,8 @@ chapter in `docs/user/actions/`, and every reusable workflow a lecture repositor
 workflow's `on.workflow_call` by `scripts/generate-docs.py`, and the gate fails when a committed
 copy no longer matches, or when an action or such a workflow has no chapter: run the script and
 commit what it writes. It also checks every example in
-`docs/user` and `templates/` against the `action.yml` files, for `permissions:`, and with
+`docs/user` and `templates/` against the `action.yml` files and each reusable workflow's
+`on.workflow_call`, for `permissions:`, and with
 actionlint. [docs/dev/CHAPTER-TEMPLATE.md](docs/dev/CHAPTER-TEMPLATE.md)
 lists the checks and how to run them locally. The gate also lints `.github/workflows/` with
 actionlint, and the actions' `run:` scripts and `scripts/*.sh` with `scripts/lint-shell.py`,
