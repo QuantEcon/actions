@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`deploy-release`: the release's notebooks, mirrored into a companion repository** (#356). With
+  the new input `notebooks-repository`, such as `QuantEcon/lecture-python-intro.notebooks`, and the
+  new secret `notebooks-token`, passed by name, a third job, `notebooks`, runs after the deploy. It
+  restores the release again and makes the repository's default branch hold exactly the site's
+  `_notebooks/*.ipynb`, at their paths, and a README it writes: the site's address, the tag and
+  the commit, and that each release replaces it. A notebook the release no longer has is deleted,
+  and so is any other file there, so a companion repository's `environment.yml` goes at the first
+  mirror. It commits only on a change, pushes without `--force`, and holds the token on the push
+  step alone. A release with no notebook fails the job before anything is pushed. Its concurrency
+  group is `deploy-release-notebooks-<repository>`. Without `notebooks-repository` nothing
+  changes: the job is skipped. The template carries the two lines, commented out.
 - **`deploy-release`, a reusable workflow** (`.github/workflows/deploy-release.yml`), and its caller,
   `templates/deploy-release.yml`: for a lecture repository whose site is built elsewhere and arrives
   as one of its releases. On a release published for a `publish-*` tag it deploys that release's

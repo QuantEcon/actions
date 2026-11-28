@@ -30,6 +30,7 @@ The templates set `permissions:` on each job, so no job has more than its own st
 | `deploy-release.yml`, `deploy` (the caller) | `contents: read`, `pages: write` and `id-token: write`: the most its reusable workflow's two jobs may have | None |
 | the [`deploy-release`](workflows/deploy-release.md) workflow, `upload` | `contents: read`, for the release | None |
 | the `deploy-release` workflow, `deploy` | `pages: write` and `id-token: write`, for the Pages deploy | None |
+| the `deploy-release` workflow, `notebooks`, only with `notebooks-repository` | `contents: read`, for the release | `notebooks-token`, on the push step alone, to push to the companion repository |
 
 Every checkout in the templates sets `persist-credentials: false`, so no job leaves its `GITHUB_TOKEN` in git's configuration, where any later step could read it.
 

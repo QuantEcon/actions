@@ -31,6 +31,12 @@
 #      workflow): removing the file protects only tags on later commits.
 #   6. This file at the commit each release's tag points at: a release event
 #      runs the workflow from the tagged commit.
+#   7. Only for a series whose Colab links open a companion repository, such
+#      as QuantEcon/lecture-python-intro.notebooks: uncomment the two lines
+#      below. The repository must exist and be public, the release's site
+#      must hold its notebooks under _notebooks/, and the secret must be a
+#      token that can push there. Each release then mirrors its notebooks
+#      into it, deleting any other file there, an environment.yml included.
 #
 # Versions: @v0 = the workflow at the latest 0.x release (floating). Pinning
 # it at @v0.x.y pins the workflow's jobs, but the actions inside it still run
@@ -61,3 +67,6 @@ jobs:
     with:
       tag: ${{ inputs.tag }}
       # asset-name: 'lecture-python-html'   # Only if a release holds two archives for its tag
+      # notebooks-repository: 'QuantEcon/lecture-python-intro.notebooks'   # Prerequisite 7
+    # secrets:
+    #   notebooks-token: ${{ secrets.QUANTECON_SERVICES_PAT }}   # Can push to notebooks-repository
