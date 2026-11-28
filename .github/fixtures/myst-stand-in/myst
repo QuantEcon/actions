@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# A stand-in for mystmd's myst, for the harness's build-engine-inputs job
+# (#337). `myst build` records its folder, its arguments and the two variables
+# the action sets or passes on, one per line, in $STUB_RECORD, then writes
+# what a real build would, or, with $STUB_MODE, what a failure would leave:
+#
+#   no-index        --html writes no _build/html/index.html (no site: in myst.yml)
+#   fetch-error     --html logs a page it could not fetch, and writes the rest
+#   no-export       --pdf or --ipynb finds no export to build
+#   missing-output  --pdf or --ipynb lists an export it did not write
+#   no-ipynb        `myst build --help` lists no --ipynb, as upstream's does
+#
+# It exits $STUB_EXIT, 0 by default. `myst --version` and `myst build --help`
+# record nothing.
+set -euo pipefail
+
+if [ "${1-}" = --version ]; then
+  echo "v1.13.0 (harness stand-in)"
+  exit 0
+fi
+if [ "${1-}" = build ] && [ "${2-}" = --help ]; then
+  echo "Usage: myst build [options] [files...]"
+  echo "  --html    Build static HTML site content"
+  echo "  --pdf     Build PDF output"
+  if [ "${STUB_MODE-}" != no-ipynb ]; then
+    echo "  --ipynb   Build IPYNB output"
+  fi
+  exit 0
+fi
+
+{
+  echo "cwd=$PWD"
+  for arg in "$@"; do echo "arg=$arg"; done
+  echo "NODE_OPTIONS=${NODE_OPTIONS-}"
+  echo "BASE_URL=${BASE_URL-}"
+} > "${STUB_RECORD:?the harness sets STUB_RECORD}"
+
+case " $* " in
+  *" --html "*)
+    if [ "${STUB_MODE-}" != no-index ]; then
+      mkdir -p _build/html/lecture1
+      echo '<html><body>harness</body></html>' > _build/html/index.html
+      echo '<html><body>lecture1</body></html>' > _build/html/lecture1/index.html
+    fi
+    if [ "${STUB_MODE-}" = fetch-error ]; then
+      echo "Error fetching http://localhost:3000/lecture1"
+    fi
+    ;;
+  *" --pdf "* | *" --ipynb "*)
+    case " $* " in
+      *" --pdf "*) format=pdf ext=pdf ;;
+      *) format=ipynb ext=ipynb ;;
+    esac
+    mkdir -p _build/exports _build/logs
+    output="$PWD/_build/exports/harness.$ext"
+    if [ "${STUB_MODE-}" = no-export ]; then
+      echo '{"input": {}, "exports": []}' > _build/logs/myst.build.json
+    else
+      # shellcheck disable=SC2016  # "$file" is myst's key, not a variable
+      printf '{"input": {}, "exports": [{"format": "%s", "output": "%s", "$file": "%s"}]}\n' \
+        "$format" "$output" "$PWD/lecture1.md" > _build/logs/myst.build.json
+      if [ "${STUB_MODE-}" != missing-output ]; then
+        echo "harness $format" > "$output"
+      fi
+    fi
+    ;;
+esac
+exit "${STUB_EXIT:-0}"

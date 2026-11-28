@@ -2249,6 +2249,446 @@ jobs:
             || { echo "::error::html-copy-notebooks: harness/_build/html/_notebooks/sub/lecture1.ipynb is missing or differs from the notebook under _build/jupyter/sub: a notebook must keep its path (#217)"; ls -laR harness/_build/html/_notebooks || true; exit 1; }
           echo "✅ the html build copied the PDF into _pdf/, and each notebook into _notebooks/ at its own path"
 
+  build-engine-inputs:
+    # #337: engine: mystmd, against a stand-in for myst that records how it
+    # was called and writes what a build would, or what a failure leaves
+    # (.github/fixtures/myst-stand-in/myst says what each STUB_MODE does).
+    # Each case differs from a working call in one thing, and the record, or
+    # its absence, shows how far the action got: a refused input fails the
+    # first step, before myst is called. The records show the commands, not
+    # what --strict does: on --pdf and --ipynb it does nothing (#364).
+    # The stale outputs one case leaves are what the next is checked
+    # against: the action counts only what this build wrote. A stand-in jb
+    # shows jb1's command is as it was, with the default and an empty
+    # extra-args. On the code before #337, engine is an unexpected input, the
+    # action runs jb build, and the stand-in myst records nothing.
+    name: 'build-lectures: engine mystmd runs myst build with each builder''s flag, checks what it wrote, and refuses what does not apply'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Copy the fixtures
+        run: |
+          cp -r .github/fixtures/mini-mystmd harness-myst
+          cp -r .github/fixtures/mini-lectures/lectures harness-jb
+          mkdir -p "$RUNNER_TEMP/records"
+
+      # Before the stand-ins are on PATH: there is no myst to find.
+      - name: 'no myst on PATH'
+        id: no-myst
+        continue-on-error: true
+        uses: ./build-lectures
+        env:
+          STUB_RECORD: ${{ runner.temp }}/records/no-myst
+        with:
+          engine: mystmd
+          source-dir: harness-myst
+
+      - name: Put the stand-ins for myst and jb on PATH
+        run: echo "$GITHUB_WORKSPACE/.github/fixtures/myst-stand-in" >> "$GITHUB_PATH"
+
+      - name: 'html'
+        id: html
+        continue-on-error: true
+        uses: ./build-lectures
+        env:
+          STUB_RECORD: ${{ runner.temp }}/records/html
+          BASE_URL: /harness-base
+        with:
+          engine: mystmd
+          source-dir: harness-myst
+
+      - name: 'pdflatex'
+        id: pdflatex
+        continue-on-error: true
+        uses: ./build-lectures
+        env:
+          STUB_RECORD: ${{ runner.temp }}/records/pdflatex
+        with:
+          engine: mystmd
+          builder: pdflatex
+          source-dir: harness-myst
+
+      - name: 'jupyter'
+        id: jupyter
+        continue-on-error: true
+        uses: ./build-lectures
+        env:
+          STUB_RECORD: ${{ runner.temp }}/records/jupyter
+        with:
+          engine: mystmd
+          builder: jupyter
+          source-dir: harness-myst
+
+      - name: 'html: no index.html written, with the html case''s still there'
+        id: no-index
+        continue-on-error: true
+        uses: ./build-lectures
+        env:
+          STUB_RECORD: ${{ runner.temp }}/records/no-index
+          STUB_MODE: no-index
+        with:
+          engine: mystmd
+          source-dir: harness-myst
+
+      - name: 'html: a page that failed to render'
+        id: fetch-error
+        continue-on-error: true
+        uses: ./build-lectures
+        env:
+          STUB_RECORD: ${{ runner.temp }}/records/fetch-error
+          STUB_MODE: fetch-error
+        with:
+          engine: mystmd
+          source-dir: harness-myst
+
+      - name: 'pdflatex: no export to build'
+        id: no-export
+        continue-on-error: true
+        uses: ./build-lectures
+        env:
+          STUB_RECORD: ${{ runner.temp }}/records/no-export
+          STUB_MODE: no-export
+        with:
+          engine: mystmd
+          builder: pdflatex
+          source-dir: harness-myst
+
+      - name: 'jupyter: a listed export not written, with the jupyter case''s still there'
+        id: missing-output
+        continue-on-error: true
+        uses: ./build-lectures
+        env:
+          STUB_RECORD: ${{ runner.temp }}/records/missing-output
+          STUB_MODE: missing-output
+        with:
+          engine: mystmd
+          builder: jupyter
+          source-dir: harness-myst
+
+      - name: 'html: myst build exits 1'
+        id: myst-fails
+        continue-on-error: true
+        uses: ./build-lectures
+        env:
+          STUB_RECORD: ${{ runner.temp }}/records/myst-fails
+          STUB_EXIT: '1'
+        with:
+          engine: mystmd
+          source-dir: harness-myst
+
+      - name: 'jupyter: a myst with no --ipynb'
+        id: no-ipynb
+        continue-on-error: true
+        uses: ./build-lectures
+        env:
+          STUB_RECORD: ${{ runner.temp }}/records/no-ipynb
+          STUB_MODE: no-ipynb
+        with:
+          engine: mystmd
+          builder: jupyter
+          source-dir: harness-myst
+
+      - name: 'refused: another builder'
+        id: dirhtml
+        continue-on-error: true
+        uses: ./build-lectures
+        env:
+          STUB_RECORD: ${{ runner.temp }}/records/dirhtml
+        with:
+          engine: mystmd
+          builder: dirhtml
+          source-dir: harness-myst
+
+      - name: 'refused: html-copy-pdf'
+        id: copy-pdf
+        continue-on-error: true
+        uses: ./build-lectures
+        env:
+          STUB_RECORD: ${{ runner.temp }}/records/copy-pdf
+        with:
+          engine: mystmd
+          source-dir: harness-myst
+          html-copy-pdf: 'true'
+
+      - name: 'refused: an output-dir'
+        id: output-dir
+        continue-on-error: true
+        uses: ./build-lectures
+        env:
+          STUB_RECORD: ${{ runner.temp }}/records/output-dir
+        with:
+          engine: mystmd
+          source-dir: harness-myst
+          output-dir: harness-out
+
+      - name: 'refused: a source-dir with no myst.yml'
+        id: no-myst-yml
+        continue-on-error: true
+        uses: ./build-lectures
+        env:
+          STUB_RECORD: ${{ runner.temp }}/records/no-myst-yml
+        with:
+          engine: mystmd
+          source-dir: harness-jb
+
+      - name: 'refused: jb build''s flags in extra-args'
+        id: jb-flags
+        continue-on-error: true
+        uses: ./build-lectures
+        env:
+          STUB_RECORD: ${{ runner.temp }}/records/jb-flags
+        with:
+          engine: mystmd
+          source-dir: harness-myst
+          extra-args: '-W --keep-going'
+
+      - name: 'refused: engine myst'
+        id: engine-myst
+        continue-on-error: true
+        uses: ./build-lectures
+        env:
+          STUB_RECORD: ${{ runner.temp }}/records/engine-myst
+        with:
+          engine: myst
+          source-dir: harness-myst
+
+      - name: 'refused: engine bogus'
+        id: engine-bogus
+        continue-on-error: true
+        uses: ./build-lectures
+        env:
+          STUB_RECORD: ${{ runner.temp }}/records/engine-bogus
+        with:
+          engine: bogus
+          source-dir: harness-myst
+
+      - name: 'jb1, the default'
+        id: jb1
+        continue-on-error: true
+        uses: ./build-lectures
+        env:
+          STUB_RECORD: ${{ runner.temp }}/records/jb1
+        with:
+          source-dir: harness-jb
+          error-outputs: ignore
+
+      - name: 'jb1: engine and extra-args both empty'
+        id: jb1-empty
+        continue-on-error: true
+        uses: ./build-lectures
+        env:
+          STUB_RECORD: ${{ runner.temp }}/records/jb1-empty
+        with:
+          engine: ''
+          source-dir: harness-jb
+          extra-args: ''
+          error-outputs: ignore
+
+      - name: Assert each case's outcome, and the command each build ran
+        env:
+          RECORDS: ${{ runner.temp }}/records
+          # id|outcome|build-path|error-output-count|what myst or jb was given
+          RESULTS: |-
+            no-myst|${{ steps.no-myst.outcome }}|${{ steps.no-myst.outputs.build-path }}|${{ steps.no-myst.outputs.error-output-count }}|-
+            html|${{ steps.html.outcome }}|${{ steps.html.outputs.build-path }}|${{ steps.html.outputs.error-output-count }}|build --html --execute --strict
+            pdflatex|${{ steps.pdflatex.outcome }}|${{ steps.pdflatex.outputs.build-path }}|${{ steps.pdflatex.outputs.error-output-count }}|build --pdf --execute --strict
+            jupyter|${{ steps.jupyter.outcome }}|${{ steps.jupyter.outputs.build-path }}|${{ steps.jupyter.outputs.error-output-count }}|build --ipynb --execute --strict
+            no-index|${{ steps.no-index.outcome }}|${{ steps.no-index.outputs.build-path }}|${{ steps.no-index.outputs.error-output-count }}|build --html --execute --strict
+            fetch-error|${{ steps.fetch-error.outcome }}|${{ steps.fetch-error.outputs.build-path }}|${{ steps.fetch-error.outputs.error-output-count }}|build --html --execute --strict
+            no-export|${{ steps.no-export.outcome }}|${{ steps.no-export.outputs.build-path }}|${{ steps.no-export.outputs.error-output-count }}|build --pdf --execute --strict
+            missing-output|${{ steps.missing-output.outcome }}|${{ steps.missing-output.outputs.build-path }}|${{ steps.missing-output.outputs.error-output-count }}|build --ipynb --execute --strict
+            myst-fails|${{ steps.myst-fails.outcome }}|${{ steps.myst-fails.outputs.build-path }}|${{ steps.myst-fails.outputs.error-output-count }}|build --html --execute --strict
+            no-ipynb|${{ steps.no-ipynb.outcome }}|${{ steps.no-ipynb.outputs.build-path }}|${{ steps.no-ipynb.outputs.error-output-count }}|-
+            dirhtml|${{ steps.dirhtml.outcome }}|${{ steps.dirhtml.outputs.build-path }}|${{ steps.dirhtml.outputs.error-output-count }}|-
+            copy-pdf|${{ steps.copy-pdf.outcome }}|${{ steps.copy-pdf.outputs.build-path }}|${{ steps.copy-pdf.outputs.error-output-count }}|-
+            output-dir|${{ steps.output-dir.outcome }}|${{ steps.output-dir.outputs.build-path }}|${{ steps.output-dir.outputs.error-output-count }}|-
+            no-myst-yml|${{ steps.no-myst-yml.outcome }}|${{ steps.no-myst-yml.outputs.build-path }}|${{ steps.no-myst-yml.outputs.error-output-count }}|-
+            jb-flags|${{ steps.jb-flags.outcome }}|${{ steps.jb-flags.outputs.build-path }}|${{ steps.jb-flags.outputs.error-output-count }}|-
+            engine-myst|${{ steps.engine-myst.outcome }}|${{ steps.engine-myst.outputs.build-path }}|${{ steps.engine-myst.outputs.error-output-count }}|-
+            engine-bogus|${{ steps.engine-bogus.outcome }}|${{ steps.engine-bogus.outputs.build-path }}|${{ steps.engine-bogus.outputs.error-output-count }}|-
+            jb1|${{ steps.jb1.outcome }}|${{ steps.jb1.outputs.build-path }}|${{ steps.jb1.outputs.error-output-count }}|build harness-jb --path-output . -n -W --keep-going
+            jb1-empty|${{ steps.jb1-empty.outcome }}|${{ steps.jb1-empty.outputs.build-path }}|${{ steps.jb1-empty.outputs.error-output-count }}|build harness-jb --path-output . -n -W --keep-going
+        run: |
+          set -euo pipefail
+          # A case passes, with this build-path, or fails: after the build
+          # when myst was called, and before it when it was not. Each command
+          # substitution in a message ends in || so, under -e, a failing case
+          # is reported rather than ending the script.
+          declare -A WANT=(
+            [html]='success harness-myst/_build/html' [pdflatex]='success harness-myst/_build/exports'
+            [jupyter]='success harness-myst/_build/exports' [jb1]='success ./_build/html' [jb1-empty]='success ./_build/html'
+          )
+          bad=0 n=0
+          while IFS='|' read -r id outcome path count want_args; do
+            n=$((n + 1))
+            record="$RECORDS/$id"
+            problems=()
+            want=${WANT[$id]:-failure}
+            if [ "$outcome" != "${want%% *}" ]; then problems+=("outcome [$outcome], expected [${want%% *}]"); fi
+            if [ "$want" != failure ] && [ "$path" != "${want#* }" ]; then problems+=("build-path [$path], expected [${want#* }]"); fi
+            if [ -n "$count" ]; then problems+=("error-output-count [$count], expected it empty"); fi
+            if [ "$want_args" = - ]; then
+              if [ -e "$record" ]; then problems+=("the build ran, and should have been refused first: $(paste -sd' ' "$record" || true)"); fi
+            elif [ ! -f "$record" ]; then
+              problems+=("no build was recorded: the action never called myst or jb with STUB_RECORD set")
+            else
+              args=$(sed -n 's/^arg=//p' "$record" | paste -sd' ' - || true)
+              cwd=$(sed -n 's/^cwd=//p' "$record" || true)
+              case "$id" in
+                jb1*) want_cwd=$GITHUB_WORKSPACE ;;
+                *) want_cwd=$GITHUB_WORKSPACE/harness-myst ;;
+              esac
+              if [ "$args" != "$want_args" ]; then problems+=("ran with [$args], expected [$want_args]"); fi
+              if [ "$cwd" != "$want_cwd" ]; then problems+=("ran in [$cwd], expected [$want_cwd]"); fi
+              case "$id" in
+                jb1*) ;;
+                *)
+                  grep -qx 'NODE_OPTIONS=.*--dns-result-order=ipv4first' "$record" \
+                    || problems+=("NODE_OPTIONS lacks --dns-result-order=ipv4first: $(grep '^NODE_OPTIONS=' "$record" || echo 'no NODE_OPTIONS line: myst did not make this record')")
+                  ;;
+              esac
+            fi
+            if [ "$id" = html ] && ! grep -qx 'BASE_URL=/harness-base' "$record"; then
+              problems+=("the BASE_URL set on the step did not reach myst: $(grep '^BASE_URL=' "$record" || echo none)")
+            fi
+            if [ "${#problems[@]}" -gt 0 ]; then
+              echo "::error::$id: $(IFS=';'; echo "${problems[*]}")"
+              bad=1
+            else
+              echo "✓ $id: $outcome${want_args:+, $want_args}"
+            fi
+          done <<< "$RESULTS"
+          [ "$n" -eq 19 ] || { echo "::error::expected 19 cases, read $n"; exit 1; }
+          [ "$bad" -eq 0 ]
+          echo "✅ engine mystmd ran each builder's command in source-dir, failed on what it did not write, and refused what does not apply; jb1's command is as it was"
+
+  build-mystmd:
+    # #337: a real mystmd build of the website, in the lean image that
+    # QuantEcon/lectures' dp site builds in, as root, so the two settings the
+    # action makes for a container are exercised: without Node's IPv4-first
+    # order every page fails to render, and without allow_root Jupyter does
+    # not start, which --strict fails. mystmd is upstream's, at the QuantEcon
+    # fork's base version, from npm: one package, a few seconds. The fork's
+    # --ipynb, and --pdf, which fetches a LaTeX template, are tested against
+    # the stand-in in build-engine-inputs. The site template is pinned by
+    # commit and cached, so that myst fetches none. On the code before #337,
+    # engine is an unexpected input and the action runs jb build on a folder
+    # with no _config.yml, which builds no site from myst.yml.
+    name: 'build-lectures: engine mystmd builds a site in the lean image as root, and a cell that raises fails it'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: gate
+    if: needs.gate.outputs.relevant == 'true'
+    permissions:
+      contents: read
+      packages: read          # pull the container image
+    container:
+      image: ghcr.io/quantecon/quantecon-build:latest
+    env:
+      MYSTMD_VERSION: '1.13.0'
+      # myst-templates/book-theme at main on 2026-11-17, which mystmd 1.13.0
+      # builds. Bump it with MYSTMD_VERSION.
+      BOOK_THEME_SHA: 4c368fe4d6f73889e273b4e85a12dd7136fb50e4
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install mystmd
+        run: |
+          set -euo pipefail
+          npm install -g --no-fund --no-audit "mystmd@$MYSTMD_VERSION"
+          echo "myst: $(command -v myst), $(myst --version)"
+          [ "$(id -u)" -eq 0 ] || { echo "::error::this job runs as $(id -un), not root: it is to show that Jupyter starts as root"; exit 1; }
+
+      - name: Restore the site template
+        id: template
+        uses: actions/cache@v6
+        with:
+          path: book-theme
+          key: mystmd-book-theme-${{ env.BOOK_THEME_SHA }}
+
+      # The image has no unzip: Python's zipfile unpacks it.
+      - name: Download the site template at its pin
+        if: steps.template.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/book-theme.zip" \
+            "https://github.com/myst-templates/book-theme/archive/$BOOK_THEME_SHA.zip"
+          python -m zipfile -e "$RUNNER_TEMP/book-theme.zip" "$RUNNER_TEMP/book-theme"
+          mv "$RUNNER_TEMP/book-theme/book-theme-$BOOK_THEME_SHA" book-theme
+          [ -f book-theme/template.yml ] || { echo "::error::the book-theme archive has no template.yml"; exit 1; }
+
+      # Two copies, each with the template where myst looks for it, and a
+      # cell that raises added to the second.
+      - name: Copy the fixture
+        run: |
+          set -euo pipefail
+          for d in harness-myst harness-myst-broken; do
+            cp -r .github/fixtures/mini-mystmd "$d"
+            mkdir -p "$d/_build/templates/site/myst"
+            cp -r book-theme "$d/_build/templates/site/myst/book-theme"
+          done
+          # shellcheck disable=SC2016  # the backticks are the cell's fence, not a command
+          printf '\n```{code-cell} python3\nassert total == 0, "harness: deliberate build failure"\n```\n' >> harness-myst-broken/lecture1.md
+          grep -q 'assert total == 0' harness-myst-broken/lecture1.md \
+            || { echo "::error::fixture setup failed: the broken copy has no failing cell"; exit 1; }
+
+      - name: Build the site
+        id: build
+        uses: ./build-lectures
+        with:
+          engine: mystmd
+          source-dir: harness-myst
+
+      - name: Assert the site was built, with the executed cell's output
+        env:
+          BUILD_PATH: ${{ steps.build.outputs.build-path }}
+          COUNT: ${{ steps.build.outputs.error-output-count }}
+        run: |
+          set -euo pipefail
+          [ "$BUILD_PATH" = harness-myst/_build/html ] || { echo "::error::build-path: expected [harness-myst/_build/html], got [$BUILD_PATH]"; exit 1; }
+          [ -f harness-myst/_build/html/index.html ] || { echo "::error::no index.html produced"; exit 1; }
+          grep -q "sum of squares: 285" harness-myst/_build/html/lecture1/index.html \
+            || { echo "::error::the executed cell's output is not on harness-myst/_build/html/lecture1/index.html: the cell did not execute, or the page did not render"; exit 1; }
+          [ -z "$COUNT" ] || { echo "::error::error-output-count is [$COUNT]: the error-output check must not run with engine mystmd"; exit 1; }
+          echo "✅ engine mystmd built the site in the lean image as root, with the cell's output on its page"
+
+      # Expect an ::error:: annotation from build-lectures in this job's log:
+      # it is the action working.
+      - name: Build the copy with a cell that raises (expected to fail)
+        id: broken
+        continue-on-error: true
+        uses: ./build-lectures
+        with:
+          engine: mystmd
+          source-dir: harness-myst-broken
+
+      - name: Assert the raising cell failed the build
+        env:
+          OUTCOME: ${{ steps.broken.outcome }}
+        run: |
+          set -euo pipefail
+          [ "$OUTCOME" = failure ] || { echo "::error::build-lectures reported [$OUTCOME] for a site with a cell that raises: --strict, the default extra-args on mystmd, must fail the step"; exit 1; }
+          # Attribute the red: myst writes each page's content before --strict
+          # stops the build, with the traceback in it, and no site after.
+          grep -q 'harness: deliberate build failure' harness-myst-broken/_build/site/content/lecture1.json \
+            || { echo "::error::the build failed, but not on the staged cell: harness-myst-broken/_build/site/content/lecture1.json has no 'harness: deliberate build failure'"; ls -la harness-myst-broken/_build harness-myst-broken/_build/site/content || true; exit 1; }
+          [ ! -e harness-myst-broken/_build/html/index.html ] \
+            || { echo "::error::harness-myst-broken/_build/html/index.html exists: --strict should stop the build before the site is written"; exit 1; }
+          echo "✅ a cell that raises failed the mystmd build, under the default --strict"
+
   # ==========================================================================
   # setup-environment — container mode, in the real lean image
   # ==========================================================================
@@ -6516,6 +6956,8 @@ jobs:
       - build-jupyter-warning-guard
       - build-nitpick
       - build-html-copy
+      - build-engine-inputs
+      - build-mystmd
       - env-container-update
       - latex-seed
       - latex-hit

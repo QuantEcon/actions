@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# A stand-in for Jupyter Book 1's jb, for the harness's build-engine-inputs
+# job (#337): records its folder and arguments, one per line, in
+# $STUB_RECORD, and builds nothing. It shows the command build-lectures runs
+# with engine jb1 is the same as before #337, with an empty extra-args too.
+set -euo pipefail
+{
+  echo "cwd=$PWD"
+  for arg in "$@"; do echo "arg=$arg"; done
+} > "${STUB_RECORD:?the harness sets STUB_RECORD}"

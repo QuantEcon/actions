@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`build-lectures`**: an `engine` input, `jb1` by default, which builds as before with `jb build`,
+  or `mystmd`, which runs mystmd's `myst build` from `source-dir`, the folder that holds
+  `myst.yml`, so that a repository's build can take the engine as a matrix axis. The builders are
+  `html`, `pdflatex` and `jupyter`, as `--html`, `--pdf` and `--ipynb` (the QuantEcon/mystmd
+  fork's flag), with `--execute` always, and `--strict` when `extra-args` is empty. `myst` comes
+  from the caller: the build fails early without it, and logs where it is and `myst --version`.
+  `myst build` exits 0 when it builds nothing, so after a build that exits 0 the step fails if
+  `html` wrote no `index.html` or logged a page it could not render, or if `pdflatex` or `jupyter`
+  wrote no export of its kind, or not every one it listed. For the `myst` command alone, and the
+  kernels it starts, it adds `--dns-result-order=ipv4first` to `NODE_OPTIONS` and, as root, sets
+  Jupyter's `allow_root`, which a QuantEcon container needs. On mystmd it refuses, before the
+  build, any other builder, `html-copy-pdf` and `html-copy-notebooks`, an `output-dir` other than
+  `.`, a `source-dir` with no `myst.yml`, and `jb build`'s flags in `extra-args`; `nitpick` and
+  `error-outputs` are not used. `build-path` is `<source-dir>/_build/html` or `/exports`. Only an
+  `html` build fails on a cell that raises, and the error-output check has no mystmd version yet:
+  both are #364. The chapter has a table of what applies on each engine. (#337)
+
+### Changed
+- **`build-lectures`**: `extra-args` defaults to empty, which means the engine's own arguments:
+  `-W --keep-going` on `jb1`, as before, and `--strict` on `mystmd`. A build that leaves it out
+  runs the same `jb build` command. An explicit `extra-args: ''` now gives `-W --keep-going`, where
+  it gave `jb build` no arguments. (#337)
+
 ## [0.22.0] - 2026-11-28
 
 ### Added

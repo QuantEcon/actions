@@ -1,51 +1,70 @@
 name: 'Build Lectures'
 description: >-
-  Builds the lectures with Jupyter Book, as the website, the PDF or notebooks, then checks the
-  executed notebooks for tracebacks that would be published. When the build fails it prints each
-  failing notebook's traceback, and can upload the execution reports.
+  Builds the lectures with Jupyter Book 1 or mystmd, as the website, the PDF or notebooks, and
+  fails the step where the build would pass with something broken. On Jupyter Book 1 it checks
+  the executed notebooks for tracebacks that would be published, and when the build fails it
+  prints each failing notebook's traceback. It can upload the execution reports.
 author: 'QuantEcon'
 
 # Each description below is copied verbatim into the user manual
 # (docs/user/actions/build-lectures.md) by scripts/generate-docs.py, so it is
 # written for a reader.
 inputs:
+  engine:
+    description: >-
+      What builds the book: `jb1`, the default, runs `jb build`, Jupyter Book 1; `mystmd` runs
+      `myst build`, mystmd's CLI, which must be on the runner's `PATH`. Empty means `jb1`. With
+      `mystmd` the builders are `html`, `pdflatex` and `jupyter` alone, and `nitpick`,
+      `error-outputs`, `output-dir` and the two copy inputs do not apply: the chapter has a table
+      of what applies on each engine.
+    required: false
+    default: 'jb1'
   builder:
     description: >-
       What to build: `html`, the default, builds the website into `<output-dir>/_build/html`;
       `pdflatex` builds the PDF into `<output-dir>/_build/latex`, and needs LaTeX; `jupyter`
       builds notebooks into `<output-dir>/_build/jupyter`. Any other value is passed to `jb build`
-      as `--builder <value>`, which writes into a directory under `<output-dir>/_build`.
+      as `--builder <value>`, which writes into a directory under `<output-dir>/_build`. With
+      `engine: mystmd` these three run `myst build --html`, `--pdf` and `--ipynb`, which write
+      into `<source-dir>/_build/html` and `<source-dir>/_build/exports`, and any other value is
+      refused. `--ipynb` is the QuantEcon/mystmd fork's: upstream mystmd lacks it.
     required: false
     default: 'html'
   source-dir:
     description: >-
-      The book to build: the directory that holds its `_config.yml` and `_toc.yml`, relative to
-      the workspace.
+      The book to build, relative to the workspace: the directory that holds its `_config.yml`
+      and `_toc.yml`, or with `engine: mystmd` its `myst.yml`, where `myst build` runs.
     required: false
     default: 'lectures'
   output-dir:
     description: >-
       The directory the build is written under, passed to `jb build` as `--path-output`, so the
       output lands in `<output-dir>/_build`. The cache actions read and write `_build` at the
-      workspace root, so keep the default, `.`, in a job that uses them.
+      workspace root, so keep the default, `.`, in a job that uses them. With `engine: mystmd`
+      it must be `.`: `myst build` writes `_build` beside `myst.yml`, in `source-dir`, and
+      `build-path` gives where.
     required: false
     default: '.'
   extra-args:
     description: >-
-      Further arguments for `jb build`. They are split on whitespace, so a quoted value that
-      contains a space cannot be passed. Setting this replaces the default, so keep `-W` in it:
-      without `-W`, a warning does not fail the build, and a notebook that raises an exception
-      is only a warning. `error-outputs` still finds the traceback that the exception leaves on
-      the page.
+      Further arguments for the build command, split on whitespace, so a quoted value that
+      contains a space cannot be passed. Empty, the default, means the engine's own:
+      `-W --keep-going` for `jb1`, and `--strict` for `mystmd`. Setting this replaces them, so on
+      `jb1` keep `-W` in it: without `-W`, a warning does not fail the build, and a notebook that
+      raises an exception is only a warning. `error-outputs` still finds the traceback that the
+      exception leaves on the page. On `mystmd`, `--strict` fails an `html` build on an error,
+      such as a cell that raises, and `jb build`'s flags (`-W`, `--keep-going`, `-n`,
+      `--builder`, `--path-output`, …) are refused.
     required: false
-    default: '-W --keep-going'
+    default: ''
   nitpick:
     description: >-
       `'true'`, the default, passes `-n` to `jb build`, whatever the builder: Sphinx's nitpicky
       mode, which warns about every reference it cannot resolve, so that under `-W` one fails the
       build. Without it Sphinx warns only about the kinds of reference it always checks, such as
       `{ref}` and `{doc}`, and shows any other it cannot resolve as plain text. `'false'` leaves
-      `-n` out. A `-n` in `extra-args` as well does no harm.
+      `-n` out. A `-n` in `extra-args` as well does no harm. Not used with `engine: mystmd`,
+      which has no nitpicky mode.
     required: false
     default: 'true'
   error-outputs:
@@ -58,7 +77,7 @@ inputs:
       and the step summary name each notebook and cell, with its traceback. An error is allowed
       in a cell tagged `raises-exception`, in a notebook whose `mystnb` metadata sets
       `execution_allow_errors`, and anywhere in a book whose `_config.yml` sets
-      `execute.allow_errors`.
+      `execute.allow_errors`. Not checked yet with `engine: mystmd` (#364).
     required: false
     default: ''
   html-copy-pdf:
@@ -67,7 +86,8 @@ inputs:
       `<output-dir>/_build/html/_pdf/` before the build, so the site offers it for download. The
       PDF comes from a `pdflatex` build earlier in the job, or from a restored build cache; if
       that directory does not exist, a warning says so and the site is built without it. Ignored
-      by the other builders.
+      by the other builders. Refused with `engine: mystmd`, which links downloads from
+      `myst.yml`.
     required: false
     default: 'false'
   html-copy-notebooks:
@@ -77,14 +97,16 @@ inputs:
       offers them for download: `_build/jupyter/sub/page.ipynb` becomes
       `_build/html/_notebooks/sub/page.ipynb`. The notebooks come from a `jupyter` build earlier
       in the job, or from a restored build cache; if that directory does not exist, a warning
-      says so and the site is built without them. Ignored by the other builders.
+      says so and the site is built without them. Ignored by the other builders. Refused with
+      `engine: mystmd`, which links downloads from `myst.yml`.
     required: false
     default: 'false'
   upload-failure-reports:
     description: >-
       `'true'` uploads an artifact when the build fails, holding the `reports` directories in
       `_build/html`, `_build/latex` and `_build/jupyter`, and `_build/.jupyter_cache`, all under
-      `output-dir`, kept for 7 days. `'false'`, the default, uploads nothing. For the `html`,
+      `output-dir`, kept for 7 days. With `engine: mystmd` it holds `logs`, `temp` and `execute`
+      from `<source-dir>/_build` instead. `'false'`, the default, uploads nothing. For the `html`,
       `pdflatex` and `jupyter` builders the log shows each failing notebook's traceback either
       way.
     required: false
@@ -103,13 +125,15 @@ outputs:
       The directory the builder wrote to: `<output-dir>/_build/html`, `_build/latex` or
       `_build/jupyter` for those three builders. For any other it is `<output-dir>/_build`, the
       directory above the one that builder wrote to. With the default `output-dir` it starts
-      with `./`, as in `./_build/html`. Set whether or not the build succeeds.
-    value: ${{ steps.build.outputs.build-path }}
+      with `./`, as in `./_build/html`. With `engine: mystmd` it is `<source-dir>/_build/html`,
+      or `<source-dir>/_build/exports` for `pdflatex` and `jupyter`, as in
+      `lectures/_build/html`. Set whether or not the build succeeds.
+    value: ${{ steps.build.outputs.build-path || steps.build-myst.outputs.build-path }}
   error-output-count:
     description: >-
       How many error outputs the `error-outputs` check reported, not counting those it allows:
       `0` when it found none. Set with `warn` as well as `fail`. Empty when the check did not
-      run: with `ignore`, or after a build that failed.
+      run: with `ignore`, with `engine: mystmd`, or after a build that failed.
     value: ${{ steps.error-outputs.outputs.count }}
 
 runs:
@@ -119,17 +143,19 @@ runs:
     # input but extra-args is one value, and a line break in one would end the
     # line that prints it, and could start a workflow command (#267).
     # extra-args is split on whitespace, line breaks included, and printed
-    # with them as spaces. The error-outputs default is resolved here and
-    # nowhere else: build-jupyter-cache passes its own error-outputs through,
-    # empty unless its caller set it, and an explicit '' reaches this action
-    # as '' rather than as a declared default.
+    # with them as spaces. The defaults of engine, error-outputs and
+    # extra-args are resolved here and nowhere else: build-jupyter-cache
+    # passes its own error-outputs and extra-args through, and an explicit ''
+    # reaches this action as '' rather than as a declared default.
     - name: Check inputs
-      id: error-outputs-mode
+      id: check
       shell: bash
       env:
+        ENGINE: ${{ inputs.engine }}
         BUILDER: ${{ inputs.builder }}
         SOURCE_DIR: ${{ inputs.source-dir }}
         OUTPUT_DIR: ${{ inputs.output-dir }}
+        EXTRA_ARGS: ${{ inputs.extra-args }}
         NITPICK: ${{ inputs.nitpick }}
         ERROR_OUTPUTS: ${{ inputs.error-outputs }}
         HTML_COPY_PDF: ${{ inputs.html-copy-pdf }}
@@ -139,10 +165,30 @@ runs:
       run: |
         # shellcheck source=scripts/workflow-command.sh
         . "$GITHUB_ACTION_PATH/../scripts/workflow-command.sh"
-        single_line "builder=$BUILDER" "source-dir=$SOURCE_DIR" "output-dir=$OUTPUT_DIR" \
+        single_line "engine=$ENGINE" "builder=$BUILDER" "source-dir=$SOURCE_DIR" "output-dir=$OUTPUT_DIR" \
           "nitpick=$NITPICK" "error-outputs=$ERROR_OUTPUTS" "html-copy-pdf=$HTML_COPY_PDF" \
           "html-copy-notebooks=$HTML_COPY_NOTEBOOKS" "upload-failure-reports=$UPLOAD_FAILURE_REPORTS" \
           "failure-artifact-name=$FAILURE_ARTIFACT_NAME" || exit 1
+        engine=${ENGINE:-jb1}
+        case "$engine" in
+          jb1|mystmd) ;;
+          myst)
+            annotate error "engine must be jb1 or mystmd (or empty, for jb1), got 'myst': the engine is mystmd, and MyST is the markup it reads"
+            exit 1
+            ;;
+          *)
+            annotate error "engine must be jb1 or mystmd (or empty, for jb1), got '$ENGINE'"
+            exit 1
+            ;;
+        esac
+        # A mystmd-based engine builds from the myst.yml in source-dir, and
+        # writes _build there. mystmd is one, and Jupyter Book 2 (#361) would be
+        # another, with a command of its own: what follows is keyed on this,
+        # not on the engine's name.
+        case "$engine" in
+          mystmd) myst_based=true ;;
+          *) myst_based=false ;;
+        esac
         case "$NITPICK" in
           true|false) ;;
           *)
@@ -152,12 +198,79 @@ runs:
         esac
         mode=${ERROR_OUTPUTS:-fail}
         case "$mode" in
-          fail|warn|ignore) echo "mode=$mode" >> "$GITHUB_OUTPUT" ;;
+          fail|warn|ignore) ;;
           *)
             annotate error "error-outputs must be fail, warn or ignore (or empty, for fail), got '$ERROR_OUTPUTS'"
             exit 1
             ;;
         esac
+
+        # #337. What has no meaning on a mystmd-based engine is refused, so
+        # that a site is not built without what the input asked for: myst has
+        # no builder but its export flags, no --path-output, and rewrites
+        # _build/html on each build, linking downloads from myst.yml. jb
+        # build's own flags would fail myst as unknown options. All are
+        # reported before any fails the step.
+        if [ "$myst_based" = true ]; then
+          bad=0
+          case "$BUILDER" in
+            html|pdflatex|jupyter) ;;
+            *)
+              annotate error "builder must be html, pdflatex or jupyter with engine: $engine, got '$BUILDER'"
+              bad=1
+              ;;
+          esac
+          if [ "$HTML_COPY_PDF" = true ] || [ "$HTML_COPY_NOTEBOOKS" = true ]; then
+            annotate error "html-copy-pdf and html-copy-notebooks do not apply with engine: $engine, which rewrites _build/html on each build and links downloads from myst.yml: build the PDF before the site, and list it under exports and downloads there"
+            bad=1
+          fi
+          if [ "$OUTPUT_DIR" != . ]; then
+            annotate error "output-dir must be '.' with engine: $engine, got '$OUTPUT_DIR': myst build writes _build beside myst.yml, in source-dir, and the build-path output gives where"
+            bad=1
+          fi
+          if [ ! -f "$SOURCE_DIR/myst.yml" ]; then
+            annotate error "engine: $engine builds from the directory that holds myst.yml, and $SOURCE_DIR has none: set source-dir to that directory"
+            bad=1
+          fi
+          # Unquoted, to split it as the build does; -f, so no word is
+          # expanded as a file name.
+          set -f
+          for arg in $EXTRA_ARGS; do
+            case "$arg" in
+              --warningiserror|--keep-going|--nitpick|--builder|--builder=*|--custom-builder|--custom-builder=*|--path-output|--path-output=*|--config|--config=*|--toc|--toc=*) jb_flag=true ;;
+              --*) jb_flag=false ;;
+              -*[Wn]*) jb_flag=true ;;  # -W, -n, or a cluster such as -nW
+              *) jb_flag=false ;;
+            esac
+            if [ "$jb_flag" = true ]; then
+              annotate error "extra-args holds $arg, a flag of jb build, which myst build does not take: with engine: $engine, leave extra-args empty for its default, --strict, or give myst build's own flags"
+              bad=1
+            fi
+          done
+          set +f
+          [ "$bad" -eq 0 ] || exit 1
+          echo "nitpick: not used with engine: $engine, which has no nitpicky mode"
+          echo "error-outputs: not checked yet with engine: $engine (#364)"
+        fi
+
+        # Empty, or nothing but whitespace, is the engine's own: what jb build
+        # needs to fail on a warning, and mystmd's --strict, which fails an
+        # html build on an error. Written as one line, as it is split on
+        # whitespace anyway.
+        if [ -z "${EXTRA_ARGS//[[:space:]]/}" ]; then
+          case "$engine" in
+            jb1) args='-W --keep-going' ;;
+            *) args='--strict' ;;
+          esac
+        else
+          args=${EXTRA_ARGS//[$'\r\n']/ }
+        fi
+        {
+          echo "engine=$engine"
+          echo "myst-based=$myst_based"
+          echo "mode=$mode"
+          echo "extra-args=$args"
+        } >> "$GITHUB_OUTPUT"
 
     - name: Stage PDF for HTML build
       if: inputs.builder == 'html' && inputs.html-copy-pdf == 'true'
@@ -277,14 +390,16 @@ runs:
           fi
         fi
 
+    # jb1: Jupyter Book 1. A mystmd-based engine builds in the step after.
     - name: Build lectures
       id: build
+      if: steps.check.outputs.engine == 'jb1'
       shell: bash -l {0}
       env:
         BUILDER: ${{ inputs.builder }}
         SOURCE_DIR: ${{ inputs.source-dir }}
         OUTPUT_DIR: ${{ inputs.output-dir }}
-        EXTRA_ARGS: ${{ inputs.extra-args }}
+        EXTRA_ARGS: ${{ steps.check.outputs.extra-args }}
         NITPICK: ${{ inputs.nitpick }}
       run: |
         # shellcheck source=scripts/workflow-command.sh
@@ -389,6 +504,157 @@ runs:
         # why production container builds never hit this.
         (exit "$BUILD_EXIT_CODE")
 
+    # A mystmd-based engine (#337): mystmd, with Jupyter Book 2 (#361) to come
+    # as another, with a command of its own. It runs from source-dir, which
+    # holds myst.yml, and writes _build there, as myst has no --path-output.
+    # A login shell, as for jb, so the Conda environment's Python is the one
+    # myst starts Jupyter with.
+    #
+    # myst exits 0 where jb fails (#337's check): when it finds nothing to
+    # build (no site: for --html, no export for --pdf or --ipynb), when an
+    # export fails, and when a page of the site fails to render. So after a
+    # build that exits 0 the step checks what was written. --strict, the
+    # default extra-args, acts on --html alone: an export builder exits 0 on
+    # a cell that raises, and a later html build in the job runs that page
+    # again, since myst caches only a page that ran without an error. #364 is
+    # to check the export builders' execution, and error outputs.
+    - name: Build lectures with mystmd
+      id: build-myst
+      if: steps.check.outputs.myst-based == 'true'
+      shell: bash -l {0}
+      env:
+        ENGINE: ${{ steps.check.outputs.engine }}
+        BUILDER: ${{ inputs.builder }}
+        SOURCE_DIR: ${{ inputs.source-dir }}
+        EXTRA_ARGS: ${{ steps.check.outputs.extra-args }}
+      run: |
+        # shellcheck source=scripts/workflow-command.sh
+        . "$GITHUB_ACTION_PATH/../scripts/workflow-command.sh"
+        echo "Building with engine: $ENGINE, builder: $BUILDER"
+
+        # The engine's command. A new mystmd-based engine adds its line here.
+        case "$ENGINE" in
+          mystmd) cli=myst; build_cmd=(myst build) ;;
+        esac
+        # The builder's flag, and where it writes: an export goes to
+        # _build/exports unless it names its own output. --execute always: a
+        # PDF shows the cells' outputs only from an executed build, and
+        # --ipynb, which writes its notebooks without outputs, still fills the
+        # execution cache that a later html build reads.
+        case "$BUILDER" in
+          html)     builder_args=(--html);  build_path="$SOURCE_DIR/_build/html" ;;
+          pdflatex) builder_args=(--pdf);   build_path="$SOURCE_DIR/_build/exports" ;;
+          jupyter)  builder_args=(--ipynb); build_path="$SOURCE_DIR/_build/exports" ;;
+        esac
+        builder_args+=(--execute)
+        # Set whether or not the build succeeds, as the jb1 step sets it.
+        {
+          echo "build-path<<EOF"
+          echo "$build_path"
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
+
+        BUILD_EXIT_CODE=0
+        if ! cli_path=$(command -v "$cli"); then
+          annotate error "$cli is not on PATH, and engine: $ENGINE runs it: install mystmd in an earlier step (the build-lectures chapter shows how), or check the job's container image"
+          BUILD_EXIT_CODE=1
+        else
+          # Where it is as well as which, so a stale global install shows.
+          echo "$cli: $cli_path"
+          echo "$cli --version: $("$cli" --version 2>&1 | head -n 1)"
+          # --ipynb is the QuantEcon/mystmd fork's. Upstream mystmd has none,
+          # and would stop on it as an unknown option.
+          if [ "$BUILDER" = jupyter ] && ! "${build_cmd[@]}" --help 2>&1 | grep -q -- '--ipynb'; then
+            annotate error "builder: jupyter runs ${build_cmd[*]} --ipynb, and this $cli has no --ipynb: it is the QuantEcon/mystmd fork's, which upstream mystmd lacks"
+            BUILD_EXIT_CODE=1
+          fi
+        fi
+
+        if [ "$BUILD_EXIT_CODE" -eq 0 ]; then
+          # Two settings a container job needs, which
+          # QuantEcon/test-lecture-theme-mystmd's CI measured, for this
+          # command and the kernels it starts, and harmless elsewhere. In the
+          # QuantEcon images Node resolves localhost to ::1 first, so the
+          # content server myst starts listens on IPv6 alone, the theme's
+          # renderer dials 127.0.0.1, and every page fails to render. And
+          # jupyter_server will not start as root without allow_root, while a
+          # container job's steps run as root: the build would execute
+          # nothing. The setting comes from a folder in $RUNNER_TEMP, first on
+          # JUPYTER_CONFIG_PATH, so no Jupyter configuration of the caller's is
+          # written to.
+          export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--dns-result-order=ipv4first"
+          echo "NODE_OPTIONS for $cli: $NODE_OPTIONS"
+          if [ "$(id -u)" -eq 0 ]; then
+            if jupyter_dir=$(mktemp -d "${RUNNER_TEMP:-/tmp}/build-lectures-jupyter.XXXXXX") \
+               && printf '%s\n' '{"ServerApp": {"allow_root": true}}' > "$jupyter_dir/jupyter_server_config.json"; then
+              export JUPYTER_CONFIG_PATH="$jupyter_dir${JUPYTER_CONFIG_PATH:+:$JUPYTER_CONFIG_PATH}"
+              echo "Running as root, so Jupyter's ServerApp.allow_root is set through JUPYTER_CONFIG_PATH ($jupyter_dir)"
+            else
+              annotate error "running as root, and the Jupyter configuration that lets jupyter_server start as root could not be written under ${RUNNER_TEMP:-/tmp}"
+              BUILD_EXIT_CODE=1
+            fi
+          fi
+        fi
+
+        if [ "$BUILD_EXIT_CODE" -eq 0 ]; then
+          # EXTRA_ARGS is left unquoted to split it into flags, as for jb.
+          echo "::group::Build Command"
+          echo "cd $SOURCE_DIR && ${build_cmd[*]} ${builder_args[*]} $EXTRA_ARGS"
+          echo "::endgroup::"
+
+          # The log, both streams, is kept for the check of the pages below.
+          # The stamp is at least a second older than anything the build
+          # writes, so the checks below can tell this build's files from an
+          # earlier one's at any timestamp resolution.
+          LOG=$(mktemp "${RUNNER_TEMP:-/tmp}/build-lectures-myst.XXXXXX")
+          STAMP="$LOG.start"
+          touch "$STAMP"
+          sleep 1
+          ( cd "$SOURCE_DIR" && "${build_cmd[@]}" "${builder_args[@]}" $EXTRA_ARGS ) 2>&1 | tee "$LOG"
+          BUILD_EXIT_CODE=${PIPESTATUS[0]}
+
+          if [ "$BUILD_EXIT_CODE" -eq 0 ]; then
+            case "$BUILDER" in
+              html)
+                # myst deletes _build/html before it writes, but writes nothing
+                # without a site: in myst.yml, leaving any earlier build's.
+                if [ ! "$build_path/index.html" -nt "$STAMP" ]; then
+                  annotate error "${build_cmd[*]} --html exited 0, but wrote no $build_path/index.html: is there a site: entry in $SOURCE_DIR/myst.yml? The build step's log says what $cli did"
+                  BUILD_EXIT_CODE=1
+                fi
+                # A page the content server failed to serve is logged and left
+                # out, and the build goes on. The lines quote the site's
+                # addresses, so stop-commands keeps them from being read as
+                # workflow commands.
+                FETCH_ERRORS=$(sed -e $'s/\e\\[[0-9;]*m//g' "$LOG" | grep -E 'Error fetching ' || true)
+                if [ -n "$FETCH_ERRORS" ]; then
+                  COUNT=$(printf '%s\n' "$FETCH_ERRORS" | wc -l | tr -d ' ')
+                  annotate error "${build_cmd[*]} --html exited 0, but $COUNT page(s) of the site failed to render, so the site would leave them out. The build step's log lists them, under 'The pages that failed to render'"
+                  TOKEN="pages-$RANDOM$RANDOM$RANDOM"
+                  echo "::group::The pages that failed to render ($COUNT)"
+                  echo "::stop-commands::$TOKEN"
+                  printf '%s\n' "$FETCH_ERRORS"
+                  echo "::$TOKEN::"
+                  echo "::endgroup::"
+                  BUILD_EXIT_CODE=1
+                fi
+                ;;
+              *)
+                # Every export of the builder's kind, from the list myst
+                # writes after the exports, must have been written.
+                if ! python "$GITHUB_ACTION_PATH/check-myst-exports.py" "$SOURCE_DIR" "$BUILDER" "$STAMP"; then
+                  BUILD_EXIT_CODE=1
+                fi
+                ;;
+            esac
+          fi
+          rm -f "$LOG" "$STAMP"
+        fi
+
+        # The status ends the script, as in the jb1 step: never the exit
+        # builtin, in a login shell (see the end of that step).
+        (exit "$BUILD_EXIT_CODE")
+
     # #247. An exception raised while IPython displays output (a figure, say)
     # is printed as an error output, but the kernel's reply says the cell
     # succeeded, so nbclient does not raise, myst-nb renders the traceback
@@ -404,24 +670,28 @@ runs:
     # has PyYAML, for _config.yml, and jupyter-cache, for the cache's copies).
     # The script's status is the step's: it is the last command, and the exit
     # builtin is avoided here for the reason given at the end of the build step.
+    # On jb1 alone: a mystmd build writes no jupyter_execute, and its error
+    # outputs are #364's.
     - name: Check executed notebooks for error outputs
       id: error-outputs
-      if: steps.error-outputs-mode.outputs.mode != 'ignore'
+      if: steps.check.outputs.mode != 'ignore' && steps.check.outputs.engine == 'jb1'
       shell: bash -l {0}
       env:
-        MODE: ${{ steps.error-outputs-mode.outputs.mode }}
+        MODE: ${{ steps.check.outputs.mode }}
         SOURCE_DIR: ${{ inputs.source-dir }}
         OUTPUT_DIR: ${{ inputs.output-dir }}
       run: python "$GITHUB_ACTION_PATH/check-error-outputs.py" "$MODE" "$SOURCE_DIR" "$OUTPUT_DIR"
 
     # Only for a failed build step: jb build failed, or the jupyter build
-    # logged warnings under -W --keep-going (#300). After the check above
-    # fails, jb build has passed and the check has already named each notebook
-    # and cell; after an invalid error-outputs, nothing was built.
+    # logged warnings under -W --keep-going (#300), or the mystmd build failed
+    # or its check of what it wrote did. After the check above fails, jb build
+    # has passed and the check has already named each notebook and cell;
+    # after an invalid input, nothing was built.
     - name: Report build failure
-      if: failure() && steps.build.outcome == 'failure'
+      if: failure() && (steps.build.outcome == 'failure' || steps.build-myst.outcome == 'failure')
       shell: bash
       env:
+        ENGINE: ${{ steps.check.outputs.engine }}
         BUILDER: ${{ inputs.builder }}
         SOURCE_DIR: ${{ inputs.source-dir }}
         OUTPUT_DIR: ${{ inputs.output-dir }}
@@ -440,17 +710,28 @@ runs:
           jupyter)  REPORTS_DIR="${OUTPUT_DIR}/_build/jupyter/reports" ;;
           *)        REPORTS_DIR="" ;;
         esac
+        # Those are myst-nb's, which jb1 writes. A mystmd-based engine writes
+        # _build beside myst.yml, and prints each traceback in its own log.
+        BUILD_DIR="$OUTPUT_DIR/_build"
+        if [ "$ENGINE" = jb1 ]; then
+          ENGINE_NAME="Jupyter Book"
+        else
+          ENGINE_NAME=$ENGINE
+          REPORTS_DIR=""
+          BUILD_DIR="$SOURCE_DIR/_build"
+        fi
 
         echo ""
-        echo "::error::❌ BUILD FAILED - Jupyter Book build encountered errors"
+        echo "::error::❌ BUILD FAILED - $ENGINE_NAME build encountered errors"
         echo ""
         echo "╔════════════════════════════════════════════════════════════════╗"
         echo "║                    BUILD FAILURE SUMMARY                       ║"
         echo "╚════════════════════════════════════════════════════════════════╝"
         echo ""
+        echo "  Engine:    $ENGINE"
         echo "  Builder:   $BUILDER"
         echo "  Source:    $SOURCE_DIR"
-        echo "  Output:    $OUTPUT_DIR/_build"
+        echo "  Output:    $BUILD_DIR"
         echo ""
         echo "════════════════════════════════════════════════════════════════════"
         echo ""
@@ -482,12 +763,17 @@ runs:
           echo ""
           echo "To debug this failure:"
           echo "  1. Download the '$ARTIFACT_NAME' artifact from this workflow run"
-          if [ -n "$REPORTS_DIR" ]; then
-            echo "  2. Check $REPORTS_DIR/ for notebook execution logs"
+          if [ "$ENGINE" != jb1 ]; then
+            echo "  2. The tracebacks are in the build log above; the artifact's logs/ and temp/ hold $ENGINE's build log and LaTeX's logs"
+            echo "  3. Its execute/ holds the execution cache: the pages that ran without an error"
           else
-            echo "  2. The artifact holds no reports directory for builder '$BUILDER'; check the build log above"
+            if [ -n "$REPORTS_DIR" ]; then
+              echo "  2. Check $REPORTS_DIR/ for notebook execution logs"
+            else
+              echo "  2. The artifact holds no reports directory for builder '$BUILDER'; check the build log above"
+            fi
+            echo "  3. Check $OUTPUT_DIR/_build/.jupyter_cache/ for cached notebook states"
           fi
-          echo "  3. Check $OUTPUT_DIR/_build/.jupyter_cache/ for cached notebook states"
           echo ""
         else
           echo "💡 Tip: Enable 'upload-failure-reports: true' to get execution reports for debugging"
@@ -512,21 +798,39 @@ runs:
         if-no-files-found: ignore
         retention-days: 7
 
+    # A mystmd-based engine's own: its log, LaTeX's logs and its execution
+    # cache, from the _build beside myst.yml. A step of its own, so the jb1
+    # artifact above keeps its layout (its root is its paths' common ancestor).
+    - name: Upload the build's logs on failure (mystmd)
+      if: inputs.upload-failure-reports == 'true' && failure() && steps.build-myst.outcome == 'failure'
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ inputs.failure-artifact-name != '' && inputs.failure-artifact-name || format('execution-reports-{0}', inputs.builder) }}
+        path: |
+          ${{ inputs.source-dir }}/_build/logs
+          ${{ inputs.source-dir }}/_build/temp
+          ${{ inputs.source-dir }}/_build/execute
+        include-hidden-files: true
+        if-no-files-found: ignore
+        retention-days: 7
+
     - name: Display Build Info
       if: success()
       shell: bash
       env:
+        ENGINE: ${{ steps.check.outputs.engine }}
         BUILDER: ${{ inputs.builder }}
         SOURCE_DIR: ${{ inputs.source-dir }}
-        BUILD_PATH: ${{ steps.build.outputs.build-path }}
+        BUILD_PATH: ${{ steps.build.outputs.build-path || steps.build-myst.outputs.build-path }}
         HTML_COPY_PDF: ${{ inputs.html-copy-pdf }}
         HTML_COPY_NOTEBOOKS: ${{ inputs.html-copy-notebooks }}
       run: |
         echo "::group::Build Summary"
+        echo "Engine: $ENGINE"
         echo "Builder: $BUILDER"
         echo "Source: $SOURCE_DIR"
         echo "Output: $BUILD_PATH"
-        if [ "$BUILDER" = "html" ]; then
+        if [ "$BUILDER" = "html" ] && [ "$ENGINE" = jb1 ]; then
           echo "PDF copied to HTML: $HTML_COPY_PDF"
           echo "Notebooks copied to HTML: $HTML_COPY_NOTEBOOKS"
         fi
