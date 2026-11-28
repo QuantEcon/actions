@@ -10,7 +10,8 @@
 //     build-lectures' own flags and --path-output . (#229), then -n when
 //     nitpick is 'true' and extra-args as build-lectures splits it (#97);
 //   - each build is given the nitpick and extra-args the alert reads, and
-//     their defaults are build-lectures' own, which the cases take (#97);
+//     their defaults are build-lectures' own on jb1, which the cases take
+//     (#97, #337);
 //   - under the commands, the issue says where an error output shows (#247),
 //     and, only when the jupyter build failed with -W and --keep-going in
 //     extra-args, that its command exits 0 when the build fails on warnings
@@ -353,6 +354,16 @@ function guardReads(steps, extraArgs) {
   }
 }
 
+// The extra-args build-lectures gives jb1 for an empty one, read from the one
+// line in its check step that sets it (#337), beside build-jupyter-cache in
+// the checkout (`dir` is build-jupyter-cache's own directory).
+function jb1ExtraArgs(dir) {
+  const file = path.join(dir, '..', 'build-lectures', 'action.yml');
+  const line = fs.readFileSync(file, 'utf8').match(/^ *jb1\) args='([^']*)' ;;$/m);
+  if (!line) throw new Error(`${file} has no "jb1) args='…' ;;" line, where build-lectures resolves an empty extra-args for jb1`);
+  return line[1];
+}
+
 const describe = writes => `[${writes.map(w => `${w.op} ${w.number}`).join(', ')}]`;
 
 async function main() {
@@ -397,8 +408,11 @@ async function main() {
         if (given[key] !== want) problems.push(`the ${builder} build's ${key} is [${given[key]}], not [${want}]`);
       }
     }
+    // build-lectures declares extra-args' default as '', its engine's own,
+    // and resolves it for jb1, the engine these builds use, in its check step (#337).
     for (const [key, env] of [['nitpick', 'NITPICK'], ['extra-args', 'EXTRA_ARGS']]) {
-      const theirs = steps.flags['build-lectures'][key];
+      const declared = steps.flags['build-lectures'][key];
+      const theirs = key === 'extra-args' && declared === '' ? jb1ExtraArgs(steps.dir) : declared;
       if (defaults[key] !== theirs) problems.push(`${key} defaults to [${defaults[key]}], not to build-lectures' [${theirs}]`);
       if (defaults[key] !== FAILED[env]) problems.push(`${key} defaults to [${defaults[key]}], not to the [${FAILED[env]}] the cases take`);
     }

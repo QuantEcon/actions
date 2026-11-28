@@ -105,9 +105,10 @@ inputs:
       cannot resolve fails the build; `'false'` leaves it out.
     required: false
     default: 'true'
-  # Not '': the runner passes an explicit '' through to build-lectures instead
-  # of applying its default, which would drop -W from every build, and with it
-  # the check of a jupyter build's warnings, which needs -W and --keep-going.
+  # Spelled out, not '', though build-lectures now reads '' as its engine's
+  # default, which on jb1 is this same value (#337): the failure issue's
+  # commands to reproduce each build are written from this value, so an empty
+  # one would leave -W and --keep-going out of them.
   extra-args:
     description: >-
       Passed to each build as the `build-lectures` input of the same name: further arguments for

@@ -1,0 +1,12 @@
+# The harness's mystmd project (#337): build-lectures' build-mystmd and
+# build-engine-inputs jobs copy this folder and build it with engine: mystmd.
+version: 1
+project:
+  title: QuantEcon Actions Harness (mystmd)
+  toc:
+    - file: intro.md
+    - file: lecture1.md
+site:
+  # The harness puts a pinned copy in _build/templates before the build, so
+  # myst fetches nothing.
+  template: book-theme
