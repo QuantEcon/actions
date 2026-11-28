@@ -6,7 +6,7 @@ A reusable workflow that deploys one of the repository's releases to GitHub Page
 
 - **`upload`** restores the release's site with [`restore-gh-pages`](../actions/restore-gh-pages.md), which checks the archive's SHA-256 before extracting it, and uploads it with `publish-gh-pages`' `mode: upload`. It has read access alone.
 - **`deploy`** deploys that upload with `publish-gh-pages`' `mode: deploy`, in the `github-pages` environment, and does nothing else. If the deploy fails, **Re-run failed jobs** re-runs this job alone, and it finds the one upload, which is kept for a day; after that, dispatch the tag again.
-- **`notebooks`**, only with `notebooks-repository`, after the deploy: restores the release again and makes the companion repository hold exactly the site's notebooks and a README it writes, pushing with the `notebooks-token` secret, which no other job receives. See [The notebooks](#the-notebooks).
+- **`notebooks`**, only with `notebooks-repository`, after the deploy: restores the release again and makes the companion repository hold every `*.ipynb` under the site's `_notebooks/`, a README it writes and nothing else, pushing with the `notebooks-token` secret, which no other job receives. See [The notebooks](#the-notebooks).
 
 None of them runs repository or notebook code. A repository calls it from a short workflow of its own, [`deploy-release.yml`](https://github.com/QuantEcon/actions/blob/main/templates/deploy-release.yml), which runs it in two cases:
 
@@ -23,12 +23,12 @@ Use it when the site is built somewhere else and reaches the repository as a rel
 
 ## Requirements
 
-- **Runner.** GitHub's hosted `ubuntu-latest`, which both jobs name. `restore-gh-pages` needs the GitHub CLI `gh`, which the QuantEcon images do not have.
+- **Runner.** GitHub's hosted `ubuntu-latest`, which every job names. `restore-gh-pages` needs the GitHub CLI `gh`, which the QuantEcon images do not have.
 - **Node.** None.
 - **Permissions.** The calling job grants what the workflow's jobs may have, and a called workflow gets no more than that: `contents: read` to read the release, and `pages: write` and `id-token: write` for the deploy. The template's job sets all three.
 - **Secrets.** None, unless `notebooks-repository` is set: then `notebooks-token`, a token that can push to that repository, such as a fine-grained token with **Contents** read and write on it alone. The caller passes it by name, under `secrets:`, never with `secrets: inherit`. The release is read with each job's own token.
 - **Files in your repository.** The caller, `.github/workflows/deploy-release.yml`, and releases that hold the site, as `publish-gh-pages`' `mode: release` makes them. With `notebooks-repository`, the site's notebooks are under `_notebooks/` in it, as `build-lectures`' `html-copy-notebooks` puts them.
-- **A companion repository,** with `notebooks-repository`: one that exists and is public, as Colab needs, with a default branch. The job clones it without a token.
+- **A companion repository,** with `notebooks-repository`: one that exists and is public, as Colab needs. It may be empty, as a new one is: the first release fills its default branch. The job clones it without a token.
 - **Repository settings.** Under **Settings**, **Pages**, **Source** is **GitHub Actions**. Under **Settings**, **Environments**, `github-pages`, **Deployment branches and tags** admits the tag pattern `publish*` beside the default branch: a release event runs on its tag, and a dispatch on the default branch.
 - **Who makes the release.** A release that a workflow creates with `GITHUB_TOKEN` starts no workflow, so the release must come from a person, a GitHub App or another token.
 - **Setup outside GitHub.** None.
@@ -41,7 +41,7 @@ Use it when the site is built somewhere else and reaches the repository as a rel
 |---|---|---|---|
 | `tag` | no | `''` | The tag of the release to deploy, such as `publish-2026-11-27`. Empty, the default, takes the tag of the release whose `published` event started the run. A run started by a release whose tag does not start with `publish-` deploys nothing, whatever this says. Only letters, digits, `.`, `_` and `-`, starting with a letter or a digit: any other tag, this input's or the release's, fails the job before anything is downloaded. |
 | `asset-name` | no | `''` | The start of the release's asset names, as `restore-gh-pages` takes it. Empty, the default, takes the release's one archive for the tag. |
-| `notebooks-repository` | no | `''` | A companion repository that serves the site's notebooks to Colab, as `owner/name`, such as `QuantEcon/lecture-python-intro.notebooks`. After the deploy, the `notebooks` job makes its default branch hold exactly the release's `_notebooks/`, at its root, and a README the job writes: a notebook the release no longer has is deleted. It needs the `notebooks-token` secret. Empty, the default, pushes no notebooks, and the job is skipped. Any value that is not `owner/name` fails the job. |
+| `notebooks-repository` | no | `''` | A companion repository that serves the site's notebooks to Colab, as `owner/name`, such as `QuantEcon/lecture-python-intro.notebooks`. It must exist and be public, and may be empty. After the deploy, the `notebooks` job makes its default branch hold every `*.ipynb` under the release's `_notebooks/`, at the same path from its root, and a README the job writes, and nothing else: a notebook the release no longer has, and any other file, is deleted. It needs the `notebooks-token` secret. Empty, the default, pushes no notebooks, and the job is skipped. Any value that is not `owner/name` fails the job. |
 
 <!-- END GENERATED -->
 
@@ -51,7 +51,7 @@ Use it when the site is built somewhere else and reaches the repository as a rel
 
 | Secret | Required | Description |
 |---|---|---|
-| `notebooks-token` | no | A token that can push to `notebooks-repository`, such as a fine-grained token with Contents read and write on that repository alone. Only the `notebooks` job receives it. Required with `notebooks-repository`, and not used without it. |
+| `notebooks-token` | no | A token that can push to `notebooks-repository`: an organisation token that can push there works, and a fine-grained token with Contents read and write on that repository alone is the narrower choice. Only the `notebooks` job receives it. Required with `notebooks-repository`, and not used without it. |
 
 <!-- END GENERATED -->
 
@@ -125,7 +125,7 @@ jobs:
       notebooks-token: ${{ secrets.QUANTECON_SERVICES_PAT }}
 ```
 
-The calling job's `contents: read` covers the `notebooks` job, which reads the release and needs nothing more: it pushes with the secret.
+The calling job's `contents: read` covers the `notebooks` job, which reads the release and needs nothing more: it pushes with the secret. An organisation token that can push to the companion repository, as here, works; a fine-grained token with **Contents** read and write on that repository alone is the narrower choice.
 
 ### In the templates
 
@@ -142,9 +142,11 @@ Inside a called workflow, `./` paths name the caller's checkout, so this workflo
 With `notebooks-repository`, the `notebooks` job runs once the deploy has succeeded, so the companion repository's notebooks never run ahead of the site. It restores the release again with `restore-gh-pages`, with its checksum check, and then:
 
 1. **Mirrors the notebooks.** In a shallow clone of the companion repository's default branch, everything but `.git` goes. Then every `*.ipynb` under the site's `_notebooks/` comes in, at the same path from the repository's root, which is where the theme's "Open in Colab" links look. Nothing else from the site reaches the repository. So a notebook the release no longer has is deleted there, and so is any other file: the first mirror of a repository that holds an `environment.yml` or a Binder README beside its notebooks deletes them.
-2. **Writes a README:** the repository's name, the site's address (the `deploy` job's `page-url`), the release's tag, the source repository and the commit the manifest names, and a line saying that each release replaces all of it, so an edit made there is lost at the next.
-3. **Commits only if something changed,** as `github-actions[bot]`, with the message `Notebooks of <tag>, built from <repository>@<commit>`, and logs how many notebooks were added, changed and deleted, and any other file it added or deleted.
+2. **Writes a README:** the repository's name, the site's address (the `deploy` job's `page-url`), the release's tag and repository, the commit the site was built from (the manifest's, which names no repository, since a site built elsewhere was built in another one), and a line saying that each release replaces all of it, so an edit made there is lost at the next.
+3. **Commits only if something changed,** as `github-actions[bot]`, with the message `Notebooks of <tag>, built from commit <commit>`, and logs how many notebooks were added, changed and deleted, and any other file it added or deleted.
 4. **Pushes** to the default branch with `notebooks-token`, without `--force`.
+
+The README names the tag, so every new release makes a commit, even when its notebooks are unchanged: the repository's history records each release. Only a re-run for the same tag finds nothing to push.
 
 - **A rollback** dispatches an earlier tag, and its notebooks go back with the site.
 - **A release with no notebook** under `_notebooks/` fails the job before anything is pushed, since a mirror of it would empty the repository. The site is deployed by then, so the site is back and the notebooks are still the last ones pushed.
@@ -154,7 +156,7 @@ With `notebooks-repository`, the `notebooks` job runs once the deploy has succee
 
 The deploy job joins the `pages` concurrency group, without cancelling, the group `publish.yml` and `restore.yml` use, so no two deploys overlap. A caller should not use that group itself, at its top level or on the calling job: GitHub's documentation says that a called workflow and its caller sharing a group with `cancel-in-progress: true` cancels the run already going, and does not say what the same group does without it. The template sets none.
 
-The `notebooks` job joins `deploy-release-notebooks-<notebooks-repository>`, without cancelling, so two releases' pushes to one repository never overlap, and a caller should not use that group either. A push that a newer one still beats fails rather than overwrite it: re-run the job, or dispatch the newer tag.
+The `notebooks` job joins `deploy-release-notebooks-<notebooks-repository>`, without cancelling, so two releases' pushes to one repository never overlap, and a caller should not use that group either. One run waits while another pushes; a third run that joins then cancels the waiting one, so the latest release wins, which is right for a mirror, and the cancelled run shows as cancelled. Since the group keeps this workflow's own pushes apart, a push that is still beaten lost to one from outside it, and it fails rather than overwrite that one.
 
 ## Troubleshooting
 
@@ -162,5 +164,6 @@ The `notebooks` job joins `deploy-release-notebooks-<notebooks-repository>`, wit
 - **The deploy job is rejected by environment protection.** The `github-pages` environment does not admit the run's ref: add the tag pattern `publish*` for a release event, or run the dispatch on the default branch.
 - **The `notebooks` job fails with "holds no notebook under `_notebooks/`".** The release's site has no notebooks: build them, and copy them in with `build-lectures`' `html-copy-notebooks`, before the release is made. The site itself is deployed.
 - **The `notebooks` job fails with "no notebooks-token secret".** The calling job sets `notebooks-repository` and passes no `notebooks-token` under `secrets:`, or passes a secret the repository doesn't have, which reads as empty.
-- **The push is refused.** A 403 means the token cannot write to the companion repository. A rejected non-fast-forward push means another push landed first: re-run the job.
+- **The clone fails with "could not clone … without a token".** The companion repository does not exist, or is private: create it, empty and public, or make it public.
+- **The push is refused.** A 403 means the token cannot write to the companion repository. Branch protection, or a rule requiring signed commits, on its default branch also refuses it. A rejected non-fast-forward push means a push from outside this workflow landed first: re-running the job overwrites that push with the release's notebooks.
 - **`restore-gh-pages` finds no archive, or two.** See its [troubleshooting](../actions/restore-gh-pages.md#troubleshooting); `asset-name` picks one of two archives.
