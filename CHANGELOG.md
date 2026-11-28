@@ -28,8 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **`build-lectures`**: `extra-args` defaults to empty, which means the engine's own arguments:
   `-W --keep-going` on `jb1`, as before, and `--strict` on `mystmd`. A build that leaves it out
-  runs the same `jb build` command. An explicit `extra-args: ''` now gives `-W --keep-going`, where
-  it gave `jb build` no arguments. (#337)
+  runs the same `jb build` command. An explicit `extra-args: ''`, or one of whitespace alone, now
+  gives `-W --keep-going`, where it gave `jb build` no flags beyond `-n`. (#337)
 
 ## [0.22.0] - 2026-11-28
 

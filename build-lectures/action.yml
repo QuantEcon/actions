@@ -220,7 +220,8 @@ runs:
               bad=1
               ;;
           esac
-          if [ "$HTML_COPY_PDF" = true ] || [ "$HTML_COPY_NOTEBOOKS" = true ]; then
+          # Lowercased, as the stage steps' if: compares them without case.
+          if [ "${HTML_COPY_PDF,,}" = true ] || [ "${HTML_COPY_NOTEBOOKS,,}" = true ]; then
             annotate error "html-copy-pdf and html-copy-notebooks do not apply with engine: $engine, which rewrites _build/html on each build and links downloads from myst.yml: build the PDF before the site, and list it under exports and downloads there"
             bad=1
           fi
@@ -237,9 +238,9 @@ runs:
           set -f
           for arg in $EXTRA_ARGS; do
             case "$arg" in
-              --warningiserror|--keep-going|--nitpick|--builder|--builder=*|--custom-builder|--custom-builder=*|--path-output|--path-output=*|--config|--config=*|--toc|--toc=*) jb_flag=true ;;
+              --warningiserror|--keep-going|--nitpick|--builder|--builder=*|--custom-builder|--custom-builder=*|--path-output|--path-output=*|--config|--config=*|--toc|--toc=*|--verbose|--quiet|--freshenv|--individualpages) jb_flag=true ;;
               --*) jb_flag=false ;;
-              -*[Wn]*) jb_flag=true ;;  # -W, -n, or a cluster such as -nW
+              -*[Wnvq]*) jb_flag=true ;;  # -W, -n, -v, -q, or a cluster such as -nW
               *) jb_flag=false ;;
             esac
             if [ "$jb_flag" = true ]; then
@@ -623,10 +624,14 @@ runs:
                   BUILD_EXIT_CODE=1
                 fi
                 # A page the content server failed to serve is logged and left
-                # out, and the build goes on. The lines quote the site's
-                # addresses, so stop-commands keeps them from being read as
-                # workflow commands.
-                FETCH_ERRORS=$(sed -e $'s/\e\\[[0-9;]*m//g' "$LOG" | grep -E 'Error fetching ' || true)
+                # out, and the build goes on. myst fetches each page from its
+                # own server, at http://localhost:<port>, so only those lines
+                # count: a dead external link that --check-links reports, or a
+                # remote file that fails to load, says "Error fetching" with
+                # another address. The lines quote the site's addresses, so
+                # stop-commands keeps them from being read as workflow
+                # commands.
+                FETCH_ERRORS=$(sed -e $'s/\e\\[[0-9;]*m//g' "$LOG" | grep -E 'Error fetching http://localhost:[0-9]+' || true)
                 if [ -n "$FETCH_ERRORS" ]; then
                   COUNT=$(printf '%s\n' "$FETCH_ERRORS" | wc -l | tr -d ' ')
                   annotate error "${build_cmd[*]} --html exited 0, but $COUNT page(s) of the site failed to render, so the site would leave them out. The build step's log lists them, under 'The pages that failed to render'"

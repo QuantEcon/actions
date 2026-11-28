@@ -2348,6 +2348,19 @@ jobs:
           engine: mystmd
           source-dir: harness-myst
 
+      # myst says "Error fetching" for a dead external link too, under
+      # --check-links: only its own content server's pages count.
+      - name: 'html: an external address that failed to load, which passes'
+        id: link-error
+        continue-on-error: true
+        uses: ./build-lectures
+        env:
+          STUB_RECORD: ${{ runner.temp }}/records/link-error
+          STUB_MODE: link-error
+        with:
+          engine: mystmd
+          source-dir: harness-myst
+
       - name: 'pdflatex: no export to build'
         id: no-export
         continue-on-error: true
@@ -2416,6 +2429,18 @@ jobs:
           engine: mystmd
           source-dir: harness-myst
           html-copy-pdf: 'true'
+
+      # In another case: the stage step's if: compares without case.
+      - name: 'refused: html-copy-notebooks, as True'
+        id: copy-notebooks
+        continue-on-error: true
+        uses: ./build-lectures
+        env:
+          STUB_RECORD: ${{ runner.temp }}/records/copy-notebooks
+        with:
+          engine: mystmd
+          source-dir: harness-myst
+          html-copy-notebooks: 'True'
 
       - name: 'refused: an output-dir'
         id: output-dir
@@ -2502,12 +2527,14 @@ jobs:
             jupyter|${{ steps.jupyter.outcome }}|${{ steps.jupyter.outputs.build-path }}|${{ steps.jupyter.outputs.error-output-count }}|build --ipynb --execute --strict
             no-index|${{ steps.no-index.outcome }}|${{ steps.no-index.outputs.build-path }}|${{ steps.no-index.outputs.error-output-count }}|build --html --execute --strict
             fetch-error|${{ steps.fetch-error.outcome }}|${{ steps.fetch-error.outputs.build-path }}|${{ steps.fetch-error.outputs.error-output-count }}|build --html --execute --strict
+            link-error|${{ steps.link-error.outcome }}|${{ steps.link-error.outputs.build-path }}|${{ steps.link-error.outputs.error-output-count }}|build --html --execute --strict
             no-export|${{ steps.no-export.outcome }}|${{ steps.no-export.outputs.build-path }}|${{ steps.no-export.outputs.error-output-count }}|build --pdf --execute --strict
             missing-output|${{ steps.missing-output.outcome }}|${{ steps.missing-output.outputs.build-path }}|${{ steps.missing-output.outputs.error-output-count }}|build --ipynb --execute --strict
             myst-fails|${{ steps.myst-fails.outcome }}|${{ steps.myst-fails.outputs.build-path }}|${{ steps.myst-fails.outputs.error-output-count }}|build --html --execute --strict
             no-ipynb|${{ steps.no-ipynb.outcome }}|${{ steps.no-ipynb.outputs.build-path }}|${{ steps.no-ipynb.outputs.error-output-count }}|-
             dirhtml|${{ steps.dirhtml.outcome }}|${{ steps.dirhtml.outputs.build-path }}|${{ steps.dirhtml.outputs.error-output-count }}|-
             copy-pdf|${{ steps.copy-pdf.outcome }}|${{ steps.copy-pdf.outputs.build-path }}|${{ steps.copy-pdf.outputs.error-output-count }}|-
+            copy-notebooks|${{ steps.copy-notebooks.outcome }}|${{ steps.copy-notebooks.outputs.build-path }}|${{ steps.copy-notebooks.outputs.error-output-count }}|-
             output-dir|${{ steps.output-dir.outcome }}|${{ steps.output-dir.outputs.build-path }}|${{ steps.output-dir.outputs.error-output-count }}|-
             no-myst-yml|${{ steps.no-myst-yml.outcome }}|${{ steps.no-myst-yml.outputs.build-path }}|${{ steps.no-myst-yml.outputs.error-output-count }}|-
             jb-flags|${{ steps.jb-flags.outcome }}|${{ steps.jb-flags.outputs.build-path }}|${{ steps.jb-flags.outputs.error-output-count }}|-
@@ -2522,7 +2549,8 @@ jobs:
           # substitution in a message ends in || so, under -e, a failing case
           # is reported rather than ending the script.
           declare -A WANT=(
-            [html]='success harness-myst/_build/html' [pdflatex]='success harness-myst/_build/exports'
+            [html]='success harness-myst/_build/html' [link-error]='success harness-myst/_build/html'
+            [pdflatex]='success harness-myst/_build/exports'
             [jupyter]='success harness-myst/_build/exports' [jb1]='success ./_build/html' [jb1-empty]='success ./_build/html'
           )
           bad=0 n=0
@@ -2565,7 +2593,7 @@ jobs:
               echo "✓ $id: $outcome${want_args:+, $want_args}"
             fi
           done <<< "$RESULTS"
-          [ "$n" -eq 19 ] || { echo "::error::expected 19 cases, read $n"; exit 1; }
+          [ "$n" -eq 21 ] || { echo "::error::expected 21 cases, read $n"; exit 1; }
           [ "$bad" -eq 0 ]
           echo "✅ engine mystmd ran each builder's command in source-dir, failed on what it did not write, and refused what does not apply; jb1's command is as it was"
 

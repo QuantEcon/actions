@@ -6,6 +6,8 @@
 #
 #   no-index        --html writes no _build/html/index.html (no site: in myst.yml)
 #   fetch-error     --html logs a page it could not fetch, and writes the rest
+#   link-error      --html logs an external address it could not fetch, as
+#                   --check-links does for a dead link, and writes every page
 #   no-export       --pdf or --ipynb finds no export to build
 #   missing-output  --pdf or --ipynb lists an export it did not write
 #   no-ipynb        `myst build --help` lists no --ipynb, as upstream's does
@@ -44,6 +46,9 @@ case " $* " in
     fi
     if [ "${STUB_MODE-}" = fetch-error ]; then
       echo "Error fetching http://localhost:3000/lecture1"
+    fi
+    if [ "${STUB_MODE-}" = link-error ]; then
+      echo "Error fetching https://example.org/a-dead-link"
     fi
     ;;
   *" --pdf "* | *" --ipynb "*)

@@ -10,7 +10,7 @@ Runs `jb build`, Jupyter Book 1, on the book in `source-dir`, with one builder p
 
 An `html` build can also copy in the PDF and the notebooks from earlier builds, so the site offers them for download. When a build fails, the action prints the traceback of each notebook that failed to execute, and can upload the execution reports as an artifact.
 
-With `engine: mystmd` it runs `myst build`, [mystmd](https://mystmd.org)'s CLI, from the folder in `source-dir` that holds `myst.yml`, with the same three builders: `--html`, `--pdf` and `--ipynb`. Fewer of the action's checks apply there: see [mystmd](#mystmd).
+With `engine: mystmd` it runs `myst build`, [mystmd](https://mystmd.org)'s CLI, from `source-dir`, the folder that holds `myst.yml`, with the same three builders: `--html`, `--pdf` and `--ipynb`. Fewer of the action's checks apply there: see [mystmd](#mystmd).
 
 ## When to use it
 
@@ -290,7 +290,7 @@ With `engine: jb1`, the default:
    - `html-copy-pdf` or `html-copy-notebooks` set to `'true'`;
    - an `output-dir` other than `.`;
    - a `source-dir` with no `myst.yml`;
-   - a flag of `jb build`'s in `extra-args`: `-W` or a cluster that holds it, `-n`, `--warningiserror`, `--keep-going`, `--nitpick`, `--builder`, `--custom-builder`, `--path-output`, `--config` or `--toc`.
+   - a flag of `jb build`'s in `extra-args`: `-W`, `-n`, `-v` or `-q`, or a cluster that holds one, `--warningiserror`, `--keep-going`, `--nitpick`, `--verbose`, `--quiet`, `--freshenv`, `--individualpages`, `--builder`, `--custom-builder`, `--path-output`, `--config` or `--toc`.
 
    It says in the log that `nitpick` and `error-outputs` are not used.
 2. **Git history**, as for `jb1`, for the `html` builder.
@@ -304,11 +304,13 @@ With `engine: jb1`, the default:
    myst build <builder flag> --execute <extra-args>
    ```
 
-   | Builder | Builder flag | Output, which `build-path` gives |
+   | Builder | Builder flag | `build-path` |
    |---|---|---|
    | `html` | `--html` | `<source-dir>/_build/html` |
-   | `pdflatex` | `--pdf` | `<source-dir>/_build/exports`, unless an export names its own `output` |
-   | `jupyter` | `--ipynb`, the fork's | `<source-dir>/_build/exports`, likewise |
+   | `pdflatex` | `--pdf` | `<source-dir>/_build/exports` |
+   | `jupyter` | `--ipynb`, the fork's | `<source-dir>/_build/exports` |
+
+   `build-path` is always the folder in the table. The site is written there, and so is an export that names no `output` of its own. An export that names one is written where its `output` says, and the check of what the build wrote looks for it there.
 
    `--execute` is always there: a PDF shows the cells' outputs only from an executed build, and `--ipynb`, which writes its notebooks without outputs, still fills the execution cache that a later `html` build reads. An empty `extra-args`, the default, is `--strict`. The log shows the command in its "Build Command" group.
 6. **What the build wrote.** `myst build` exits 0 when it finds nothing to build, and when an export or a page fails. So after a build that exits 0 the step also fails:
