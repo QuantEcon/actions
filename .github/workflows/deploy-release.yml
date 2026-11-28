@@ -8,16 +8,25 @@
 # templates/deploy-release.yml. The user manual's chapter is
 # docs/user/workflows/deploy-release.md.
 #
-# Two jobs, so that only the second holds the Pages permissions:
-#   upload  restore-gh-pages downloads the release's archive and checksum,
-#           checks the archive's SHA-256 and extracts the site, and
-#           publish-gh-pages uploads it as the run's github-pages artifact.
-#           It has read access alone.
-#   deploy  publish-gh-pages deploys that artifact, in the caller's
-#           github-pages environment, and does nothing else. A deploy that
-#           fails can be re-run alone within a day, while the upload is
-#           kept; after that, dispatch the tag again.
-# Neither runs repository or notebook code.
+# Two jobs, so that only the second holds the Pages permissions, and a third
+# for a series with a companion notebooks repository:
+#   upload     restore-gh-pages downloads the release's archive and checksum,
+#              checks the archive's SHA-256 and extracts the site, and
+#              publish-gh-pages uploads it as the run's github-pages artifact.
+#              It has read access alone.
+#   deploy     publish-gh-pages deploys that artifact, in the caller's
+#              github-pages environment, and does nothing else. A deploy that
+#              fails can be re-run alone within a day, while the upload is
+#              kept; after that, dispatch the tag again.
+#   notebooks  only with notebooks-repository: after the deploy, restores the
+#              release again and makes the companion repository, such as
+#              QuantEcon/lecture-python-intro.notebooks, hold every *.ipynb
+#              under the site's _notebooks/, at its path, and a README it
+#              writes, and nothing else (a mirror: a notebook the release no
+#              longer has, or any other file, is deleted there). It
+#              pushes with the notebooks-token secret, which no other job
+#              sees, and has read access alone besides.
+# None runs repository or notebook code.
 #
 # The actions are named as quantecon/actions/<action>@v0: in a called
 # workflow a ./ path is the caller's checkout. So whatever ref a caller pins
@@ -52,6 +61,27 @@ on:
         type: string
         required: false
         default: ''
+      notebooks-repository:
+        description: >-
+          A companion repository that serves the site's notebooks to Colab, as `owner/name`, such
+          as `QuantEcon/lecture-python-intro.notebooks`. It must exist and be public, and may be
+          empty. After the deploy, the `notebooks` job makes its default branch hold every
+          `*.ipynb` under the release's `_notebooks/`, at the same path from its root, and a
+          README the job writes, and nothing else: a notebook the release no longer has, and any
+          other file, is deleted. It needs the `notebooks-token` secret. Empty, the default,
+          pushes no notebooks, and the job is skipped. Any value that is not `owner/name` fails
+          the job.
+        type: string
+        required: false
+        default: ''
+    secrets:
+      notebooks-token:
+        description: >-
+          A token that can push to `notebooks-repository`: an organisation token that can push
+          there works, and a fine-grained token with Contents read and write on that repository
+          alone is the narrower choice. Only the `notebooks` job receives it.
+          Required with `notebooks-repository`, and not used without it.
+        required: false
     outputs:
       page-url:
         description: The URL of the deployed site, as GitHub Pages reports it.
@@ -70,6 +100,7 @@ jobs:
     permissions:
       contents: read            # Required to read the release
     outputs:
+      tag: ${{ steps.tag.outputs.tag }}
       commit: ${{ steps.restore.outputs.commit }}
     steps:
       - name: Choose the release
@@ -126,3 +157,158 @@ jobs:
         uses: quantecon/actions/publish-gh-pages@v0
         with:
           mode: 'deploy'
+
+  # After the deploy, so a companion repository's notebooks never run ahead of
+  # the site; a rollback's dispatch puts the earlier release's notebooks back
+  # too. It restores the release again, with its checksum check, rather than
+  # take the site from the upload job. The companion repository is public, as
+  # Colab needs, so the clone uses no token; the token reaches git on the push
+  # alone, through that command's environment, never on a command line or in
+  # .git/config.
+  notebooks:
+    needs: [upload, deploy]
+    if: inputs.notebooks-repository != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read            # Required to read the release
+    # Two releases' pushes to one repository never overlap: the later waits,
+    # and a push that still loses a race fails rather than overwrite. A
+    # caller should not use this group itself.
+    concurrency:
+      group: deploy-release-notebooks-${{ inputs.notebooks-repository }}
+      cancel-in-progress: false
+    steps:
+      - name: Check the repository and the token
+        env:
+          REPOSITORY: ${{ inputs.notebooks-repository }}
+          HAVE_TOKEN: ${{ secrets.notebooks-token != '' }}
+        run: |
+          set -euo pipefail
+          # Checked before anything prints it or puts it in a URL, so a line
+          # break cannot start a workflow command (#267); the error does not
+          # echo it.
+          owner=${REPOSITORY%%/*}
+          name=${REPOSITORY#*/}
+          if ! [[ "$REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] \
+             || [[ "$owner" == . || "$owner" == .. || "$name" == . || "$name" == .. ]]; then
+            echo "::error::notebooks-repository must be owner/name, such as QuantEcon/lecture-python-intro.notebooks"
+            exit 1
+          fi
+          if [ "$HAVE_TOKEN" != true ]; then
+            echo "::error::notebooks-repository is $REPOSITORY, and no notebooks-token secret reaches this workflow: pass one that can push there, under secrets: in the calling job"
+            exit 1
+          fi
+
+      - name: Restore the site from the release
+        id: restore
+        uses: quantecon/actions/restore-gh-pages@v0
+        with:
+          tag: ${{ needs.upload.outputs.tag }}
+          asset-name: ${{ inputs.asset-name }}
+
+      # The mirror: the clone keeps .git alone, then takes every *.ipynb under
+      # the site's _notebooks/, at the same path, and a README written here.
+      # Nothing else from the site reaches it, and every other file there
+      # goes, an environment.yml or an older README among them.
+      - name: Mirror the notebooks into a clone of the companion repository
+        id: mirror
+        env:
+          REPOSITORY: ${{ inputs.notebooks-repository }}
+          SITE: ${{ steps.restore.outputs.build-dir }}
+          TAG: ${{ needs.upload.outputs.tag }}
+          COMMIT: ${{ needs.upload.outputs.commit }}
+          PAGE_URL: ${{ needs.deploy.outputs.page-url }}
+          SOURCE: ${{ github.repository }}
+          SERVER: ${{ github.server_url }}
+        run: |
+          set -euo pipefail
+          src="$SITE/_notebooks"
+          count=0
+          if [ -d "$src" ]; then
+            count=$(find "$src" -type f -name '*.ipynb' | wc -l | tr -d ' ')
+          fi
+          if [ "$count" -eq 0 ]; then
+            echo "::error::the release of $TAG holds no notebook under _notebooks/, so nothing is pushed: a mirror of it would empty $REPOSITORY. The site is deployed; the notebooks there are still the last ones pushed."
+            exit 1
+          fi
+
+          dest="$RUNNER_TEMP/notebooks-repository"
+          if ! GIT_TERMINAL_PROMPT=0 git clone --quiet --depth 1 --no-tags "$SERVER/$REPOSITORY.git" "$dest"; then
+            echo "::error::could not clone $REPOSITORY without a token: check that it exists and is public"
+            exit 1
+          fi
+          branch=$(git -C "$dest" symbolic-ref --short HEAD)
+          if [ -z "$branch" ]; then
+            echo "::error::$REPOSITORY has no default branch to push to"
+            exit 1
+          fi
+
+          find "$dest" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          while IFS= read -r -d '' nb; do
+            mkdir -p "$dest/$(dirname "$nb")"
+            cp "$src/$nb" "$dest/$nb"
+          done < <(cd "$src" && find . -type f -name '*.ipynb' -print0)
+          # The commit (deploy-release's manifest records it) is the one the
+          # site was built from, wherever that was, so it names no repository.
+          built="${COMMIT:+, built from commit ${COMMIT:0:7}}"
+          {
+            printf '# %s\n\n' "${REPOSITORY#*/}"
+            printf 'The notebooks of %s, one for each page that has one, at the paths its "Open in Colab" links name.\n\n' "${PAGE_URL:-the site of $SOURCE}"
+            # shellcheck disable=SC2016 # the backticks are Markdown, not a command
+            printf 'This repository holds the notebooks of the release `%s` of [%s](%s/%s)%s. Each release replaces all of it, this README included, so an edit made here is lost at the next one: change the lectures in their source instead.\n' "$TAG" "$SOURCE" "$SERVER" "$SOURCE" "$built"
+          } > "$dest/README.md"
+
+          cd "$dest"
+          git add --all
+          # The guard holds by construction: the tree is the notebooks counted
+          # above and the README.
+          held=$(git ls-files -- '*.ipynb' | wc -l | tr -d ' ')
+          if [ "$held" -ne "$count" ]; then
+            echo "::error::the mirror holds $held notebooks where the release has $count, so nothing is pushed"
+            exit 1
+          fi
+          {
+            echo "dir=$dest"
+            echo "branch=$branch"
+            echo "count=$count"
+          } >> "$GITHUB_OUTPUT"
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "$REPOSITORY already holds the $count notebooks of $TAG: nothing to push."
+            exit 0
+          fi
+          git -c core.quotePath=false diff --cached --no-renames --name-status | awk -F '\t' '
+            $2 ~ /\.ipynb$/ { nb[$1]++; next }
+            { other = other " " $2 " (" ($1 == "A" ? "added" : $1 == "D" ? "deleted" : "changed") ")" }
+            END {
+              printf "Notebooks: %d added, %d changed, %d deleted.\n", nb["A"], nb["M"], nb["D"]
+              if (other != "") printf "Other files:%s.\n", other
+            }'
+          git -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit --quiet -m "Notebooks of $TAG${built}"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      # The token's one step. git reads the header from the push command's own
+      # environment (GIT_CONFIG_*, git 2.31 and later), so it is in no file,
+      # on no command line and in no later step. No --force: a push that a
+      # newer one beat fails, rather than overwrite it.
+      - name: Push the notebooks
+        if: steps.mirror.outputs.changed == 'true'
+        env:
+          TOKEN: ${{ secrets.notebooks-token }}
+          DIR: ${{ steps.mirror.outputs.dir }}
+          BRANCH: ${{ steps.mirror.outputs.branch }}
+          COUNT: ${{ steps.mirror.outputs.count }}
+          REPOSITORY: ${{ inputs.notebooks-repository }}
+          TAG: ${{ needs.upload.outputs.tag }}
+          SERVER: ${{ github.server_url }}
+        run: |
+          set -euo pipefail
+          auth=$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)
+          echo "::add-mask::$auth"
+          GIT_TERMINAL_PROMPT=0 GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0="http.$SERVER/.extraheader" \
+            GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth" \
+            git -C "$DIR" push --quiet origin "HEAD:$BRANCH"
+          echo "Pushed the $COUNT notebooks of $TAG to $REPOSITORY ($BRANCH)."
