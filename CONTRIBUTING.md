@@ -143,9 +143,15 @@ The gate does not reach:
   branch, and the canary's `github-pages` environment admits only `main` and `publish*` tags. A
   release that a person publishes, or re-publishes, tests the release event, if its tag's commit
   has the caller. Until #366 is fixed, a release-event deploy at a commit already deployed can be
-  dropped while marked success, so that proof needs a tag at a commit not yet deployed. Check what
-  the site serves by files nobody has requested yet, since the Pages CDN ignores a query string.
-  Once `v0` has moved, move the caller's pin to `@v0`, which the canary's drift check expects. Its
+  dropped while marked success, so that proof needs a tag at a commit not yet deployed. In the
+  canary no route gives one yet: its `publish.yml` deploys each `publish*` tag's commit when the
+  tag is pushed, so a re-published release is that case, and a release made by hand on a new tag
+  fails until `publish.yml` attaches the site. So until #366 is fixed, the release event isn't
+  proven there; say so in the release PR. Check what the site serves by files nobody has
+  requested yet, since the Pages CDN ignores a query string. While the caller is pinned, the
+  canary's drift check is red on it, and a scheduled watch reports that, so keep the pinned
+  window short. Once `v0` has moved, move the caller's pin to `@v0`, dispatch it once through
+  `@v0`, and let step 6's `publish.yml` leave the site on a marked build. Its
   actions still run at `v0`, so a release that also changes an action ships the action first;
 - a scenario of the release's own, such as a cache restored across several pushes;
 - how consumers fetch the actions by tag. The gate runs them from a checkout, and rewrites
