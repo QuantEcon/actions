@@ -4,7 +4,7 @@ Current priorities for `QuantEcon/actions`, the repositories that use the action
 
 ## Current state
 
-- **Actions (11):** `setup-environment`, `setup-latex`, `build-lectures`, `build-jupyter-cache`, `restore-jupyter-cache`, `preview-netlify`, `preview-cloudflare`, `preview-workers`, `publish-gh-pages`, `restore-gh-pages`, `deploy-cloudflare`. Latest release **`v0.21.1`** (2026-11-19). `@v0` points to **`v0.21.1`**.
+- **Actions (11) and a reusable workflow:** `setup-environment`, `setup-latex`, `build-lectures`, `build-jupyter-cache`, `restore-jupyter-cache`, `preview-netlify`, `preview-cloudflare`, `preview-workers`, `publish-gh-pages`, `restore-gh-pages`, `deploy-cloudflare`, and the reusable workflow `deploy-release`. Latest release **`v0.22.0`** (2026-11-28). `@v0` points to **`v0.21.1`**, and moves to `v0.22.0` once that has passed the release gate.
 - **Containers (2):** `quantecon` (full) and `quantecon-build` (lean), on the Anaconda 2026.07 baseline, with the Ubuntu base pinned by digest. See the Dependency policy below, and [CONTAINERS.md](CONTAINERS.md).
 - **Testing:** the action harness on every pull request, the container checks, and the canary repository; see [TESTING.md](TESTING.md). A release that changes what an action does passes the release gate, `gate.yml` in the canary, before `v0` moves, and anything the gate does not reach is staged there by hand ([CONTRIBUTING.md](../../CONTRIBUTING.md#staged-releases)).
 
@@ -16,17 +16,15 @@ Current priorities for `QuantEcon/actions`, the repositories that use the action
 | `lecture-python.myst` | `preview-netlify` (ci.yml), `publish-gh-pages` | `@v0` |
 | `test-actions-lecture-intro` | Full chain, `preview-netlify` and `preview-cloudflare` (`qe-preview-canary`): the canary | `@v0` |
 | `test-lecture-theme-sphinx` | `build-lectures` (`ci.yml`, `publish.yml`), `build-jupyter-cache` (`cache.yml`, weekly on Sunday at 03:00 UTC), `preview-netlify`, `publish-gh-pages`: a test corpus for the lecture theme | `@v0` |
-| `lectures` | `build-lectures` (`site-build.yml`): builds each published site from the shared lecture sources, on pushes, pull requests and twice a week. It builds four sites so far (`dp`, `intro`, `advanced` and `programming`), and publishes nothing yet | `@v0` |
-| `lecture-jax` | `preview-netlify`, `publish-gh-pages` | **`@v0.12.0`** (2 call sites) |
-| `lecture-python-intro` | `publish-gh-pages` | **`@v0.12.0`** |
-| `lecture-python-advanced.myst` | `publish-gh-pages` | **`@v0.12.0`** |
-| `lecture-python-programming` | `publish-gh-pages` | **`@v0.12.0`** |
-| `lecture-python-programming.fr` | `preview-netlify` (ci.yml), `publish-gh-pages` | **`@v0.12.0`** (2 call sites) |
-| `continuous_time_mcs` | `publish-gh-pages` | **`@v0.12.0`** |
+| `lectures` | `setup-environment` (on its full-image legs, `intro` and `advanced`) and `build-lectures` (`site-build.yml`): builds each published site from the shared lecture sources, on pushes, pull requests and twice a week. It builds six sites so far (`dp`, `intro`, `advanced`, `programming`, `intermediate` and `jax`), and publishes nothing yet | `@v0` |
+| `lecture-jax` | `preview-netlify`, `publish-gh-pages` | `@v0` |
+| `lecture-python-intro` | `publish-gh-pages` | `@v0` |
+| `lecture-python-advanced.myst` | `publish-gh-pages` | `@v0` |
+| `lecture-python-programming` | `publish-gh-pages` | `@v0` |
+| `lecture-python-programming.fr` | `preview-netlify` (ci.yml), `publish-gh-pages` | `@v0` |
+| `continuous_time_mcs` | `publish-gh-pages` | `@v0` |
 
 All eight lecture repositories that use `publish-gh-pages` pass `create-release-assets: 'true'`, so each tagged publish leaves a release that `restore-gh-pages` can put back (checked 2026-11-10).
-
-Eight call sites across six repositories are exact pins, all on `@v0.12.0` (checked 2026-11-05). Each falls a release behind whenever one ships, until someone merges its Dependabot bump. Exact pins are what stranded `lecture-dp` three releases behind, with alerting that had never worked (#83), and a Dependabot bump surfaces a release without moving the pin: `lecture-python.myst#1000` sat open for 13 days before it was closed as superseded. Moving the lecture family to `@v0` (QuantEcon/workspace-lectures#33) needs each release to pass a gate before `v0` moves to it. The release gate does that (P0 below), so when to repin is the lecture family's call.
 
 The canary meets a release on each of its paths a day ahead of the consumers' Monday builds: on Sunday its `cache.yml` runs at 00:00 UTC, `ci.yml` at 01:00 and `publish.yml` at 02:00, and the last two fail unless their deploys serve their own build (QuantEcon/test-actions-lecture-intro#94). `canary-watch.yml`, here, reports a scheduled run of any of the three that is red, missing or disabled, and a workflow that has drifted from `templates/` at `v0` (#302). The canary's workflows name `@v0`, the tag a release moves, so a candidate is tested by the release gate instead (P0 below).
 
@@ -76,12 +74,12 @@ The lean image pins every package in its `environment.yml` that the `anaconda` m
 
 ### Phase 2: the other lecture repositories
 
-Previews first ([meta#327](https://github.com/QuantEcon/meta/issues/327)), then CPU full chains, GPU last. `publish-gh-pages` is already at 8/8 across the publishing lecture repositories, six of them on exact pins (Consumers, above); this table is about the full chain.
+Previews first ([meta#327](https://github.com/QuantEcon/meta/issues/327)), then CPU full chains, GPU last. `publish-gh-pages` is already at 8/8 across the publishing lecture repositories, all on `@v0` (Consumers, above); this table is about the full chain.
 
 | # | Repository | Runner | Status |
 |---|---|---|---|
 | 1 | `lecture-python.myst` (previews) | GPU | Live, on `preview-netlify@v0` |
-| 2 | Remaining python repos (previews) | Container | `lecture-jax` is done (`@v0.12.0`); four repos are still on `nwtgck/actions-netlify` (meta#327, QuantEcon/workspace-lectures#2) |
+| 2 | Remaining python repos (previews) | Container | `lecture-jax` is done (`@v0`); four repos are still on `nwtgck/actions-netlify` (meta#327, QuantEcon/workspace-lectures#2) |
 | 3 | `lecture-python-intro` (full chain) | Container | Planned |
 | 4 | `lecture-python-programming` (full chain) | Container | Planned |
 | 5 | `lecture-python-advanced.myst` (full chain) | Container | Planned |
