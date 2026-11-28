@@ -339,6 +339,11 @@ def schedule_filters(text):
     cron alone would turn off, one that names a cron on.schedule does not
     have, and one that reads the schedule in any other way, such as with
     contains(), which this cannot follow."""
+    # Two forms pass unreported. A negated filter, such as
+    # !(github.event.schedule != '…') or (… != …) == false, matches
+    # SCHEDULE_RE as a != but runs the job only on that cron. And a read of
+    # the whole event, such as toJSON(github.event) or github.event.*, names
+    # no schedule for SCHEDULE_READ_RE to find.
     doc = load_workflow(text, 'the workflow')
     on = doc.get('on', doc.get(True))
     schedule = on.get('schedule') if isinstance(on, dict) else None
@@ -633,8 +638,8 @@ jobs:
     try:
         with open(DECLARATIONS) as f:
             real = load_declarations(f.read())
-        expect('the declarations list the four workflows', sorted(real),
-               ['cache.yml', 'ci.yml', 'publish.yml', 'restore.yml'])
+        expect('the declarations list the five workflows', sorted(real),
+               ['cache.yml', 'ci.yml', 'deploy-release.yml', 'publish.yml', 'restore.yml'])
     except (OSError, Refused) as e:
         failures.append(f'{DECLARATIONS_NAME}: {e}')
 

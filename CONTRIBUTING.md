@@ -137,11 +137,16 @@ The gate does not reach:
 - `setup-environment` outside a container, `setup-latex`, `deploy-cloudflare` and
   `preview-workers`, since the gate builds in a container and deploys to no Worker. Stage them
   with a throwaway workflow on a canary branch, or for `preview-workers` a canary PR as above;
-- the `deploy-release` reusable workflow, which the gate does not call. Stage it with a caller on a
-  canary branch pinned to `quantecon/actions/.github/workflows/deploy-release.yml@vX.Y.Z`, and
-  dispatch it from a `publish-*` tag on that branch, since the canary's `github-pages` environment
-  admits only `main` and `publish*` tags; its actions still run at `v0`, so a release that also
-  changes an action ships the action first;
+- the `deploy-release` reusable workflow, which the gate does not call. Stage it with a caller on
+  the canary's `main` pinned to `quantecon/actions/.github/workflows/deploy-release.yml@vX.Y.Z`,
+  and dispatch it on `main`: GitHub documents that a dispatch needs the workflow on the default
+  branch, and the canary's `github-pages` environment admits only `main` and `publish*` tags. A
+  release that a person publishes, or re-publishes, tests the release event, if its tag's commit
+  has the caller. Until #366 is fixed, a release-event deploy at a commit already deployed can be
+  dropped while marked success, so that proof needs a tag at a commit not yet deployed. Check what
+  the site serves by files nobody has requested yet, since the Pages CDN ignores a query string.
+  Once `v0` has moved, move the caller's pin to `@v0`, which the canary's drift check expects. Its
+  actions still run at `v0`, so a release that also changes an action ships the action first;
 - a scenario of the release's own, such as a cache restored across several pushes;
 - how consumers fetch the actions by tag. The gate runs them from a checkout, and rewrites
   `build-jupyter-cache`'s four nested `@v0` calls to that checkout, so its siblings run at the

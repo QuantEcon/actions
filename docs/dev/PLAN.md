@@ -4,9 +4,9 @@ Current priorities for `QuantEcon/actions`, the repositories that use the action
 
 ## Current state
 
-- **Actions (11) and a reusable workflow:** `setup-environment`, `setup-latex`, `build-lectures`, `build-jupyter-cache`, `restore-jupyter-cache`, `preview-netlify`, `preview-cloudflare`, `preview-workers`, `publish-gh-pages`, `restore-gh-pages`, `deploy-cloudflare`, and the reusable workflow `deploy-release`. Latest release **`v0.22.0`** (2026-11-28). `@v0` points to **`v0.21.1`**, and moves to `v0.22.0` once that has passed the release gate.
+- **Actions (11) and a reusable workflow:** `setup-environment`, `setup-latex`, `build-lectures`, `build-jupyter-cache`, `restore-jupyter-cache`, `preview-netlify`, `preview-cloudflare`, `preview-workers`, `publish-gh-pages`, `restore-gh-pages`, `deploy-cloudflare`, and the reusable workflow `deploy-release`. Latest release **`v0.22.0`** (2026-11-28). `@v0` points to **`v0.22.0`**.
 - **Containers (2):** `quantecon` (full) and `quantecon-build` (lean), on the Anaconda 2026.07 baseline, with the Ubuntu base pinned by digest. See the Dependency policy below, and [CONTAINERS.md](CONTAINERS.md).
-- **Testing:** the action harness on every pull request, the container checks, and the canary repository; see [TESTING.md](TESTING.md). A release that changes what an action does passes the release gate, `gate.yml` in the canary, before `v0` moves, and anything the gate does not reach is staged there by hand ([CONTRIBUTING.md](../../CONTRIBUTING.md#staged-releases)).
+- **Testing:** the action harness on every pull request, the container checks, and the canary repository; see [TESTING.md](TESTING.md). A release that changes what an action or a reusable workflow does passes the release gate, `gate.yml` in the canary, before `v0` moves, and anything the gate does not reach is staged there by hand ([CONTRIBUTING.md](../../CONTRIBUTING.md#staged-releases)).
 
 ## Consumers in production
 
@@ -24,7 +24,7 @@ Current priorities for `QuantEcon/actions`, the repositories that use the action
 | `lecture-python-programming.fr` | `preview-netlify` (ci.yml), `publish-gh-pages` | `@v0` |
 | `continuous_time_mcs` | `publish-gh-pages` | `@v0` |
 
-All eight lecture repositories that use `publish-gh-pages` pass `create-release-assets: 'true'`, so each tagged publish leaves a release that `restore-gh-pages` can put back (checked 2026-11-10).
+All eight lecture repositories that use `publish-gh-pages` pass `create-release-assets: 'true'`, so each tagged publish leaves a release that `restore-gh-pages` can put back.
 
 The canary meets a release on each of its paths a day ahead of the consumers' Monday builds: on Sunday its `cache.yml` runs at 00:00 UTC, `ci.yml` at 01:00 and `publish.yml` at 02:00, and the last two fail unless their deploys serve their own build (QuantEcon/test-actions-lecture-intro#94). `canary-watch.yml`, here, reports a scheduled run of any of the three that is red, missing or disabled, and a workflow that has drifted from `templates/` at `v0` (#302). The canary's workflows name `@v0`, the tag a release moves, so a candidate is tested by the release gate instead (P0 below).
 
@@ -79,7 +79,7 @@ Previews first ([meta#327](https://github.com/QuantEcon/meta/issues/327)), then 
 | # | Repository | Runner | Status |
 |---|---|---|---|
 | 1 | `lecture-python.myst` (previews) | GPU | Live, on `preview-netlify@v0` |
-| 2 | Remaining python repos (previews) | Container | `lecture-jax` is done (`@v0`); four repos are still on `nwtgck/actions-netlify` (meta#327, QuantEcon/workspace-lectures#2) |
+| 2 | Remaining python repos (previews) | Container | `lecture-jax` and `lecture-python-programming.fr` are done (`@v0`); four repos are still on `nwtgck/actions-netlify` (meta#327, QuantEcon/workspace-lectures#2) |
 | 3 | `lecture-python-intro` (full chain) | Container | Planned |
 | 4 | `lecture-python-programming` (full chain) | Container | Planned |
 | 5 | `lecture-python-advanced.myst` (full chain) | Container | Planned |

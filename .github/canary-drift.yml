@@ -1,5 +1,5 @@
 # The canary's differences from templates/ at v0 that it keeps on purpose
-# (#310). The canary, QuantEcon/test-actions-lecture-intro, runs these four
+# (#310). The canary, QuantEcon/test-actions-lecture-intro, runs these five
 # workflows as the templates ship them, so that a real lecture repository
 # runs what consumers copy. canary-watch.yml's drift job compares each with
 # the template of the same name (scripts/canary-drift.py), as YAML: comments,
@@ -113,3 +113,5 @@ publish.yml:
     why: The canary's asset name, in place of the template's example.
 
 restore.yml: []
+
+deploy-release.yml: []
