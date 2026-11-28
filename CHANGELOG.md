@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-11-28
+
 ### Added
 - **`deploy-release`, a reusable workflow** (`.github/workflows/deploy-release.yml`), and its caller,
   `templates/deploy-release.yml`: for a lecture repository whose site is built elsewhere and arrives
@@ -36,6 +38,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of its own. (#336)
 
 ### Changed
+- **`preview-netlify`, `preview-cloudflare`, `preview-workers`, `deploy-cloudflare`**: through
+  Dependabot's lockfile bumps, `preview-cloudflare`, `preview-workers` and `deploy-cloudflare` pin
+  wrangler 4.166.0, up from 4.162.0, and `preview-netlify` pins netlify-cli 27.20.1, up from
+  27.19.0. Neither raises its minimum Node, which stays at 22.12 for wrangler and 22.13 for
+  netlify-cli. The harness installs each from its lockfile. (#348, #352)
 - **Container images**: both images hold a Chrome, and kaleido moves from 0.2.1 to 1.5.2, pinned
   exactly in both. kaleido 1 bundles no browser. The Chrome it downloads for itself goes under
   `$HOME`, which a container job sets to `/github/home`, so the images held kaleido below 1.0
@@ -48,12 +55,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   figure, which Chrome draws with WebGL in software, is not blank. `scripts/check-base-pins.sh`
   now also fails unless both Dockerfiles pin the same Miniconda, Node and Chrome. A repository
   that needs kaleido 0.2 back can install `kaleido<1` through `environment-update`.
+  Both images were rebuilt and smoke-tested, and `:latest` moved on 2026-11-19, before this release.
   For an exported figure (#342):
   - Chrome 158 draws it with the image's fonts, now including Liberation's faces for Arial and
     Times, so its pixels and fonts differ from kaleido 0.2's;
   - its LaTeX is typeset by MathJax 3.2.2 instead of 2.7.5, still fetched from cdnjs;
   - each export starts a Chrome, so exports are slower;
   - EPS export and kaleido's own `kaleido.scopes` API are gone. No QuantEcon lecture uses either.
+- **Container images**: both images move to the `ubuntu:24.04` image of 2026-11-10, pinned by
+  digest, through Dependabot's bump. It brings noble-security updates to apt, libapt-pkg and
+  libpcre2, and the rebuilt apt layer takes the archive's current packages. Both images were
+  rebuilt and smoke-tested, and `:latest` moved on 2026-11-20, before this release. (#347)
 
 ## [0.21.1] - 2026-11-19
 
