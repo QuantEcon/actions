@@ -16,7 +16,7 @@ Current priorities for `QuantEcon/actions`, the repositories that use the action
 | `lecture-python.myst` | `preview-netlify` (ci.yml), `publish-gh-pages` | `@v0` |
 | `test-actions-lecture-intro` | Full chain, `preview-netlify` and `preview-cloudflare` (`qe-preview-canary`): the canary | `@v0` |
 | `test-lecture-theme-sphinx` | `build-lectures` (`ci.yml`, `publish.yml`), `build-jupyter-cache` (`cache.yml`, weekly on Sunday at 03:00 UTC), `preview-netlify`, `publish-gh-pages`: a test corpus for the lecture theme | `@v0` |
-| `lectures` | `setup-environment` (on its full-image legs, `intro` and `advanced`) and `build-lectures` (`site-build.yml`): builds each published site from the shared lecture sources, on pushes, pull requests and twice a week. It builds four sites so far (`dp`, `intro`, `advanced` and `programming`), and publishes nothing yet | `@v0` |
+| `lectures` | `setup-environment` (on its full-image legs, `intro` and `advanced`) and `build-lectures` (`site-build.yml`): builds each published site from the shared lecture sources, on pushes, pull requests and twice a week. It builds six sites so far (`dp`, `intro`, `advanced`, `programming`, `intermediate` and `jax`), and publishes nothing yet | `@v0` |
 | `lecture-jax` | `preview-netlify`, `publish-gh-pages` | `@v0` |
 | `lecture-python-intro` | `publish-gh-pages` | `@v0` |
 | `lecture-python-advanced.myst` | `publish-gh-pages` | `@v0` |
@@ -74,12 +74,12 @@ The lean image pins every package in its `environment.yml` that the `anaconda` m
 
 ### Phase 2: the other lecture repositories
 
-Previews first ([meta#327](https://github.com/QuantEcon/meta/issues/327)), then CPU full chains, GPU last. `publish-gh-pages` is already at 8/8 across the publishing lecture repositories, six of them on exact pins (Consumers, above); this table is about the full chain.
+Previews first ([meta#327](https://github.com/QuantEcon/meta/issues/327)), then CPU full chains, GPU last. `publish-gh-pages` is already at 8/8 across the publishing lecture repositories, all on `@v0` (Consumers, above); this table is about the full chain.
 
 | # | Repository | Runner | Status |
 |---|---|---|---|
 | 1 | `lecture-python.myst` (previews) | GPU | Live, on `preview-netlify@v0` |
-| 2 | Remaining python repos (previews) | Container | `lecture-jax` is done (`@v0.12.0`); four repos are still on `nwtgck/actions-netlify` (meta#327, QuantEcon/workspace-lectures#2) |
+| 2 | Remaining python repos (previews) | Container | `lecture-jax` is done (`@v0`); four repos are still on `nwtgck/actions-netlify` (meta#327, QuantEcon/workspace-lectures#2) |
 | 3 | `lecture-python-intro` (full chain) | Container | Planned |
 | 4 | `lecture-python-programming` (full chain) | Container | Planned |
 | 5 | `lecture-python-advanced.myst` (full chain) | Container | Planned |
